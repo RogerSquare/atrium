@@ -1,0 +1,30 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.3.2",
+    "gray-matter": "^4.0.3",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.1.1",
+    "node-pty": "^1.1.0",
+    "pino": "^10.3.1",
+    "pino-pretty": "^13.1.3",
+    "port-ready": "^0.1.0",
+    "socket.io": "^4.8.3",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "wait-on": "^9.0.4"
+  }
+}

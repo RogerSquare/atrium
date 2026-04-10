@@ -1,0 +1,10 @@
+{
+  "name": "DevOps Docker",
+  "description": "Docker/deployment related task",
+  "defaults": {
+    "type": "devops",
+    "tags": ["docker", "deployment"],
+    "priority": "medium",
+    "content": "### Description\n\n- [ ] Dockerfile builds successfully\n- [ ] Container starts and passes health check\n- [ ] Environment variables documented\n- [ ] Volumes configured for persistence\n- [ ] No hardcoded paths\n\n### Comments"
+  }
+}

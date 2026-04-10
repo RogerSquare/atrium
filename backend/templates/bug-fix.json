@@ -1,0 +1,10 @@
+{
+  "name": "Bug Fix",
+  "description": "Fix a reported bug",
+  "defaults": {
+    "type": "fullstack",
+    "tags": ["bug"],
+    "priority": "high",
+    "content": "### Description\n\n**Reported behavior:**\n\n**Expected behavior:**\n\n**Steps to reproduce:**\n1. \n\n**Root cause:**\n\n- [ ] Bug reproduced\n- [ ] Fix implemented\n- [ ] Existing tests still pass\n- [ ] No regressions introduced\n\n### Comments"
+  }
+}

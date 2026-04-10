@@ -1,0 +1,10 @@
+[
+  {
+    "id": "example-service",
+    "name": "Example Service",
+    "group": "My Project",
+    "port": 3000,
+    "cwd": "C:\\Path\\To\\Project",
+    "startCmd": "npm run dev"
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "name": "UI Component",
+  "description": "New frontend component with responsive design",
+  "defaults": {
+    "type": "frontend",
+    "tags": ["ui"],
+    "priority": "medium",
+    "content": "### Description\n\n- [ ] Component renders correctly on desktop\n- [ ] Component renders correctly on mobile (375px)\n- [ ] Touch targets minimum 44px\n- [ ] No horizontal overflow on mobile\n- [ ] Wrapped in ErrorBoundary\n- [ ] Matches existing design language\n\n### Comments"
+  }
+}

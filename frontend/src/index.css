@@ -1,0 +1,801 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* ============================================================
+   APPLE HIG DESIGN TOKENS
+   ============================================================ */
+
+@theme {
+  /* --- Semantic Surface Colors --- */
+  --color-app-bg: var(--bg-app);
+  --color-app-bg-secondary: var(--bg-secondary);
+  --color-app-bg-tertiary: var(--bg-tertiary);
+  --color-app-card: var(--bg-card);
+  --color-app-border: var(--border-app);
+  --color-app-separator: var(--separator);
+  --color-app-text: var(--text-app);
+  --color-app-text-muted: var(--text-muted);
+  --color-app-text-tertiary: var(--text-tertiary);
+  --color-app-accent: var(--accent-app);
+  --color-app-accent-hover: var(--accent-hover);
+  --color-app-fill: var(--fill-primary);
+  --color-app-fill-secondary: var(--fill-secondary);
+
+  /* --- Apple System Colors --- */
+  --color-apple-blue: var(--apple-blue);
+  --color-apple-green: var(--apple-green);
+  --color-apple-orange: var(--apple-orange);
+  --color-apple-red: var(--apple-red);
+  --color-apple-yellow: var(--apple-yellow);
+  --color-apple-purple: var(--apple-purple);
+  --color-apple-pink: var(--apple-pink);
+  --color-apple-teal: var(--apple-teal);
+}
+
+/* ============================================================
+   GLOBAL DESIGN TOKENS (shared across all themes)
+   ============================================================ */
+:root {
+  /* --- Typography --- */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, SFMono-Regular, 'Menlo', 'Monaco', 'Cascadia Code', monospace;
+
+  --text-caption2: 11px;
+  --text-caption1: 12px;
+  --text-footnote: 13px;
+  --text-subhead: 15px;
+  --text-body: 17px;
+  --text-title3: 20px;
+  --text-title2: 22px;
+  --text-title1: 28px;
+  --text-largeTitle: 34px;
+
+  --font-regular: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  --leading-tight: 1.2;
+  --leading-body: 1.47;
+  --leading-caption: 1.3;
+
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.01em;
+
+  /* --- Corner Radii --- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* --- Spacing (4px grid) --- */
+  --space-0: 0px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* --- Motion --- */
+  --ease-default: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.55, 0.06, 0.68, 0.19);
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 350ms;
+
+  /* --- Safe Area --- */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+/* ============================================================
+   THEME: DARK (default) — Apple Standard Dark Mode
+   ============================================================ */
+:root {
+  --bg-app: #1c1c1e;
+  --bg-secondary: #242426;
+  --bg-tertiary: #3a3a3c;
+  --bg-card: #323234;
+  --border-app: rgba(255, 255, 255, 0.08);
+  --separator: rgba(255, 255, 255, 0.06);
+  --text-app: #f5f5f7;
+  --text-muted: #98989d;
+  --text-tertiary: #636366;
+  --accent-app: #0A84FF;
+  --accent-hover: #409CFF;
+  --fill-primary: rgba(120, 120, 128, 0.36);
+  --fill-secondary: rgba(120, 120, 128, 0.24);
+  --apple-blue: #0A84FF; --apple-green: #30D158; --apple-orange: #FF9F0A;
+  --apple-red: #FF453A; --apple-yellow: #FFD60A; --apple-purple: #BF5AF2;
+  --apple-pink: #FF375F; --apple-teal: #64D2FF;
+  --gray-1: #8E8E93; --gray-2: #636366; --gray-3: #48484A;
+  --gray-4: #3A3A3C; --gray-5: #2C2C2E; --gray-6: #1C1C1E;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.35);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.45);
+  --shadow-xl: 0 20px 60px rgba(0,0,0,0.5);
+}
+
+/* ============================================================
+   THEME: LIGHT — Apple Standard Light Mode
+   ============================================================ */
+[data-theme='light'] {
+  --bg-app: #f2f2f7;
+  --bg-secondary: #e9e9ef;
+  --bg-tertiary: #f2f2f7;
+  --bg-card: #ffffff;
+  --border-app: rgba(0, 0, 0, 0.06);
+  --separator: rgba(60, 60, 67, 0.12);
+  --text-app: #1c1c1e;
+  --text-muted: #8e8e93;
+  --text-tertiary: #aeaeb2;
+  --accent-app: #007AFF;
+  --accent-hover: #0A84FF;
+  --fill-primary: rgba(120, 120, 128, 0.16);
+  --fill-secondary: rgba(120, 120, 128, 0.08);
+  --apple-blue: #007AFF; --apple-green: #34C759; --apple-orange: #FF9500;
+  --apple-red: #FF3B30; --apple-yellow: #FFCC00; --apple-purple: #AF52DE;
+  --apple-pink: #FF2D55; --apple-teal: #5AC8FA;
+  --gray-1: #8E8E93; --gray-2: #AEAEB2; --gray-3: #C7C7CC;
+  --gray-4: #D1D1D6; --gray-5: #E5E5EA; --gray-6: #F2F2F7;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06);
+  --shadow-xl: 0 20px 60px rgba(0,0,0,0.16), 0 8px 20px rgba(0,0,0,0.08);
+}
+
+/* ============================================================
+   THEME: OLED — True Black
+   ============================================================ */
+[data-theme='oled'] {
+  --bg-app: #000000;
+  --bg-secondary: #111113;
+  --bg-tertiary: #2c2c2e;
+  --bg-card: #1e1e20;
+  --border-app: rgba(255, 255, 255, 0.06);
+  --separator: rgba(255, 255, 255, 0.04);
+  --text-app: #e5e5ea;
+  --text-muted: #8e8e93;
+  --text-tertiary: #636366;
+  --accent-app: #0A84FF;
+  --accent-hover: #409CFF;
+  --fill-primary: rgba(120, 120, 128, 0.36);
+  --fill-secondary: rgba(120, 120, 128, 0.20);
+  --apple-blue: #0A84FF; --apple-green: #30D158; --apple-orange: #FF9F0A;
+  --apple-red: #FF453A; --apple-yellow: #FFD60A; --apple-purple: #BF5AF2;
+  --apple-pink: #FF375F; --apple-teal: #64D2FF;
+  --gray-1: #8E8E93; --gray-2: #636366; --gray-3: #48484A;
+  --gray-4: #3A3A3C; --gray-5: #2C2C2E; --gray-6: #1C1C1E;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.5);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.6);
+  --shadow-xl: 0 20px 60px rgba(0,0,0,0.7);
+}
+
+/* ============================================================
+   THEME: PAPER — Warm Cream Tones
+   ============================================================ */
+[data-theme='paper'] {
+  --bg-app: #faf5ef;
+  --bg-secondary: #f0e8dc;
+  --bg-tertiary: #f5ede3;
+  --bg-card: #ffffff;
+  --border-app: rgba(120, 90, 50, 0.08);
+  --separator: rgba(120, 90, 50, 0.10);
+  --text-app: #3d3229;
+  --text-muted: #9a8b7a;
+  --text-tertiary: #c0b3a3;
+  --accent-app: #e8750a;
+  --accent-hover: #f5920a;
+  --fill-primary: rgba(120, 90, 50, 0.12);
+  --fill-secondary: rgba(120, 90, 50, 0.06);
+  --apple-blue: #0070e0; --apple-green: #2da44e; --apple-orange: #e8750a;
+  --apple-red: #d1242f; --apple-yellow: #bf8700; --apple-purple: #8250df;
+  --apple-pink: #d4205e; --apple-teal: #0d8a8a;
+  --gray-1: #9a8b7a; --gray-2: #b8a996; --gray-3: #d1c4b2;
+  --gray-4: #e0d5c7; --gray-5: #f0e8dc; --gray-6: #faf5ef;
+  --shadow-sm: 0 1px 3px rgba(100,70,30,0.06), 0 1px 2px rgba(100,70,30,0.04);
+  --shadow-md: 0 4px 12px rgba(100,70,30,0.08), 0 2px 4px rgba(100,70,30,0.04);
+  --shadow-lg: 0 12px 40px rgba(100,70,30,0.12), 0 4px 12px rgba(100,70,30,0.06);
+  --shadow-xl: 0 20px 60px rgba(100,70,30,0.16), 0 8px 20px rgba(100,70,30,0.08);
+}
+
+
+/* ============================================================
+   BASE STYLES
+   ============================================================ */
+body {
+  background-color: var(--bg-app);
+  color: var(--text-app);
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  letter-spacing: var(--tracking-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color var(--duration-slow) var(--ease-default),
+              color var(--duration-slow) var(--ease-default);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body.modal-open {
+  overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ============================================================
+   VIBRANCY / GLASS BLUR
+   Do NOT apply backdrop-filter to .bg-app-card globally —
+   it creates a new containing block that breaks @hello-pangea/dnd
+   fixed-position drag previews in the Kanban columns.
+   ============================================================ */
+.vibrancy-thin {
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+}
+
+.vibrancy-regular {
+  backdrop-filter: blur(40px) saturate(1.6);
+  -webkit-backdrop-filter: blur(40px) saturate(1.6);
+}
+
+.vibrancy-thick {
+  backdrop-filter: blur(60px) saturate(1.8);
+  -webkit-backdrop-filter: blur(60px) saturate(1.8);
+}
+
+/* Legacy alias */
+.glass-blur {
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+}
+
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--fill-primary);
+  border-radius: var(--radius-full);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-1);
+}
+
+/* ============================================================
+   FOCUS STYLES
+   ============================================================ */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent-app) 50%, transparent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+}
+
+/* ============================================================
+   APPLE-STYLE INTERACTION STATES
+   ============================================================ */
+
+/* Button press feedback — instant on press, spring back on release */
+.apple-press {
+  transition: transform var(--duration-fast) var(--ease-spring),
+              opacity var(--duration-fast) var(--ease-default);
+}
+
+.apple-press:active {
+  transform: scale(0.97);
+  opacity: 0.9;
+}
+
+/* Card hover lift — subtle elevation on hover */
+.apple-hover {
+  transition: transform var(--duration-fast) var(--ease-default),
+              box-shadow var(--duration-normal) var(--ease-default);
+}
+
+.apple-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+/* Segmented control — smooth transitions between states */
+.apple-segment {
+  transition: background-color var(--duration-fast) var(--ease-default),
+              color var(--duration-fast) var(--ease-default),
+              box-shadow var(--duration-normal) var(--ease-default);
+}
+
+/* Focus glow — soft accent ring on focus-visible */
+.apple-focus:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-app) 35%, transparent);
+}
+
+/* Color transition utility — for elements that change color on state */
+.apple-color-transition {
+  transition: color var(--duration-fast) var(--ease-default),
+              background-color var(--duration-fast) var(--ease-default);
+}
+
+/* Smooth scroll for containers */
+.apple-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ============================================================
+   KEYFRAMES
+   ============================================================ */
+
+/* Entrance: slide up from below with fade */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Entrance: slide in from left with fade */
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Entrance: slide down from above */
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Entrance: simple fade */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Exit: fade out */
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Entrance: scale with spring overshoot */
+@keyframes scale-spring {
+  0% { transform: scale(0.92); opacity: 0; }
+  60% { transform: scale(1.03); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Status: gentle breathing pulse for indicators */
+@keyframes gentle-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Status: rotating spinner */
+@keyframes spin-smooth {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Interaction: checkmark draw-in */
+@keyframes check-draw {
+  0% { stroke-dashoffset: 20; }
+  100% { stroke-dashoffset: 0; }
+}
+
+/* Notification: slide in from right */
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Collapse/expand height transition helper */
+@keyframes collapse-in {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 1000px; }
+}
+
+/* Subtle glow pulse for recently updated items */
+@keyframes glow-fade {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-app) 30%, transparent); }
+  50% { box-shadow: 0 0 12px 2px color-mix(in srgb, var(--accent-app) 15%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* ============================================================
+   ANIMATION UTILITIES
+   ============================================================ */
+
+.animate-slide-up {
+  animation: slide-up var(--duration-normal) var(--ease-out) both;
+}
+
+.animate-slide-down {
+  animation: slide-down var(--duration-normal) var(--ease-out) both;
+}
+
+.animate-slide-in {
+  animation: slide-in var(--duration-normal) var(--ease-out) both;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right var(--duration-normal) var(--ease-out) both;
+}
+
+.animate-fade-in {
+  animation: fade-in var(--duration-normal) var(--ease-default) both;
+}
+
+.animate-fade-out {
+  animation: fade-out var(--duration-fast) var(--ease-default) both;
+}
+
+.animate-scale-spring {
+  animation: scale-spring var(--duration-slow) var(--ease-spring) both;
+}
+
+.animate-gentle-pulse {
+  animation: gentle-pulse 2s ease-in-out infinite;
+}
+
+.animate-glow-fade {
+  animation: glow-fade 1.5s var(--ease-out) both;
+}
+
+.animate-collapse-in {
+  animation: collapse-in var(--duration-slow) var(--ease-out) both;
+  overflow: hidden;
+}
+
+/* Staggered entrance delays for lists */
+.animate-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.animate-stagger > *:nth-child(2) { animation-delay: 30ms; }
+.animate-stagger > *:nth-child(3) { animation-delay: 60ms; }
+.animate-stagger > *:nth-child(4) { animation-delay: 90ms; }
+.animate-stagger > *:nth-child(5) { animation-delay: 120ms; }
+.animate-stagger > *:nth-child(n+6) { animation-delay: 150ms; }
+
+/* Theme transition — applied to root for smooth theme changes */
+.theme-transition,
+.theme-transition * {
+  transition: background-color var(--duration-slow) var(--ease-default),
+              color var(--duration-slow) var(--ease-default),
+              border-color var(--duration-slow) var(--ease-default),
+              box-shadow var(--duration-slow) var(--ease-default) !important;
+}
+
+/* Progress bar fill animation */
+.progress-fill {
+  transition: width var(--duration-slow) var(--ease-out);
+}
+
+/* Chevron rotation for expand/collapse */
+.chevron-rotate {
+  transition: transform var(--duration-fast) var(--ease-default);
+}
+
+.chevron-rotate.expanded {
+  transform: rotate(90deg);
+}
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ============================================================
+   MOBILE RESPONSIVE — iOS NATIVE FEEL
+   ============================================================ */
+
+/* Hidden scrollbars for swipe areas */
+.mobile-scroll-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.mobile-scroll-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+/* Safe area inset helpers */
+.safe-bottom {
+  padding-bottom: max(0.75rem, var(--safe-bottom));
+}
+
+/* Chat input — nudge above bottom tab bar on mobile */
+@media (max-width: 639px) {
+  .chat-input-safe {
+    padding-bottom: 20px !important;
+  }
+  .app-shell {
+    height: calc(100dvh - 56px) !important;
+  }
+}
+
+.safe-top {
+  padding-top: max(0.5rem, var(--safe-top));
+}
+
+.safe-left {
+  padding-left: max(0, var(--safe-left));
+}
+
+.safe-right {
+  padding-right: max(0, var(--safe-right));
+}
+
+/* iOS sheet — drag handle indicator */
+.sheet-handle {
+  width: 36px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--fill-primary);
+  margin: 8px auto 4px;
+}
+
+/* iOS-style separator — ultra-thin line */
+.ios-separator {
+  height: 0.5px;
+  background: var(--separator);
+  border: none;
+}
+
+/* iOS-style grouped section container */
+.ios-group {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.ios-group > * + * {
+  border-top: 0.5px solid var(--separator);
+}
+
+/* iOS-style row in a grouped list */
+.ios-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 12px var(--space-4);
+  min-height: 44px;
+  transition: background var(--duration-fast) var(--ease-default);
+}
+
+.ios-row:active {
+  background: var(--fill-secondary);
+}
+
+/* iOS tab bar height (49px + safe area) */
+.ios-tab-bar {
+  height: calc(49px + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+}
+
+/* Momentum scrolling for all scroll containers on mobile */
+.momentum-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Scroll snap for column swiping */
+.snap-x-mandatory {
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.snap-center {
+  scroll-snap-align: center;
+}
+
+@media (max-width: 639px) {
+  .mobile-compact {
+    padding: 0.75rem;
+  }
+
+  /* Prevent iOS auto-zoom on input focus (16px minimum) */
+  input:not(.pill-input), select:not(.pill-input), textarea {
+    font-size: 16px !important;
+  }
+
+  /* Full-width touch targets */
+  .mobile-touch-row {
+    min-height: 44px;
+    padding: 12px var(--space-4);
+  }
+
+  /* Edge-to-edge separators on mobile */
+  .mobile-separator {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  /* Sticky headers with blur on mobile */
+  .mobile-sticky-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    background: color-mix(in srgb, var(--bg-card) 85%, transparent);
+  }
+
+  /* Large title style (iOS navigation bar) */
+  .mobile-large-title {
+    font-size: var(--text-largeTitle);
+    font-weight: var(--font-bold);
+    letter-spacing: var(--tracking-tight);
+    color: var(--text-app);
+    padding: 0 var(--space-4);
+    margin-bottom: var(--space-3);
+  }
+}
+
+/* ============================================================
+   REDUCED MOTION
+   Respects user preference — disables decorative motion while
+   keeping functional transitions (collapse/expand) minimal.
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  /* Disable decorative animations entirely */
+  .animate-slide-up, .animate-slide-down, .animate-slide-in,
+  .animate-slide-in-right, .animate-fade-in, .animate-fade-out,
+  .animate-scale-spring, .animate-glow-fade {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  /* Reduce infinite animations to static */
+  .animate-gentle-pulse {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+
+  /* Keep transitions but make them instant */
+  .apple-press, .apple-hover, .apple-segment, .apple-color-transition,
+  .progress-fill, .chevron-rotate {
+    transition-duration: 0.01ms !important;
+  }
+
+  /* Disable hover lift */
+  .apple-hover:hover {
+    transform: none !important;
+  }
+
+  /* Disable press scale */
+  .apple-press:active {
+    transform: none !important;
+  }
+
+  /* Smooth scrolling can cause motion sickness */
+  .apple-scroll {
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================
+   COMPONENT CLASSES — reusable patterns for UI primitives
+   ============================================================ */
+
+/* --- Typography --- */
+.text-caption2 { font-size: var(--text-caption2); }
+.text-caption1 { font-size: var(--text-caption1); }
+.text-footnote { font-size: var(--text-footnote); }
+.text-subhead { font-size: var(--text-subhead); }
+.text-body { font-size: var(--text-body); }
+.text-title3 { font-size: var(--text-title3); }
+.text-title2 { font-size: var(--text-title2); }
+.text-title1 { font-size: var(--text-title1); }
+
+.font-medium { font-weight: var(--font-medium); }
+.font-semibold { font-weight: var(--font-semibold); }
+.font-bold { font-weight: var(--font-bold); }
+
+/* --- Surface / Card --- */
+.surface-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.surface-secondary {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.surface-inset {
+  background: var(--fill-secondary);
+  border-radius: var(--radius-md);
+}
+
+/* --- Separators --- */
+.divider-v {
+  width: 1px;
+  height: 20px;
+  background: var(--separator);
+}
+
+.divider-h {
+  height: 0.5px;
+  background: var(--separator);
+}
+
+/* --- Pill / Radius --- */
+.pill { border-radius: var(--radius-full); }
+.rounded-sm { border-radius: var(--radius-sm); }
+.rounded-md { border-radius: var(--radius-md); }
+.rounded-lg { border-radius: var(--radius-lg); }
+
+/* --- Common interactive element base --- */
+.interactive-base {
+  border: none;
+  cursor: pointer;
+  outline: none;
+  transition: all var(--duration-fast) var(--ease-default);
+}
+
+/* --- Top bar --- */
+.topbar {
+  border-bottom: 0.5px solid var(--separator);
+  height: 52px;
+  background: var(--bg-app);
+}
+
+/* --- Search input --- */
+.search-input {
+  background: var(--fill-secondary);
+  border-radius: var(--radius-md);
+  padding: 8px 34px;
+  font-size: var(--text-subhead);
+  border: none;
+}
+
+.search-input:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-app) 25%, transparent);
+  outline: none;
+}
+
+/* --- Mobile bottom tab bar --- */
+.mobile-tab-bar {
+  padding-top: 8px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  background: color-mix(in srgb, var(--bg-card) 80%, transparent);
+  border-top: 0.5px solid var(--separator);
+}

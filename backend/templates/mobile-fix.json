@@ -1,0 +1,10 @@
+{
+  "name": "Mobile Fix",
+  "description": "Mobile/responsive UI fix",
+  "defaults": {
+    "type": "frontend",
+    "tags": ["mobile", "responsive"],
+    "priority": "medium",
+    "content": "### Description\n\n**Device/viewport:**\n\n**Current behavior:**\n\n**Expected behavior:**\n\n- [ ] Tested at 375px (iPhone SE)\n- [ ] Tested at 390px (iPhone 14)\n- [ ] Touch targets min 44px\n- [ ] No horizontal overflow\n- [ ] Fixed/sticky bars don't overlap content\n- [ ] Safe area padding for notched devices\n- [ ] Desktop layout unchanged\n\n### Comments"
+  }
+}

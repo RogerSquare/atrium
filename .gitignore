@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+
+# Runtime secrets
+backend/.jwt-secret
+*.env
+.env.*
+
+# User data & credentials
+backend/users/
+backend/chat/
+backend/ai-history/
+
+# Task history & trash
+backend/tasks/.history/
+backend/tasks/.trash/
+
+# Task files (contain project-specific data)
+backend/tasks/**/*.md
+
+# Runtime uploads
+backend/uploads/
+
+# Design sessions
+backend/design-history/
+backend/design-sessions/
+
+# Machine-specific config
+backend/settings.json
+backend/services.json
+
+# Claude Code local config
+.claude/
+
+# Backups
+source_backups/
+
+# Runtime files
+task_review.json
+
+# Build output
+dist/
+dist-ssr/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

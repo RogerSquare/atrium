@@ -1,0 +1,10 @@
+{
+  "name": "Security Endpoint",
+  "description": "New API endpoint with security best practices",
+  "defaults": {
+    "type": "backend",
+    "tags": ["security", "api"],
+    "priority": "high",
+    "content": "### Description\n\n- [ ] Auth requirement set (requireAuth / optionalAuth / public)\n- [ ] Input validation on all parameters\n- [ ] Error responses sanitized (no stack traces)\n- [ ] Rate limiting applied if public-facing\n- [ ] Audit logging for state-changing operations\n- [ ] Tests added\n\n### Comments"
+  }
+}
