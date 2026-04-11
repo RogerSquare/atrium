@@ -1,74 +1,98 @@
 # Agent Task Board
 
-A Kanban-style task management system built for autonomous AI developer agents. Tasks are stored as Markdown files with YAML frontmatter, and agents interact with them through a REST API that enforces a strict lifecycle, tracks activity history, and manages timestamps automatically.
+**A Kanban-style task management system built for autonomous AI developer agents.**
 
-## Overview
+Agent Task Board gives humans a visual control plane for AI coding agents. Tasks live as Markdown files with YAML frontmatter -- readable by both humans and machines. Agents pick up work through a REST API, update status as they go, and leave structured comments documenting their reasoning. Humans review completed work and control the final approval step.
 
-Agent Task Board provides a visual interface for humans to observe and manage the work of AI coding agents. Each task is a Markdown file in the `backend/tasks/` directory, organized by project. Agents pick up tasks via the API, update their status as they work, and leave structured comments documenting their reasoning and changes. Humans review completed work and control the final approval step.
+The board also doubles as a lightweight DevOps dashboard: register your services, start and stop them from the UI, open an embedded terminal, and preview running frontends -- all without leaving the browser.
 
-The system also includes a service registry that tracks related applications (backends, frontends, databases) and allows starting, stopping, and monitoring them directly from the UI. An embedded terminal and preview browser let you inspect running services without leaving the board.
-
-## Architecture
-
-- **Backend**: Express 5, file-based task storage (Markdown + YAML), JWT authentication
-- **Frontend**: React 19, Vite, Tailwind CSS, drag-and-drop Kanban board
-- **Real-time**: Socket.IO for live updates across connected clients
-- **Terminals**: node-pty for embedded terminal sessions via xterm.js
-- **Logging**: Pino structured logging
+---
 
 ## Features
 
-- **Kanban board**: Drag-and-drop task management across four columns (Todo, In Progress, Review, Done)
-- **Markdown task files**: Tasks are human-readable Markdown with YAML frontmatter for metadata
-- **Activity logging**: Every status change, assignment, and update is recorded with timestamps
-- **Service registry**: Register, start, stop, and restart related services from the UI
-- **Embedded terminal**: Full terminal access to running services via xterm.js and node-pty
-- **Preview browser**: Iframe-based preview of frontend services running on registered ports
-- **Project grouping**: Tasks and services are organized by project
-- **Agent lifecycle**: Strict four-status workflow (todo, in_progress, review, done) with automatic timestamp management
-- **Task history**: Full revision history stored as timestamped snapshots
-- **API documentation**: Swagger UI available at `/api-docs`
-- **Auth**: JWT-based authentication with role-based access
-- **Rate limiting**: Built-in rate limiting on API endpoints
+### Task Management
+- Four-column Kanban board (Todo, In Progress, Review, Done) with drag-and-drop
+- Multiple views: Board, List, and Tree
+- Swimlane grouping by assignee, type, or priority
+- Bulk operations on multiple tasks at once
+- Undo/redo support for task changes
+- Advanced filtering by type, priority, assignee, and free-text search
+- Task templates for repeatable work
+- Full activity logging and audit trail with automatic timestamps
 
-## Task Lifecycle
+### Real-Time Collaboration
+- Live updates via WebSockets -- every connected client sees changes instantly
+- Real-time chat between users and agents
+- Live presence indicators showing who is viewing each task
 
-Tasks follow a strict four-status workflow:
+### Developer Tools
+- Embedded terminal powered by xterm.js and node-pty
+- Service registry to start, stop, and restart dev servers from the UI
+- Preview panel for iframing running services directly in the board
+- Swagger/OpenAPI documentation for the full REST API
 
-1. **todo** -- Task is waiting to be picked up
-2. **in_progress** -- An agent is actively working on it
-3. **review** -- Agent has finished and is requesting human approval
-4. **done** -- Human has reviewed and approved the work
+### Architecture
+- File-based task storage using Markdown with YAML frontmatter -- no database required
+- Task revision history stored as timestamped snapshots
+- JWT authentication with role-based access control
+- Rate limiting on API endpoints
+- Structured logging with Pino
+- Mobile responsive design
 
-Timestamps (`started_at`, `reviewed_at`, `done_at`) are automatically set when tasks transition between statuses. Agents must never skip statuses or use non-standard status values.
+---
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Runtime | Node.js |
-| Backend Framework | Express 5 |
-| Task Storage | Markdown files with YAML frontmatter (gray-matter) |
-| Frontend Framework | React 19 |
-| Bundler | Vite 8 |
-| CSS | Tailwind CSS |
-| Drag and Drop | @hello-pangea/dnd |
-| Real-time | Socket.IO |
-| Terminal | xterm.js + node-pty |
-| Auth | JSON Web Tokens (bcryptjs) |
-| Logging | Pino |
-| Markdown Rendering | react-markdown + remark-gfm |
-| Virtualization | @tanstack/react-virtual |
-| API Docs | Swagger (swagger-jsdoc + swagger-ui-express) |
-| Testing | Vitest, Playwright |
-| Linting | ESLint |
+### Frontend
+
+![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-8-646CFF?style=flat-square&logo=vite&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)
+![Socket.IO](https://img.shields.io/badge/Socket.IO-4.8-010101?style=flat-square&logo=socketdotio&logoColor=white)
+
+| Library | Purpose |
+|---------|---------|
+| React 19 | UI framework |
+| Vite 8 | Build tooling and dev server |
+| Tailwind CSS 4 | Utility-first styling |
+| @hello-pangea/dnd | Drag-and-drop for the Kanban board |
+| @xterm/xterm | Embedded terminal emulator |
+| @tanstack/react-virtual | Virtualized lists for large task sets |
+| Socket.IO Client | Real-time WebSocket communication |
+| lucide-react | Icon library |
+| react-markdown + remark-gfm | Markdown rendering in task descriptions |
+| Storybook 10 | Component development and documentation |
+| Vitest + Playwright | Unit and end-to-end testing |
+
+### Backend
+
+![Express](https://img.shields.io/badge/Express-5-000000?style=flat-square&logo=express&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=nodedotjs&logoColor=white)
+![JWT](https://img.shields.io/badge/JWT-Auth-000000?style=flat-square&logo=jsonwebtokens&logoColor=white)
+![Swagger](https://img.shields.io/badge/Swagger-API_Docs-85EA2D?style=flat-square&logo=swagger&logoColor=black)
+
+| Library | Purpose |
+|---------|---------|
+| Express 5 | HTTP framework |
+| Socket.IO 4.8 | Real-time event broadcasting |
+| gray-matter | Parse Markdown files with YAML frontmatter |
+| node-pty | Spawn terminal processes for the embedded shell |
+| Pino | Structured JSON logging |
+| jsonwebtoken + bcryptjs | Authentication and password hashing |
+| swagger-jsdoc + swagger-ui-express | Auto-generated API documentation |
+| express-rate-limit | Request throttling |
+
+---
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+
-- A C++ build toolchain (required by node-pty)
+- **Node.js 18+**
+- **A C++ build toolchain** -- required by `node-pty` for native compilation
+  - Windows: `npm install -g windows-build-tools` or install Visual Studio Build Tools
+  - macOS: `xcode-select --install`
+  - Linux: `sudo apt install build-essential`
 
 ### Installation
 
@@ -88,32 +112,73 @@ npm install
 
 ### Configuration
 
-Copy the example configuration files:
-
 ```bash
+# Copy the example config files
 cp backend/settings.example.json backend/settings.json
 cp backend/services.example.json backend/services.json
 ```
 
-Edit `backend/settings.json` to set your working directory, and populate `backend/services.json` with any services you want to manage from the board.
+Edit `backend/settings.json` to set your working directory. Populate `backend/services.json` with any dev servers you want to manage from the board.
 
 ### Running
 
+Start the backend and frontend in separate terminals:
+
 ```bash
-# Start the backend (port 3001)
+# Terminal 1 -- Backend (port 3001)
 cd backend
 npm start
 
-# Start the frontend (separate terminal, port 5173)
+# Terminal 2 -- Frontend (port 5173)
 cd frontend
-npm start
+npm run dev
 ```
 
-Or use the provided start script:
+On Windows, you can also use the provided start script:
 
 ```bash
 ./start.bat
 ```
+
+Then open [http://localhost:5173](http://localhost:5173) in your browser.
+
+---
+
+## Architecture
+
+### File-Based Task Storage
+
+Every task is a `.md` file in `backend/tasks/`, organized into subdirectories by project. Each file uses YAML frontmatter for structured metadata (status, priority, assignee, tags) and standard Markdown for the description body. This means tasks are version-controllable, grep-able, and readable without any special tooling.
+
+```
+backend/tasks/
+  MyProject/
+    feat-auth-001.md
+    ui-dashboard-002.md
+  AnotherProject/
+    bug-crash-003.md
+  .history/              # Timestamped revision snapshots
+```
+
+### Real-Time Sync
+
+The backend broadcasts task changes over Socket.IO. When any client (or agent) creates, updates, or deletes a task through the API, every connected browser receives the update instantly. No polling, no stale data.
+
+### Service Registry
+
+The `backend/services.json` file holds a registry of related applications -- frontends, backends, databases, anything with a start command. The UI provides controls to start, stop, and restart each service. Logs stream in real-time, and the preview panel can iframe any running service by port.
+
+### Task Lifecycle
+
+Tasks follow a strict four-status workflow enforced by the API:
+
+```
+todo  -->  in_progress  -->  review  -->  done
+```
+
+Timestamps (`started_at`, `reviewed_at`, `done_at`) are set automatically on each transition. Agents work through `todo` to `review`; only humans move tasks to `done`.
+
+---
 
 ## Project Structure
 
@@ -124,39 +189,103 @@ backend/
     .history/            # Timestamped task revision snapshots
   users/                 # User credential files (gitignored)
   lib/
-    authMiddleware.js    # JWT verification
-    constants.js         # Shared constants
-  routes/                # API route handlers
+    authMiddleware.js    # JWT verification middleware
+    constants.js         # Shared path and config constants
+    logger.js            # Pino logger configuration
+    swagger.js           # Swagger/OpenAPI spec generation
+  routes/
+    tasks.js             # Task CRUD endpoints
+    services.js          # Service registry and lifecycle
+    auth.js              # Login, registration, JWT issuance
+    chat.js              # Real-time chat endpoints
+    agents.js            # Agent management
+    settings.js          # Board settings
+    projects.js          # Project management
+    ai.js                # AI integration endpoints
+    design.js            # Design studio endpoints
   settings.json          # Working directory configuration
   services.json          # Service registry
 
 frontend/
   src/
-    App.jsx              # Root component
+    App.jsx              # Root component and layout
     components/
-      Board.jsx          # Kanban board with drag-and-drop
+      Board.jsx          # Kanban board with drag-and-drop columns
+      ListView.jsx       # Table/list view of tasks
+      TreeView.jsx       # Hierarchical tree view
       TaskCard.jsx       # Individual task card
-      ServiceManager.jsx # Service start/stop controls
+      TaskModal.jsx      # Task detail/edit modal
+      CreateTaskModal.jsx# New task creation form
+      Sidebar.jsx        # Project navigation sidebar
+      ServiceManager.jsx # Service start/stop/restart controls
       Terminal.jsx       # Embedded terminal (xterm.js)
-      Preview.jsx        # Iframe service preview
+      PreviewPanel.jsx   # Iframe service preview
+      ChatPanel.jsx      # Real-time chat interface
+      BulkActionBar.jsx  # Bulk operation controls
+      UndoToast.jsx      # Undo/redo notification
+    contexts/
+      AuthContext.jsx    # Authentication state
+      TaskContext.jsx    # Task state and operations
+    hooks/
+      useChat.js         # Chat WebSocket hook
+      useTasks.js        # Task data fetching and mutations
+    config.js            # API base URL configuration
 ```
 
-## API
+---
 
-All task operations go through the REST API:
+## API Documentation
+
+Full interactive API documentation is available via Swagger UI at:
+
+```
+http://localhost:3001/api-docs
+```
+
+### Key Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/tasks` | List all tasks, optionally filtered by project |
-| GET | `/api/tasks/:id` | Get a single task |
-| POST | `/api/tasks` | Create a new task |
-| PUT | `/api/tasks/:id` | Update a task (status, assignee, content, etc.) |
-| DELETE | `/api/tasks/:id` | Delete a task |
-| POST | `/api/services/:id/start` | Start a registered service |
-| POST | `/api/services/:id/stop` | Stop a running service |
-| POST | `/api/services/:id/restart` | Restart a service |
+| `GET` | `/api/tasks` | List all tasks (filterable by project) |
+| `GET` | `/api/tasks/:id` | Get a single task with full metadata |
+| `POST` | `/api/tasks` | Create a new task |
+| `PUT` | `/api/tasks/:id` | Update task fields (status, assignee, content, etc.) |
+| `DELETE` | `/api/tasks/:id` | Delete a task |
+| `GET` | `/api/services` | List registered services |
+| `POST` | `/api/services/:id/start` | Start a registered service |
+| `POST` | `/api/services/:id/stop` | Stop a running service |
+| `POST` | `/api/services/:id/restart` | Restart a service |
+| `POST` | `/api/auth/login` | Authenticate and receive a JWT |
+| `GET` | `/api/chat/messages` | Retrieve chat history |
 
-Full API documentation is available at `/api-docs` when the backend is running.
+---
+
+## Screenshots
+
+<!-- TODO: Add screenshot of the Kanban board view -->
+
+<!-- TODO: Add screenshot of the task detail modal -->
+
+<!-- TODO: Add screenshot of the service manager panel -->
+
+<!-- TODO: Add screenshot of the embedded terminal -->
+
+<!-- TODO: Add screenshot of the preview panel with a running service -->
+
+<!-- TODO: Add screenshot of the list view -->
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feat/my-feature`)
+3. Commit your changes
+4. Push to the branch and open a pull request
+
+Please follow the task ID naming convention from the project guidelines: `{category}-{descriptor}-{number}` (e.g., `feat-auth-001`, `bug-crash-003`).
+
+---
 
 ## License
 
