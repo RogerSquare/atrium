@@ -3,7 +3,7 @@ import { API_URL, API_BASE, apiFetch } from '../config'
 
 export default function useTasks(user, socketRef) {
   const [tasks, setTasks] = useState([])
-  const [projects, setProjects] = useState(['Root'])
+  const [projects, setProjects] = useState([{ id: 'root', name: 'Root', folder: 'Root' }])
   const [recentlyUpdatedIds, setRecentlyUpdatedIds] = useState([])
   const flashTimersRef = useRef({})
   const [activeProject, setActiveProject] = useState(localStorage.getItem('opusBoardActiveProject') || 'All')
@@ -37,8 +37,9 @@ export default function useTasks(user, socketRef) {
 
         // Validate active project — if saved project no longer exists, pick first available
         setActiveProject(prev => {
-          if (prev === 'All' || !projectsData.includes(prev)) {
-            return projectsData.length > 0 ? projectsData[0] : 'Root'
+          const folders = projectsData.map(p => p.folder || p)
+          if (prev === 'All' || !folders.includes(prev)) {
+            return folders.length > 0 ? folders[0] : 'Root'
           }
           return prev
         })
@@ -268,8 +269,8 @@ export default function useTasks(user, socketRef) {
       const res = await apiFetch(`${API_URL}/projects/${activeProject}`, { method: 'DELETE' })
       if (res.ok) {
         // Go to first remaining project after delete
-        const remaining = projects.filter(p => p !== activeProject)
-        setActiveProject(remaining.length > 0 ? remaining[0] : 'Root')
+        const remaining = projects.filter(p => (p.folder || p) !== activeProject)
+        setActiveProject(remaining.length > 0 ? (remaining[0].folder || remaining[0]) : 'Root')
         fetchData()
       } else {
         const errorData = await res.json()

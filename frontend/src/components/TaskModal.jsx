@@ -308,7 +308,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
             <div className="flex items-center gap-1.5 overflow-hidden" style={{ padding: '3px 10px', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)' }}>
               <Folder className="w-3.5 h-3.5 shrink-0" />
               <select value={task.project || 'Root'} onChange={handleProjectChange} disabled={showHistory} className="pill-input bg-transparent cursor-pointer outline-none border-none" style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)', padding: 0 }}>
-                {projects.map(p => <option key={p} value={p}>{p === 'Root' ? 'Unassigned' : p}</option>)}
+                {projects.map(p => { const f = p.folder || p; const n = p.name || p; const pid = p.id || null; return <option key={f} value={f}>{f === 'Root' ? 'Unassigned' : n}{pid && pid !== 'root' ? ` (${pid})` : ''}</option> })}
               </select>
             </div>
             <div className="flex items-center gap-1.5 overflow-hidden" style={{ padding: '3px 10px', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)' }}>

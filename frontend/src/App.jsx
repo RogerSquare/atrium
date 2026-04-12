@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from 'react'
-import { LogOut, Search, MessageCircle, X, Eye, Plus, Columns3, List, GitBranch, Menu } from 'lucide-react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
+import { LogOut, Search, MessageCircle, X, Eye, Plus, Columns3, List, GitBranch, Menu, Copy, Check } from 'lucide-react'
 import Board from './components/Board'
 import ListView from './components/ListView'
 import TreeView from './components/TreeView'
@@ -49,6 +49,21 @@ function AppContent() {
     errorToast, setErrorToast,
     recentlyUpdatedIds,
   } = ctx
+
+  // Active project ID lookup
+  const activeProjectInfo = useMemo(() => {
+    if (!activeProject || activeProject === 'All') return null
+    const proj = projects.find(p => (p.folder || p) === activeProject)
+    return proj && proj.id && proj.id !== 'root' ? proj : null
+  }, [projects, activeProject])
+  const [copiedProjectId, setCopiedProjectId] = useState(false)
+  const handleCopyProjectId = useCallback(() => {
+    if (!activeProjectInfo?.id) return
+    navigator.clipboard.writeText(activeProjectInfo.id).then(() => {
+      setCopiedProjectId(true)
+      setTimeout(() => setCopiedProjectId(false), 1500)
+    })
+  }, [activeProjectInfo])
 
   // --- UI state (local to layout) ---
   const [showSettings, setShowSettings] = useState(false)
@@ -186,6 +201,30 @@ function AppContent() {
           <button onClick={() => setShowMobileDrawer(true)} className="sm:hidden apple-press shrink-0" style={{ padding: '6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }}>
             <Menu className="w-5 h-5" />
           </button>
+
+          {/* Project ID badge */}
+          {activeProjectInfo && (
+            <button
+              onClick={handleCopyProjectId}
+              className="hidden sm:flex items-center gap-1.5 apple-press shrink-0"
+              style={{
+                padding: '5px 10px',
+                borderRadius: 'var(--radius-md)',
+                background: copiedProjectId ? 'color-mix(in srgb, var(--apple-green) 12%, transparent)' : 'var(--fill-secondary)',
+                border: `1px solid ${copiedProjectId ? 'color-mix(in srgb, var(--apple-green) 25%, transparent)' : 'var(--separator)'}`,
+                fontSize: '12px',
+                fontWeight: 600,
+                fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                color: copiedProjectId ? 'var(--apple-green)' : 'var(--text-tertiary)',
+                letterSpacing: '0.02em',
+                transition: 'all 0.15s ease',
+              }}
+              title={copiedProjectId ? 'Copied!' : `Copy project ID: ${activeProjectInfo.id}`}
+            >
+              {copiedProjectId ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              {activeProjectInfo.id}
+            </button>
+          )}
 
           {/* Search — desktop */}
           <div className="relative group hidden sm:block flex-1" style={{ maxWidth: '480px' }}>

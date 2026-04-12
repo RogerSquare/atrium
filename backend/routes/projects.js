@@ -5,6 +5,7 @@ const { TASKS_DIR } = require('../lib/constants');
 const { getIO } = require('../lib/io');
 const { sanitizeFilename, safePath } = require('../lib/sanitize');
 const { logger } = require('../lib/logger');
+const registry = require('../lib/projectRegistry');
 
 const router = express.Router();
 
@@ -12,18 +13,24 @@ const router = express.Router();
  * @swagger
  * /api/projects:
  *   get:
- *     summary: Get all projects
+ *     summary: Get all projects with IDs
  *     tags: [Projects]
  *     responses:
  *       200:
- *         description: Array of project names
+ *         description: Array of project objects
  *         content:
  *           application/json:
  *             schema:
  *               type: array
  *               items:
- *                 type: string
- *               example: ["Root", "Agent-Task-Board"]
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                   name:
+ *                     type: string
+ *                   folder:
+ *                     type: string
  */
 router.get('/', (req, res) => {
   try {
@@ -31,7 +38,25 @@ router.get('/', (req, res) => {
       .filter(dirent => dirent.isDirectory() && !dirent.name.startsWith('.'))
       .map(dirent => dirent.name);
 
-    const projects = ['Root', ...getDirs(TASKS_DIR)];
+    const folders = getDirs(TASKS_DIR);
+
+    // Sync registry with disk
+    registry.syncWithDisk(folders);
+
+    const all = registry.getAll();
+    const projects = Object.entries(all).map(([id, proj]) => ({
+      id,
+      name: proj.name,
+      folder: proj.folder
+    }));
+
+    // Sort: Root first, then alphabetical
+    projects.sort((a, b) => {
+      if (a.id === 'root') return -1;
+      if (b.id === 'root') return 1;
+      return a.name.localeCompare(b.name);
+    });
+
     res.json(projects);
   } catch (error) {
     logger.error({ err: error }, 'Request failed');
@@ -56,25 +81,50 @@ router.get('/', (req, res) => {
  *               name:
  *                 type: string
  *                 example: My-New-Project
+ *               id:
+ *                 type: string
+ *                 description: Optional custom short ID (2-12 chars, lowercase alphanumeric + hyphens)
+ *                 example: mnp
  *     responses:
  *       201:
  *         description: Project created
  */
 router.post('/', (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, id: customId } = req.body;
     if (!name || name === 'Root') {
       return res.status(400).json({ error: 'Invalid project name' });
     }
 
-    const sanitizedName = name.replace(/[^a-zA-Z0-9-_]/g, '-');
-    const targetDir = path.join(TASKS_DIR, sanitizedName);
+    // Validate custom ID format if provided
+    if (customId) {
+      if (!/^[a-z0-9][a-z0-9-]{0,11}$/.test(customId)) {
+        return res.status(400).json({ error: 'Project ID must be 1-12 lowercase alphanumeric characters or hyphens, starting with a letter or number' });
+      }
+      if (registry.getById(customId)) {
+        return res.status(409).json({ error: `Project ID "${customId}" is already taken` });
+      }
+    }
+
+    const sanitizedName = name.replace(/[^a-zA-Z0-9-_ ]/g, '-');
+    const folderName = sanitizedName.replace(/\s+/g, '-');
+    const targetDir = path.join(TASKS_DIR, folderName);
 
     if (!fs.existsSync(targetDir)) {
       fs.mkdirSync(targetDir, { recursive: true });
     }
 
-    res.status(201).json({ success: true, project: sanitizedName });
+    const project = registry.register(folderName, customId);
+    if (!project) {
+      return res.status(409).json({ error: 'Project ID already taken' });
+    }
+
+    // Store the display name if different from folder name (persists to projects.json)
+    if (sanitizedName !== folderName) {
+      registry.setName(project.id, sanitizedName);
+    }
+
+    res.status(201).json({ success: true, project: project.id, name: folderName, id: project.id });
     const io = getIO();
     if (io) io.emit('project_changed');
   } catch (error) {
@@ -85,13 +135,13 @@ router.post('/', (req, res) => {
 
 /**
  * @swagger
- * /api/projects/{name}:
+ * /api/projects/{idOrName}:
  *   delete:
  *     summary: Delete a project and all its tasks
  *     tags: [Projects]
  *     parameters:
  *       - in: path
- *         name: name
+ *         name: idOrName
  *         required: true
  *         schema:
  *           type: string
@@ -99,14 +149,18 @@ router.post('/', (req, res) => {
  *       200:
  *         description: Project deleted
  */
-router.delete('/:name', (req, res) => {
+router.delete('/:idOrName', (req, res) => {
   try {
-    const { name } = req.params;
-    if (!name || name === 'Root') {
+    const { idOrName } = req.params;
+    if (!idOrName || idOrName === 'Root' || idOrName === 'root') {
       return res.status(400).json({ error: 'Cannot delete Root project' });
     }
 
-    const safeName = sanitizeFilename(name);
+    // Resolve by ID or name
+    const project = registry.resolve(idOrName);
+    const folder = project ? project.folder : idOrName;
+
+    const safeName = sanitizeFilename(folder);
     const targetDir = safeName ? safePath(TASKS_DIR, safeName) : null;
 
     if (!targetDir) {
@@ -115,6 +169,11 @@ router.delete('/:name', (req, res) => {
 
     if (fs.existsSync(targetDir)) {
       fs.rmSync(targetDir, { recursive: true, force: true });
+    }
+
+    // Remove from registry
+    if (project && project.id !== 'root') {
+      registry.remove(project.id);
     }
 
     res.json({ success: true });
@@ -128,31 +187,91 @@ router.delete('/:name', (req, res) => {
 
 /**
  * @swagger
- * /api/projects/{name}/description:
+ * /api/projects/{idOrName}/id:
+ *   put:
+ *     summary: Update a project's short ID
+ *     tags: [Projects]
+ *     parameters:
+ *       - in: path
+ *         name: idOrName
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [newId]
+ *             properties:
+ *               newId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Project ID updated
+ */
+router.put('/:idOrName/id', (req, res) => {
+  try {
+    const { idOrName } = req.params;
+    const { newId } = req.body;
+
+    if (!newId) {
+      return res.status(400).json({ error: 'newId is required' });
+    }
+
+    if (!/^[a-z0-9][a-z0-9-]{0,11}$/.test(newId)) {
+      return res.status(400).json({ error: 'Project ID must be 1-12 lowercase alphanumeric characters or hyphens' });
+    }
+
+    const project = registry.resolve(idOrName);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    if (project.id === 'root') {
+      return res.status(400).json({ error: 'Cannot change Root project ID' });
+    }
+
+    const success = registry.updateId(project.id, newId);
+    if (!success) {
+      return res.status(409).json({ error: `Project ID "${newId}" is already taken` });
+    }
+
+    res.json({ success: true, oldId: project.id, newId });
+    const io = getIO();
+    if (io) io.emit('project_changed');
+  } catch (error) {
+    logger.error({ err: error }, 'Request failed');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/projects/{idOrName}/description:
  *   get:
  *     summary: Get project description (README.md)
  *     tags: [Projects]
  *     parameters:
  *       - in: path
- *         name: name
+ *         name: idOrName
  *         required: true
  *         schema:
  *           type: string
  *     responses:
  *       200:
  *         description: Project description content
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 content:
- *                   type: string
  */
-router.get('/:name/description', (req, res) => {
+router.get('/:idOrName/description', (req, res) => {
   try {
-    const { name } = req.params;
-    const projectDir = name === 'Root' ? TASKS_DIR : safePath(TASKS_DIR, sanitizeFilename(name));
+    const { idOrName } = req.params;
+
+    // Resolve by ID or name
+    const project = registry.resolve(idOrName);
+    const folder = project ? project.folder : idOrName;
+
+    const projectDir = folder === 'Root' ? TASKS_DIR : safePath(TASKS_DIR, sanitizeFilename(folder));
     if (!projectDir) return res.status(400).json({ error: 'Invalid project name' });
     const readmePath = path.join(projectDir, 'README.md');
 
@@ -170,13 +289,13 @@ router.get('/:name/description', (req, res) => {
 
 /**
  * @swagger
- * /api/projects/{name}/description:
+ * /api/projects/{idOrName}/description:
  *   put:
  *     summary: Update project description (README.md)
  *     tags: [Projects]
  *     parameters:
  *       - in: path
- *         name: name
+ *         name: idOrName
  *         required: true
  *         schema:
  *           type: string
@@ -194,11 +313,15 @@ router.get('/:name/description', (req, res) => {
  *       200:
  *         description: Description updated
  */
-router.put('/:name/description', (req, res) => {
+router.put('/:idOrName/description', (req, res) => {
   try {
-    const { name } = req.params;
+    const { idOrName } = req.params;
     const { content } = req.body;
-    const projectDir = name === 'Root' ? TASKS_DIR : safePath(TASKS_DIR, sanitizeFilename(name));
+
+    const project = registry.resolve(idOrName);
+    const folder = project ? project.folder : idOrName;
+
+    const projectDir = folder === 'Root' ? TASKS_DIR : safePath(TASKS_DIR, sanitizeFilename(folder));
     if (!projectDir) return res.status(400).json({ error: 'Invalid project name' });
     const readmePath = path.join(projectDir, 'README.md');
 

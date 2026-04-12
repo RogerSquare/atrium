@@ -75,7 +75,7 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
               <div>
                 <label style={{ display: 'block', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>Project</label>
                 <select value={project} onChange={(e) => setProject(e.target.value)} style={{ ...selectStyle, background: 'var(--bg-card)' }}>
-                  {projects.map(p => <option key={p} value={p}>{p === 'Root' ? 'Unassigned' : p}</option>)}
+                  {projects.map(p => { const f = p.folder || p; const n = p.name || p; const pid = p.id || null; return <option key={f} value={f}>{f === 'Root' ? 'Unassigned' : n}{pid && pid !== 'root' ? ` (${pid})` : ''}</option> })}
                 </select>
               </div>
               <div>

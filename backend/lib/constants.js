@@ -13,6 +13,7 @@ const CHAT_DIR = path.join(__dirname, '..', 'chat');
 const CHAT_FILE = path.join(CHAT_DIR, 'chat-messages.json');
 const MAX_CHAT_MESSAGES = 500;
 const INSTRUCTIONS_FILE = path.join(__dirname, '..', '..', 'instructions.md');
+const PROJECTS_FILE = path.join(__dirname, '..', 'projects.json');
 
 // JWT secret resolution: env var > persisted file > generate (dev) > fail (prod)
 const JWT_SECRET_FILE = path.join(__dirname, '..', '.jwt-secret');
@@ -53,5 +54,5 @@ const JWT_SECRET = resolveJwtSecret();
 module.exports = {
   PORT, TASKS_DIR, HISTORY_DIR, USERS_DIR, SETTINGS_FILE,
   SERVICES_FILE, CHAT_DIR, CHAT_FILE, MAX_CHAT_MESSAGES,
-  INSTRUCTIONS_FILE, JWT_SECRET, TRASH_DIR
+  INSTRUCTIONS_FILE, JWT_SECRET, TRASH_DIR, PROJECTS_FILE
 };

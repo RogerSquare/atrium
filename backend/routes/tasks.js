@@ -103,11 +103,19 @@ router.get('/search', (req, res) => {
     const q = (req.query.q || '').toLowerCase().trim();
     if (!q) return res.status(400).json({ error: 'q parameter required' });
 
-    const project = req.query.project;
+    const projectQuery = req.query.project || req.query.project_id;
     const tasks = getAllTasks(TASKS_DIR);
 
+    // Resolve project_id to folder name if needed
+    let projectFilter = projectQuery;
+    if (req.query.project_id) {
+      const projectRegistry = require('../lib/projectRegistry');
+      const proj = projectRegistry.resolve(req.query.project_id);
+      if (proj) projectFilter = proj.folder;
+    }
+
     const results = tasks.filter(t => {
-      if (project && t.project !== project) return false;
+      if (projectFilter && t.project !== projectFilter) return false;
       const searchable = [
         t.id, t.title, t.content, t.component,
         ...(t.tags || []),
@@ -167,9 +175,17 @@ router.get('/', (req, res) => {
     let tasks = getAllTasks(TASKS_DIR);
     let safeTasks = tasks.map(({ filePath, ...rest }) => rest);
 
-    // Filter by project if specified
-    if (req.query.project) {
-      safeTasks = safeTasks.filter(t => t.project === req.query.project);
+    // Filter by project if specified (supports both project name and project_id)
+    if (req.query.project || req.query.project_id) {
+      let projectFilter = req.query.project;
+      if (req.query.project_id) {
+        const projectRegistry = require('../lib/projectRegistry');
+        const proj = projectRegistry.resolve(req.query.project_id);
+        if (proj) projectFilter = proj.folder;
+      }
+      if (projectFilter) {
+        safeTasks = safeTasks.filter(t => t.project === projectFilter);
+      }
     }
 
     // Sort support: ?sort=created_at&order=desc
