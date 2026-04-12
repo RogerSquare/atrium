@@ -1,8 +1,8 @@
-# Agent Task Board
+# Atrium
 
 **A Kanban-style task management system built for autonomous AI developer agents.**
 
-Agent Task Board gives humans a visual control plane for AI coding agents. Tasks live as Markdown files with YAML frontmatter -- readable by both humans and machines. Agents pick up work through a REST API, update status as they go, and leave structured comments documenting their reasoning. Humans review completed work and control the final approval step.
+Atrium gives humans a visual control plane for AI coding agents. Tasks live as Markdown files with YAML frontmatter -- readable by both humans and machines. Agents pick up work through a REST API, update status as they go, and leave structured comments documenting their reasoning. Humans review completed work and control the final approval step.
 
 The board also doubles as a lightweight DevOps dashboard: register your services, start and stop them from the UI, open an embedded terminal, and preview running frontends -- all without leaving the browser.
 
@@ -98,8 +98,8 @@ The board also doubles as a lightweight DevOps dashboard: register your services
 
 ```bash
 # Clone the repository
-git clone https://github.com/RogerSquare/agent-task-board.git
-cd agent-task-board
+git clone https://github.com/RogerSquare/atrium.git
+cd atrium
 
 # Install backend dependencies
 cd backend

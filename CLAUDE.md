@@ -161,6 +161,22 @@ files_affected: [src/components/Login.jsx, src/api/auth.js]
 
 **Note:** Always specify the `project` field. If omitted, the task will be assigned to the "Root" project by default.
 
+## Project Folder Semantics (STRICT):
+The UI displays the `Root` folder as **"Unassigned"** in the Projects sidebar (see `frontend/src/components/Sidebar.jsx` — `folder === 'Root' ? 'Unassigned' : projName`). This is intentional: tasks without a specific project home belong there.
+
+- **"Unassigned" project in UI** = `project: "Root"` in the task YAML, stored at `backend/tasks/*.md` (top-level, not in a subfolder)
+- **Named project in UI** = `project: "<ProjectName>"` in the task YAML, stored at `backend/tasks/<ProjectName>/*.md`
+
+When a user asks to "create an unassigned task" or "put this in the unassigned folder", they mean `project: "Root"`, NOT a named project with the task's `assignee` field left empty. The `assignee` field and the `project` field are independent concepts:
+- **Unassigned** (no owner): `assignee` is empty or null
+- **Unassigned project** (no project bucket): `project: "Root"`
+
+**To move an existing task to the Unassigned/Root project**, use the API:
+```
+PUT /api/tasks/<task-id>  with body { "project": "Root" }
+```
+The backend will physically move the file from the subfolder to the top-level `backend/tasks/` directory.
+
 ### Description
 Implement the login form and token storage.
 - [x] Create UI Form

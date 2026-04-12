@@ -1,0 +1,26 @@
+{
+  "atb": {
+    "name": "Atrium",
+    "folder": "Atrium"
+  },
+  "artifex": {
+    "name": "Artifex",
+    "folder": "Artifex"
+  },
+  "gcm": {
+    "name": "GitHub Collab Manager",
+    "folder": "GitHub Collab Manager"
+  },
+  "portfolio": {
+    "name": "Portfolio",
+    "folder": "Portfolio"
+  },
+  "sdh-gtm": {
+    "name": "SDH-GameThemeMusic",
+    "folder": "SDH-GameThemeMusic"
+  },
+  "tui": {
+    "name": "Kaleidoscope",
+    "folder": "Kaleidoscope"
+  }
+}
