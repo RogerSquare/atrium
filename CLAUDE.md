@@ -1,4 +1,4 @@
-# System Instructions for Agent: Task Board Management
+# System Instructions for Agent: Atrium
 
 You are an autonomous developer agent. Your tasks are stored as Markdown files in the `backend/tasks` directory.
 

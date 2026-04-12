@@ -169,7 +169,7 @@ app.get('/api/health/ready', (req, res) => {
 // --- API Documentation ---
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'Opus-Board API Docs',
+  customSiteTitle: 'Atrium API Docs',
 }));
 app.get('/api/docs.json', (req, res) => res.json(swaggerSpec));
 

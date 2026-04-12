@@ -132,7 +132,7 @@ router.get('/status', (req, res) => {
 
     res.json({
       version: pkg.version || '1.0.0',
-      name: pkg.name || 'agent-task-board',
+      name: pkg.name || 'atrium',
       node_version: process.version,
       uptime: `${hours}h ${minutes}m`,
       uptime_ms: uptimeMs,

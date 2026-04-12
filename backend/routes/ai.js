@@ -33,7 +33,7 @@ const buildPrompt = (userMessage, username, role, taskContext, history) => {
   } catch (e) { workDir = process.cwd(); }
 
   const lines = [];
-  lines.push(`You are an AI assistant inside the Opus-Board task management system. You help users plan, create, and manage tasks.`);
+  lines.push(`You are an AI assistant inside the Atrium task management system. You help users plan, create, and manage tasks.`);
   lines.push('');
   lines.push(`## Current User: ${username} (${role})`);
   lines.push('');
@@ -113,7 +113,7 @@ const activeSessions = new Map();
  * /api/ai/chat:
  *   post:
  *     summary: Send a message to the AI assistant
- *     description: Spawns Claude CLI with task board context. Prevents concurrent sessions. 2-minute timeout.
+ *     description: Spawns Claude CLI with Atrium context. Prevents concurrent sessions. 2-minute timeout.
  *     tags: [AI]
  *     requestBody:
  *       required: true

@@ -834,7 +834,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                 {activeTab === 'about' && (
                   <div className="space-y-6">
                     <div>
-                      <h3 className="text-sm font-bold text-app-text mb-3">Opus-Board</h3>
+                      <h3 className="text-sm font-bold text-app-text mb-3">Atrium</h3>
                       <p className="text-[11px] text-app-text-muted leading-relaxed">AI and Human Collaborative Kanban — a task board designed for teams working alongside AI agents.</p>
                     </div>
                     {statusInfo && (

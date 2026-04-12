@@ -4,7 +4,7 @@ const options = {
   definition: {
     openapi: '3.0.3',
     info: {
-      title: 'Opus-Board API',
+      title: 'Atrium API',
       version: '1.0.0',
       description: 'AI and Human Collaborative Kanban Board — REST API reference.\n\nAll endpoints accept and return JSON. No authentication middleware is enforced yet (trust-client model).',
     },
@@ -53,7 +53,7 @@ const options = {
               },
             },
             content: { type: 'string', example: '### Description\nImplement the login form.' },
-            project: { type: 'string', example: 'Agent-Task-Board' },
+            project: { type: 'string', example: 'Atrium' },
           },
         },
         HistoryEntry: {
@@ -77,11 +77,11 @@ const options = {
         Service: {
           type: 'object',
           properties: {
-            id: { type: 'string', example: 'task-board-be' },
-            name: { type: 'string', example: 'Task Board Backend' },
-            group: { type: 'string', example: 'Agent-Task-Board' },
+            id: { type: 'string', example: 'atrium-be' },
+            name: { type: 'string', example: 'Atrium Backend' },
+            group: { type: 'string', example: 'Atrium' },
             port: { type: 'integer', example: 3001 },
-            cwd: { type: 'string', example: 'C:\\Projects\\agent-task-board\\backend' },
+            cwd: { type: 'string', example: 'C:\\Projects\\atrium\\backend' },
             startCmd: { type: 'string', example: 'npm run dev' },
             depends_on: { type: 'array', items: { type: 'string' } },
             status: { type: 'string', enum: ['running', 'stopped'], example: 'running' },

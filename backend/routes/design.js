@@ -213,7 +213,7 @@ function scanComponentFiles(projectDir) {
 
 const buildDesignPrompt = (message, username, cssVariables, themes, imageDescriptions, history, componentFiles) => {
   const lines = [];
-  lines.push('You are a creative AI design partner inside the Opus-Board task management system.');
+  lines.push('You are a creative AI design partner inside the Atrium task management system.');
   lines.push('You help users redesign the look, feel, AND layout of their projects.');
   lines.push('You can modify CSS custom properties for theming AND propose changes to component files (JSX/CSS) for layout/UX restructuring.');
   lines.push('');

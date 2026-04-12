@@ -119,7 +119,7 @@ function Sidebar({
       <div className="flex items-center justify-between shrink-0" style={{ padding: '14px 14px 10px' }}>
         <div className="flex items-center gap-2.5">
           <img src="/favicon.svg" alt="Logo" style={{ width: '26px', height: '26px' }} />
-          <span style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)', letterSpacing: 'var(--tracking-tight)' }}>Opus-Board</span>
+          <span style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)', letterSpacing: 'var(--tracking-tight)' }}>Atrium</span>
         </div>
         <button onClick={onToggleCollapse} className="apple-press" style={{ padding: '6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)' }} title="Collapse sidebar">
           <PanelLeftClose className="w-4 h-4" />
@@ -133,12 +133,14 @@ function Sidebar({
       <SidebarSection title="Projects" collapsed={sectionsCollapsed.projects} onToggle={() => toggleSection('projects')}>
         <div className="flex flex-col gap-0.5">
           {projects.map(proj => {
-            const isActive = activeProject === proj
-            const count = tasks.filter(t => t.project === proj).length
+            const folder = proj.folder || proj
+            const projName = proj.name || proj
+            const isActive = activeProject === folder
+            const count = tasks.filter(t => t.project === folder).length
             return (
               <button
-                key={proj}
-                onClick={() => onSetActiveProject(proj)}
+                key={folder}
+                onClick={() => onSetActiveProject(folder)}
                 className="w-full flex items-center gap-2.5 text-left apple-press group"
                 style={{
                   padding: '7px 10px', borderRadius: 'var(--radius-sm)',
@@ -148,10 +150,10 @@ function Sidebar({
                 }}
               >
                 <Folder className="w-4 h-4 shrink-0" style={{ color: isActive ? 'var(--accent-app)' : 'var(--text-tertiary)' }} />
-                <span className="truncate">{proj === 'Root' ? 'Unassigned' : proj}</span>
+                <span className="truncate">{folder === 'Root' ? 'Unassigned' : projName}</span>
                 <span style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: isActive ? 'var(--accent-app)' : 'var(--text-tertiary)', background: isActive ? 'color-mix(in srgb, var(--accent-app) 12%, transparent)' : 'var(--fill-secondary)', padding: '1px 6px', borderRadius: 'var(--radius-full)', minWidth: '18px', textAlign: 'center', flexShrink: 0 }}>{count}</span>
                 <div className="flex-1" />
-                {proj !== 'Root' && isActive && (
+                {folder !== 'Root' && isActive && (
                   <button onClick={(e) => { e.stopPropagation(); onDeleteProject() }} className="apple-press opacity-0 group-hover:opacity-100 shrink-0" style={{ padding: '2px', borderRadius: 'var(--radius-xs)', color: 'var(--apple-red)', transition: `opacity var(--duration-fast)` }} title="Delete">
                     <Trash2 className="w-3 h-3" />
                   </button>

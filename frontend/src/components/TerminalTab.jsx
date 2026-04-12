@@ -110,7 +110,7 @@ export default function TerminalTab({ task }) {
       xtermRef.current.writeln('\x1b[32mConnected!\x1b[0m');
       
       const safeTitle = task.title.replace(/"/g, '\\"');
-      const promptText = `opencode "Please review task ${task.id}: ${safeTitle}. Check the agent task board markdown file for details."`;
+      const promptText = `opencode "Please review task ${task.id}: ${safeTitle}. Check the Atrium task markdown file for details."`;
       
       newSocket.emit('start_terminal', {
         cwd: workingDirectory,
