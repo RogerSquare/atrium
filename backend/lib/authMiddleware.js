@@ -1,9 +1,21 @@
 const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const path = require('path');
-const { JWT_SECRET, USERS_DIR } = require('./constants');
+const { JWT_SECRET, USERS_DIR, AGENT_TOKENS_BLOCKLIST } = require('./constants');
 const { sanitizeFilename, safePath } = require('./sanitize');
 const { logger } = require('./logger');
+
+// Load revoked agent-token JTIs. Cheap JSON read on every auth check — blocklist
+// is tiny in practice (revocations are rare). Falls back to empty list on error.
+const loadBlocklist = () => {
+  try {
+    if (!fs.existsSync(AGENT_TOKENS_BLOCKLIST)) return new Set();
+    const arr = JSON.parse(fs.readFileSync(AGENT_TOKENS_BLOCKLIST, 'utf-8'));
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch (e) {
+    return new Set();
+  }
+};
 
 /**
  * requireAuth — rejects request with 401 if no valid JWT is present.
@@ -18,6 +30,27 @@ const requireAuth = (req, res, next) => {
   const token = authHeader.slice(7);
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+
+    // Agent-token branch: distinct flow from user tokens. Long-lived, revocable via blocklist.
+    if (decoded.agent === true) {
+      if (!decoded.jti || !decoded.name) {
+        return res.status(401).json({ error: 'Malformed agent token' });
+      }
+      const blocklist = loadBlocklist();
+      if (blocklist.has(decoded.jti)) {
+        return res.status(401).json({ error: 'Agent token revoked' });
+      }
+      req.user = {
+        username: `agent:${decoded.name}`,
+        role: 'agent',
+        can_run_agents: true,
+        can_use_ai_chat: true,
+        agent: true,
+        agent_jti: decoded.jti,
+      };
+      return next();
+    }
+
     const { username } = decoded;
 
     // Load user data to attach role/permissions

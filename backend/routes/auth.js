@@ -1,12 +1,21 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { USERS_DIR, JWT_SECRET } = require('../lib/constants');
+const { USERS_DIR, JWT_SECRET, AGENT_TOKENS_DIR, AGENT_TOKENS_BLOCKLIST } = require('../lib/constants');
 const { sanitizeFilename, safePath } = require('../lib/sanitize');
 const { logger } = require('../lib/logger');
 const { requireAuth, requireAdmin } = require('../lib/authMiddleware');
+
+// Ensure agent-tokens dir + blocklist exist at module load
+if (!fs.existsSync(AGENT_TOKENS_DIR)) {
+  try { fs.mkdirSync(AGENT_TOKENS_DIR, { recursive: true }); } catch (e) { /* ignore */ }
+}
+if (!fs.existsSync(AGENT_TOKENS_BLOCKLIST)) {
+  try { fs.writeFileSync(AGENT_TOKENS_BLOCKLIST, '[]'); } catch (e) { /* ignore */ }
+}
 
 const router = express.Router();
 
@@ -362,6 +371,102 @@ router.delete('/users/:username', requireAuth, requireAdmin, (req, res) => {
     logger.error({ err: error }, 'Request failed');
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// --- Agent Tokens ---
+// Long-lived, non-expiring JWTs distinguished from user tokens by { agent: true, jti, name }.
+// Revocation is by JTI in backend/agent-tokens/.blocklist.json.
+
+const readBlocklist = () => {
+  try {
+    const arr = JSON.parse(fs.readFileSync(AGENT_TOKENS_BLOCKLIST, 'utf-8'));
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) { return []; }
+};
+const writeBlocklist = (list) => {
+  fs.writeFileSync(AGENT_TOKENS_BLOCKLIST, JSON.stringify(list, null, 2));
+};
+
+const readAgentTokensMeta = () => {
+  try {
+    const files = fs.readdirSync(AGENT_TOKENS_DIR)
+      .filter(f => f.endsWith('.json') && !f.startsWith('.'));
+    return files.map(f => {
+      try { return JSON.parse(fs.readFileSync(path.join(AGENT_TOKENS_DIR, f), 'utf-8')); } catch (e) { return null; }
+    }).filter(Boolean);
+  } catch (e) { return []; }
+};
+
+// POST /api/auth/agent-token — mint an agent token (admin-only). Token is returned ONCE.
+router.post('/agent-token', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const rawName = (req.body?.name || '').trim();
+    if (!rawName) return res.status(400).json({ error: 'name is required' });
+    const name = sanitizeFilename(rawName);
+    if (!name || name !== rawName) return res.status(400).json({ error: 'name contains invalid characters' });
+
+    const jti = crypto.randomUUID();
+    const issued_at = new Date().toISOString();
+    const issued_by = req.user.username;
+
+    // Mint the JWT. No expiry — revocable via blocklist.
+    const token = jwt.sign({ agent: true, jti, name, issued_by }, JWT_SECRET);
+
+    // Store metadata (not the token itself — the token is returned once and never persisted).
+    const metaPath = safePath(AGENT_TOKENS_DIR, `${jti}.json`);
+    if (!metaPath) return res.status(500).json({ error: 'Failed to derive token metadata path' });
+    const meta = { jti, name, issued_at, issued_by };
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+
+    res.status(201).json({ token, jti, name, issued_at, issued_by });
+  } catch (err) {
+    logger.error({ err }, 'agent-token mint failed');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/auth/agent-tokens — list metadata for issued tokens (admin-only). Token values are NOT returned.
+router.get('/agent-tokens', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const meta = readAgentTokensMeta();
+    const blocklist = new Set(readBlocklist());
+    const out = meta
+      .map(m => ({ ...m, revoked: blocklist.has(m.jti) }))
+      .sort((a, b) => (b.issued_at || '').localeCompare(a.issued_at || ''));
+    res.json({ tokens: out });
+  } catch (err) {
+    logger.error({ err }, 'agent-tokens list failed');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/auth/agent-tokens/:jti — revoke an agent token (admin-only).
+router.delete('/agent-tokens/:jti', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const jti = sanitizeFilename(req.params.jti);
+    if (!jti) return res.status(400).json({ error: 'Invalid jti' });
+
+    const list = readBlocklist();
+    if (!list.includes(jti)) {
+      list.push(jti);
+      writeBlocklist(list);
+    }
+    res.json({ ok: true, jti });
+  } catch (err) {
+    logger.error({ err }, 'agent-token revoke failed');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/auth/verify — lightweight validation endpoint for the MCP setup CLI.
+// Returns 200 + basic identity info if the bearer token is valid (user OR agent).
+router.get('/verify', requireAuth, (req, res) => {
+  res.json({
+    ok: true,
+    username: req.user.username,
+    role: req.user.role,
+    agent: !!req.user.agent,
+  });
 });
 
 module.exports = router;

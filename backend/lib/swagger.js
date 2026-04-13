@@ -30,7 +30,7 @@ const options = {
           properties: {
             id: { type: 'string', example: 'feat-auth-001' },
             title: { type: 'string', example: 'Implement JWT Login' },
-            status: { type: 'string', enum: ['todo', 'in_progress', 'review', 'done'], example: 'todo' },
+            status: { type: 'string', enum: ['draft', 'todo', 'in_progress', 'waiting_input', 'review', 'done'], example: 'todo' },
             priority: { type: 'string', enum: ['low', 'medium', 'high'], example: 'medium' },
             assignee: { type: 'string', nullable: true, example: 'Claude' },
             type: { type: 'string', enum: ['frontend', 'backend', 'fullstack', 'devops'], example: 'frontend' },
