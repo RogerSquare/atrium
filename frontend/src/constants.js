@@ -1,8 +1,10 @@
 // Shared UI constants — single source of truth for colors, styles, and options
 
 export const STATUS_OPTIONS = [
+  { id: 'draft', label: 'Draft' },
   { id: 'todo', label: 'To Do' },
   { id: 'in_progress', label: 'In Progress' },
+  { id: 'waiting_input', label: 'Waiting Input' },
   { id: 'review', label: 'Review' },
   { id: 'done', label: 'Done' },
 ]
@@ -20,8 +22,10 @@ export const PRIORITY_COLOR = {
 }
 
 export const STATUS_COLOR = {
+  draft: 'var(--text-muted)',
   todo: 'var(--gray-1)',
   in_progress: 'var(--apple-blue)',
+  waiting_input: 'var(--apple-yellow)',
   review: 'var(--apple-orange)',
   done: 'var(--apple-green)',
 }

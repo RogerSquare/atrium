@@ -32,6 +32,61 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordMessage, setPasswordMessage] = useState('')
 
+  // Agent tokens (admin only)
+  const [agentTokens, setAgentTokens] = useState([])
+  const [newTokenName, setNewTokenName] = useState('')
+  const [newTokenError, setNewTokenError] = useState('')
+  const [generatedToken, setGeneratedToken] = useState(null) // { token, jti, name, issued_at, installCmd }
+  const [tokenCopied, setTokenCopied] = useState(false)
+
+  const fetchAgentTokens = () => {
+    return apiFetch(`${API_URL}/agent-tokens`)
+      .then(r => r.ok ? r.json() : { tokens: [] })
+      .then(d => setAgentTokens(d.tokens || []))
+      .catch(() => {})
+  }
+
+  const handleGenerateAgentToken = async () => {
+    setNewTokenError('')
+    const name = newTokenName.trim()
+    if (!name) { setNewTokenError('Name required'); return }
+    try {
+      const r = await apiFetch(`${API_URL}/agent-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (!r.ok) {
+        let msg = `HTTP ${r.status}`
+        try { const d = await r.json(); if (d?.error) msg = d.error } catch (_) { /* non-JSON body */ }
+        setNewTokenError(r.status === 404 ? 'Endpoint not found — restart atrium-backend to load the new routes.' : msg)
+        return
+      }
+      const d = await r.json()
+      const installCmd = `atrium-mcp-setup --token ${d.token} --url ${window.location.origin.replace(/:\d+$/, ':3001')}`
+      setGeneratedToken({ ...d, installCmd })
+      setNewTokenName('')
+      fetchAgentTokens()
+    } catch (e) {
+      setNewTokenError('Network error — is atrium-backend running?')
+    }
+  }
+
+  const handleRevokeAgentToken = async (jti) => {
+    if (!confirm('Revoke this token? The agent using it will fail on next call.')) return
+    try {
+      await apiFetch(`${API_URL}/agent-tokens/${encodeURIComponent(jti)}`, { method: 'DELETE' })
+      fetchAgentTokens()
+    } catch (e) { /* ignore */ }
+  }
+
+  const copyTokenToClipboard = (text) => {
+    navigator.clipboard?.writeText(text).then(() => {
+      setTokenCopied(true)
+      setTimeout(() => setTokenCopied(false), 1500)
+    }).catch(() => {})
+  }
+
   const isAdmin = currentUser?.role === 'admin'
   const hasUnsavedChanges = workingDirectory !== savedWorkingDirectory ||
     agentsEnabled !== savedAgentsEnabled ||
@@ -83,7 +138,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
   const fetchStatus = () => apiFetch(`${API_URL}/settings/status`).then(r => r.json()).then(d => setStatusInfo(d)).catch(() => {})
 
   useEffect(() => {
-    Promise.all([fetchSettings(), fetchServices(), isAdmin ? fetchUsers() : Promise.resolve(), fetchStatus()])
+    Promise.all([fetchSettings(), fetchServices(), isAdmin ? fetchUsers() : Promise.resolve(), fetchStatus(), isAdmin ? fetchAgentTokens() : Promise.resolve()])
       .finally(() => setLoading(false))
     const interval = setInterval(fetchServices, 10000)
     return () => clearInterval(interval)
@@ -784,6 +839,52 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                         </div>
                       </div>
                     </div>
+
+                    {/* Agent Tokens — for Claude Code MCP integration */}
+                    <div>
+                      <h3 className="text-sm font-bold text-app-text mb-1">Agent Tokens</h3>
+                      <p className="text-[11px] text-app-text-muted mb-3">Long-lived tokens for Claude Code's MCP server. Tokens are shown once; if lost, revoke and generate a new one.</p>
+
+                      <div className="flex gap-2 mb-3">
+                        <input
+                          type="text"
+                          placeholder="Token name (e.g. my-laptop)"
+                          value={newTokenName}
+                          onChange={e => { setNewTokenName(e.target.value); setNewTokenError('') }}
+                          onKeyDown={e => { if (e.key === 'Enter') handleGenerateAgentToken() }}
+                          className="flex-1 bg-app-bg border border-app-border px-3 py-2 rounded-lg text-sm text-app-text outline-none focus:border-app-accent"
+                        />
+                        <button onClick={handleGenerateAgentToken} className="flex items-center gap-1.5 bg-app-accent hover:opacity-90 text-white px-4 py-2 rounded-lg text-xs font-bold transition-opacity">
+                          <Key className="w-3.5 h-3.5" />
+                          Generate
+                        </button>
+                      </div>
+                      {newTokenError && <div className="text-[11px] text-red-400 mb-3">{newTokenError}</div>}
+
+                      {agentTokens.length > 0 && (
+                        <div className="bg-app-bg border border-app-border rounded-xl overflow-hidden">
+                          <div className="divide-y divide-app-border/50">
+                            {agentTokens.map(t => (
+                              <div key={t.jti} className="flex items-center justify-between px-4 py-3">
+                                <div className="flex flex-col">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium text-app-text">{t.name}</span>
+                                    {t.revoked && <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/20">Revoked</span>}
+                                  </div>
+                                  <span className="text-[10px] text-app-text-muted font-mono">{t.jti}</span>
+                                  <span className="text-[10px] text-app-text-muted">Issued by {t.issued_by} · {t.issued_at ? new Date(t.issued_at).toLocaleString() : '?'}</span>
+                                </div>
+                                {!t.revoked && (
+                                  <button onClick={() => handleRevokeAgentToken(t.jti)} className="text-[10px] font-bold text-app-text-muted hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 transition-colors">
+                                    Revoke
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -866,6 +967,37 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
   // --- Desktop: modal with ModalOverlay ---
   return (
     <ModalOverlay onClose={handleClose}>
+      {/* Generated-token display — nested modal, shown once */}
+      {generatedToken && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={() => setGeneratedToken(null)}>
+          <div className="bg-app-card border border-app-accent/30 rounded-xl p-6 max-w-xl w-full" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-app-text mb-1">Agent token — shown once</h3>
+            <p className="text-[11px] text-app-text-muted mb-4">Copy this now. Atrium does not store the token itself, only its metadata. If lost, revoke and generate a new one.</p>
+            <div className="bg-app-bg border border-app-border rounded-lg p-3 mb-3">
+              <div className="text-[10px] uppercase font-bold text-app-text-muted mb-1">Token</div>
+              <div className="font-mono text-[11px] text-app-text break-all select-all">{generatedToken.token}</div>
+            </div>
+            <div className="bg-app-bg border border-app-border rounded-lg p-3 mb-4">
+              <div className="text-[10px] uppercase font-bold text-app-text-muted mb-1">Install command (run once on your PC)</div>
+              <div className="font-mono text-[11px] text-app-text break-all select-all">{generatedToken.installCmd}</div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => copyTokenToClipboard(generatedToken.token)} className="flex items-center gap-1.5 bg-app-bg border border-app-border hover:border-app-text-muted px-3 py-1.5 rounded-lg text-xs font-bold text-app-text transition-colors">
+                {tokenCopied ? <Check className="w-3 h-3" /> : <Key className="w-3 h-3" />}
+                {tokenCopied ? 'Copied' : 'Copy token'}
+              </button>
+              <button onClick={() => copyTokenToClipboard(generatedToken.installCmd)} className="flex items-center gap-1.5 bg-app-bg border border-app-border hover:border-app-text-muted px-3 py-1.5 rounded-lg text-xs font-bold text-app-text transition-colors">
+                <Terminal className="w-3 h-3" />
+                Copy command
+              </button>
+              <button onClick={() => setGeneratedToken(null)} className="bg-app-accent hover:opacity-90 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-opacity">
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="overflow-hidden flex flex-col" style={{ width: '960px', height: '620px', background: 'var(--bg-card)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-xl)' }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <header className="shrink-0 vibrancy-thin flex justify-between items-center" style={{ padding: '12px 20px', borderBottom: '0.5px solid var(--separator)', background: 'color-mix(in srgb, var(--bg-card) 85%, transparent)' }}>
