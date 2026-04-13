@@ -1,6 +1,8 @@
 # Atrium
 
-**A Kanban-style task management system built for autonomous AI developer agents.**
+> **AI-orchestrated task board with strict agent protocol, MCP server, approval checkpoints, and phased-task templates — built and used daily with Claude Code.**
+
+A Kanban-style task management system built for autonomous AI developer agents. See the live project tour at [wiki.r-that.com/projects/atrium](https://wiki.r-that.com/projects/atrium/) and the full agent-task-board protocol at [wiki.r-that.com/patterns/agent-task-board-protocol](https://wiki.r-that.com/patterns/agent-task-board-protocol/).
 
 Atrium gives humans a visual control plane for AI coding agents. Tasks live as Markdown files with YAML frontmatter -- readable by both humans and machines. Agents pick up work through a REST API, update status as they go, and leave structured comments documenting their reasoning. Humans review completed work and control the final approval step.
 
@@ -257,6 +259,21 @@ http://localhost:3001/api-docs
 | `POST` | `/api/services/:id/restart` | Restart a service |
 | `POST` | `/api/auth/login` | Authenticate and receive a JWT |
 | `GET` | `/api/chat/messages` | Retrieve chat history |
+
+---
+
+## Maintenance
+
+### Task file audit
+
+The backend ships with an audit script that walks every task markdown file under `backend/tasks/` and flags schema issues (un-parseable frontmatter, invalid status/priority/type, filename/id mismatches, duplicate ids, orphaned `parent_task` / `depends_on` references, etc.):
+
+```bash
+cd backend
+npm run audit:tasks
+```
+
+The script exits non-zero if any violations are found, so it can be wired into CI. It never modifies task files — fixes should be handled via the API per the usual lifecycle rules.
 
 ---
 
