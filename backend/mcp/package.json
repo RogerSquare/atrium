@@ -1,0 +1,16 @@
+{
+  "name": "atrium-mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP server exposing Atrium task-board operations to Claude Code sessions.",
+  "main": "server.js",
+  "bin": {
+    "atrium-mcp": "./server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
