@@ -114,6 +114,72 @@ Before moving a task to `review`, you MUST complete the following checks:
 ### 6. Lint
 - [ ] Run `npm run lint` (if configured) and fix any errors (warnings are acceptable)
 
+## Wiki Documentation (STRICT):
+When a task ships something **another agent or human would need to know to reuse it**, you MUST add or update an entry in `r-that-wiki` (the Starlight site at `C:\Users\RogerSquare\Documents\opencode\rog-wiki`, published to https://wiki.r-that.com) **before moving the task to `review`**. The wiki is the durable knowledge layer; task comments are transient context.
+
+**What triggers a wiki entry (examples):**
+- A new reusable UI component, hook, or utility that other pages/services could import
+- A new architectural or integration pattern the codebase didn't have before (auth flow, rate limit strategy, background job shape, federation pattern, etc.)
+- A non-obvious snippet that solved a real problem (shell one-liner for deploy, nginx config, SQL trigger, etc.)
+- A new API endpoint whose contract, auth posture, or side effects are non-obvious
+
+**What does NOT trigger a wiki entry:**
+- Bug fixes that restore existing documented behavior
+- Internal refactors that don't change the external contract
+- Styling tweaks, copy changes, dependency bumps
+- One-off debugging work that didn't produce a reusable pattern
+- Anything already covered by an existing wiki page — **update the existing page instead of creating a duplicate**
+
+**Where the entry lives:**
+- `r-that-wiki/src/content/docs/components/<slug>.mdx` — reusable UI pieces
+- `r-that-wiki/src/content/docs/patterns/<slug>.mdx` — architectural/integration patterns
+- `r-that-wiki/src/content/docs/snippets/<slug>.mdx` — small copy-pasteable code/config blocks
+- Slug: lowercase, hyphenated, descriptive (`sanitize-safe-path`, not `fix-001`).
+
+**Required page shape (match existing entries):**
+```markdown
+---
+title: Short human-readable title
+description: One sentence someone skimming the sidebar can use to decide whether to click.
+---
+
+> **Source:** [repo/path/to/file.js](https://github.com/RogerSquare/<repo>/blob/main/<path>) — what this file is · [repo/path/to/other.js](...) — related
+> **Category:** Pattern — auth  (or Component — layout, or Snippet — shell, etc.)
+
+**<Name>** — one-sentence summary that leads with the tradeoff or key idea.
+
+## What it is
+Concrete, 2-4 sentences. No marketing voice.
+
+## Why it exists
+State the problem first, then the fix. If it's a pattern, name the alternatives you rejected.
+
+## <Domain section(s)>
+Code blocks, file paths, gotchas, example config — whatever a reuser needs to copy the pattern without re-reading the source.
+
+## Gotchas / when not to use (if applicable)
+```
+
+**Sidebar registration (STRICT):**
+The Starlight sidebar in `r-that-wiki/astro.config.mjs` is **hand-maintained** — adding a file is not enough; the slug must be added to the right `items:` array. Components/Patterns/Snippets are each grouped by sub-category (e.g. `Auth & security`, `Data & storage`). Pick the group that best fits; if none fit, flag it in the task comment and ask the human which group to extend or create.
+
+**Build + deploy workflow:**
+1. `cd C:\Users\RogerSquare\Documents\opencode\r-that-wiki`
+2. `npm run dev` — preview locally at `http://localhost:4321` while writing
+3. `npm run build` — generates `dist/`
+4. `scp -P 2200 -r dist/* root@r-that.com:/var/www/wiki/` — deploy (already allow-listed in `settings.local.json`)
+5. Verify the new entry loads at `https://wiki.r-that.com/<category>/<slug>/`
+
+**Pre-Review Checklist addendum:**
+Before moving a qualifying task to `review`, you MUST also confirm:
+- [ ] Wiki entry created or updated under the correct category
+- [ ] Sidebar entry added to `astro.config.mjs`
+- [ ] `npm run build` succeeds with no broken-link warnings for the new slug
+- [ ] Entry deployed to the VPS and verified at `wiki.r-that.com`
+- [ ] The task's `### Comments` block includes a bullet like: `- **Wiki:** added/updated https://wiki.r-that.com/<category>/<slug>/`
+
+**When in doubt — ask, don't skip.** If you're unsure whether something is wiki-worthy, err toward documenting it and surface the call in the task's approval checkpoint ("Wiki entry for X — worth documenting, or keep it internal?"). Under-documentation costs future agents far more than over-documentation costs you.
+
 ## Acceptance Criteria (STRICT):
 Every task description MUST include specific, testable acceptance criteria. Use checkboxes:
 ```markdown

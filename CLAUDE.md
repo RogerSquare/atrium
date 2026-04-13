@@ -71,14 +71,52 @@ Before creating any task, **search existing tasks** for similar IDs, titles, or 
 3. **Dynamic Priority**: If you discover a task is blocked or more complex than expected, use the API to update the `priority` field to `high` or `low` accordingly.
 
 ## The Task Lifecycle (STRICT):
-You MUST only use the following four statuses. Any other status will cause the task to disappear from the visual board.
+You MUST only use the following five statuses. Any other status will cause the task to disappear from the visual board.
 
-1.  **`todo`**: The task is waiting to be started.
-2.  **`in_progress`**: You are actively working on this task.
-3.  **`review`**: You have finished the work and are requesting human approval. **Agents MUST stop here.**
-4.  **`done`**: Only the human may move a task to `done` after reviewing your work.
+1.  **`draft`**: The task is being composed by a human — scope, files_affected, and acceptance criteria are still being refined. **Agents MUST NOT pick up draft tasks.** Only humans promote draft → todo when the spec is ready for dispatch.
+2.  **`todo`**: The task is waiting to be started.
+3.  **`in_progress`**: You are actively working on this task.
+4.  **`review`**: You have finished the work and are requesting human approval. **Agents MUST stop here.**
+5.  **`done`**: Only the human may move a task to `done` after reviewing your work.
 
 **Strict Rule**: Never use statuses like 'completed', 'finished', or 'archived'.
+
+**Draft rules (STRICT):**
+- When polling for work via `GET /api/tasks?status=todo`, drafts are automatically excluded. Do not bypass this filter.
+- Never transition a task directly from `draft → in_progress`. The human must promote it to `todo` first.
+- If you encounter a task in `draft` status (e.g. via a direct task lookup), do not start it — return it to the queue.
+
+## Mid-run Approval Checkpoints (STRICT):
+When working a task and you hit a genuine ambiguity that would cause significant rework if guessed wrong, emit an approval request instead of picking. The request pauses the task in `waiting_input` until the human responds.
+
+**When to emit an approval (examples):**
+- Two non-trivial architectural directions, both defensible — you want the human to pick.
+- Before a destructive operation the task description did not explicitly authorize (delete a migration, drop a column, force-push, etc.).
+- When a requirement appears self-contradictory or the acceptance criteria omit an edge case you must handle.
+
+**When NOT to emit an approval:**
+- For routine formatting, naming, or minor style choices — just pick.
+- For any decision the task description already makes ("use jsonwebtoken" — don't ask which library).
+- For every step — over-asking defeats the point.
+
+**How to emit an approval:**
+```
+POST /api/approvals/task/<task-id>
+Content-Type: application/json
+{
+  "prompt": "Run the migration before or after the API deploy?",
+  "context": {
+    "files": ["backend/migrations/0042.sql"],
+    "reasoning": "Migration adds a NOT NULL column; API must tolerate both schemas during rollout.",
+    "code_snippet": "ALTER TABLE users ADD COLUMN..."
+  },
+  "options": ["before", "after", "cancel"]
+}
+```
+
+The backend flips the task to `waiting_input` and emits a `approvalCreated` event. The human responds via UI; task flips back to `in_progress` with the decision appended to `activity_log`. Re-fetch the task to see the chosen response, then continue execution using it.
+
+**Never** transition a task out of `waiting_input` manually. The approval response handler does it for you.
 
 ## Pre-Review Checklist (STRICT):
 Before moving a task to `review`, you MUST complete the following checks:
@@ -114,6 +152,72 @@ Before moving a task to `review`, you MUST complete the following checks:
 ### 6. Lint
 - [ ] Run `npm run lint` (if configured) and fix any errors (warnings are acceptable)
 
+## Wiki Documentation (STRICT):
+When a task ships something **another agent or human would need to know to reuse it**, you MUST add or update an entry in `r-that-wiki` (the Starlight site at `C:\Users\RogerSquare\Documents\opencode\rog-wiki`, published to https://wiki.r-that.com) **before moving the task to `review`**. The wiki is the durable knowledge layer; task comments are transient context.
+
+**What triggers a wiki entry (examples):**
+- A new reusable UI component, hook, or utility that other pages/services could import
+- A new architectural or integration pattern the codebase didn't have before (auth flow, rate limit strategy, background job shape, federation pattern, etc.)
+- A non-obvious snippet that solved a real problem (shell one-liner for deploy, nginx config, SQL trigger, etc.)
+- A new API endpoint whose contract, auth posture, or side effects are non-obvious
+
+**What does NOT trigger a wiki entry:**
+- Bug fixes that restore existing documented behavior
+- Internal refactors that don't change the external contract
+- Styling tweaks, copy changes, dependency bumps
+- One-off debugging work that didn't produce a reusable pattern
+- Anything already covered by an existing wiki page — **update the existing page instead of creating a duplicate**
+
+**Where the entry lives:**
+- `r-that-wiki/src/content/docs/components/<slug>.mdx` — reusable UI pieces
+- `r-that-wiki/src/content/docs/patterns/<slug>.mdx` — architectural/integration patterns
+- `r-that-wiki/src/content/docs/snippets/<slug>.mdx` — small copy-pasteable code/config blocks
+- Slug: lowercase, hyphenated, descriptive (`sanitize-safe-path`, not `fix-001`).
+
+**Required page shape (match existing entries):**
+```markdown
+---
+title: Short human-readable title
+description: One sentence someone skimming the sidebar can use to decide whether to click.
+---
+
+> **Source:** [repo/path/to/file.js](https://github.com/RogerSquare/<repo>/blob/main/<path>) — what this file is · [repo/path/to/other.js](...) — related
+> **Category:** Pattern — auth  (or Component — layout, or Snippet — shell, etc.)
+
+**<Name>** — one-sentence summary that leads with the tradeoff or key idea.
+
+## What it is
+Concrete, 2-4 sentences. No marketing voice.
+
+## Why it exists
+State the problem first, then the fix. If it's a pattern, name the alternatives you rejected.
+
+## <Domain section(s)>
+Code blocks, file paths, gotchas, example config — whatever a reuser needs to copy the pattern without re-reading the source.
+
+## Gotchas / when not to use (if applicable)
+```
+
+**Sidebar registration (STRICT):**
+The Starlight sidebar in `r-that-wiki/astro.config.mjs` is **hand-maintained** — adding a file is not enough; the slug must be added to the right `items:` array. Components/Patterns/Snippets are each grouped by sub-category (e.g. `Auth & security`, `Data & storage`). Pick the group that best fits; if none fit, flag it in the task comment and ask the human which group to extend or create.
+
+**Build + deploy workflow:**
+1. `cd C:\Users\RogerSquare\Documents\opencode\r-that-wiki`
+2. `npm run dev` — preview locally at `http://localhost:4321` while writing
+3. `npm run build` — generates `dist/`
+4. `scp -P 2200 -r dist/* root@r-that.com:/var/www/wiki/` — deploy (already allow-listed in `settings.local.json`)
+5. Verify the new entry loads at `https://wiki.r-that.com/<category>/<slug>/`
+
+**Pre-Review Checklist addendum:**
+Before moving a qualifying task to `review`, you MUST also confirm:
+- [ ] Wiki entry created or updated under the correct category
+- [ ] Sidebar entry added to `astro.config.mjs`
+- [ ] `npm run build` succeeds with no broken-link warnings for the new slug
+- [ ] Entry deployed to the VPS and verified at `wiki.r-that.com`
+- [ ] The task's `### Comments` block includes a bullet like: `- **Wiki:** added/updated https://wiki.r-that.com/<category>/<slug>/`
+
+**When in doubt — ask, don't skip.** If you're unsure whether something is wiki-worthy, err toward documenting it and surface the call in the task's approval checkpoint ("Wiki entry for X — worth documenting, or keep it internal?"). Under-documentation costs future agents far more than over-documentation costs you.
+
 ## Acceptance Criteria (STRICT):
 Every task description MUST include specific, testable acceptance criteria. Use checkboxes:
 ```markdown
@@ -140,6 +244,34 @@ To optimize development, follow these architectural rules:
 3.  **Atomic Tasks**: If a specific component or feature is still too large, break it down further into sub-tasks. Use the `parent_task` field to link sub-tasks to the main feature ID.
 4.  **Checklists**: Use Markdown checkboxes (`- [ ]`) in the description for sub-feature tracking. Update these as you progress.
 5.  **Traceability**: Always list the exact file paths you plan to modify in the `files_affected` field.
+
+## Phased Tasks (STRICT):
+Non-trivial work should be split into three sequential phases via the `phase-research` / `phase-plan` / `phase-implement` tag. The goal: no agent jumps from "I read the description" to "I'm writing code" without an explicit research and plan step in between. Use the `phase-research`, `phase-plan`, and `phase-implement` templates from `backend/templates/`.
+
+**When you are assigned a task with tag `phase-research`:**
+- Do NOT make an implementation plan.
+- Do NOT write any code.
+- Do NOT modify any source files (only update the task markdown).
+- Return file paths with line numbers, existing patterns, and open questions ONLY.
+- Move to `review` when findings are complete; the human decides if a plan task should follow.
+
+**When you are assigned a task with tag `phase-plan`:**
+- Read the research task referenced in `depends_on[0]` FIRST. If `depends_on` is empty, STOP and ask the human to link the research task.
+- Share open questions and a phase outline with the human BEFORE writing the full plan.
+- Produce a phased plan (Phase 1, Phase 2, …) with specific file edits, per-phase verification, and a rollback note.
+- Do NOT write implementation code.
+- Do NOT modify source files.
+
+**When you are assigned a task with tag `phase-implement`:**
+- Read the plan task referenced in `depends_on[0]` FIRST. The plan is the source of truth.
+- Execute phase by phase in order. Run tests/lint/build at each phase boundary.
+- Do NOT re-plan. Do NOT expand scope. If the plan is wrong, move the task back to review with a note — do not silently absorb the deviation.
+- Capture any follow-ups as notes in the task's Comments; those become separate tasks later.
+
+**General rules for phased tasks:**
+- The `type` field (frontend/backend/fullstack/devops) still applies — it describes the kind of code being touched, not the phase.
+- Phases are chained via `depends_on` (runtime pointer) and optionally `parent_task` (metadata).
+- If a task has no `phase-*` tag, it is a regular single-phase task and these rules do not apply.
 
 ## Format of the Text Files
 Each task is a `.md` file with extended YAML frontmatter.
