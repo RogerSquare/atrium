@@ -11,6 +11,10 @@ backend/users/
 backend/chat/
 backend/ai-history/
 
+# Agent token metadata — keep blocklist tracked, exclude individual issued-token files
+backend/agent-tokens/*.json
+!backend/agent-tokens/.blocklist.json
+
 # Task history & trash
 backend/tasks/.history/
 backend/tasks/.trash/
