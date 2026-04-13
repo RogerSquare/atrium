@@ -1,0 +1,10 @@
+{
+  "name": "Phase: Research",
+  "description": "Read the codebase and report findings. NO plan. NO code.",
+  "defaults": {
+    "type": "fullstack",
+    "tags": ["phase-research"],
+    "priority": "medium",
+    "content": "### Description\n\n**Research goal:** _(what question does this answer?)_\n\n**Areas to investigate:** _(directories, features, APIs — be specific)_\n\n### Scope (STRICT)\n\nThis is a **research-only** task. The agent MUST:\n\n- [ ] Return file paths and line numbers relevant to the question\n- [ ] Document existing patterns/conventions discovered\n- [ ] Surface open questions that need human decision before a plan can be made\n- [ ] NOT propose a plan\n- [ ] NOT write implementation code\n- [ ] NOT modify any source files\n\n### Expected output\n\nA `research.md` section (or comment on the task) structured as:\n\n```markdown\n## Findings\n- `path/to/file.js:42` — <what's there, what it means>\n- `path/to/file.js:128` — <what's there>\n\n## Existing patterns\n- <pattern name> — used at <file:line>, <file:line>\n\n## Open questions\n1. <question that blocks planning>\n2. <another question>\n\n## Files likely in scope for a future plan\n- `path/to/file.js`\n- `path/to/other.js`\n```\n\n### Acceptance Criteria\n\n- [ ] Output contains file+line references, not just prose\n- [ ] At least one open question surfaced (or explicit \"no open questions\" note)\n- [ ] No files modified — `git status` clean except for the task markdown update\n- [ ] Human confirms findings are sufficient to write a plan from\n\n### Next step\n\nWhen reviewed, use the \"Create plan from findings\" button (feat-task-continuation-001) to spawn the plan task. Until that ships, create a `phase-plan` task manually and reference this task's ID in `depends_on`.\n\n### Comments"
+  }
+}

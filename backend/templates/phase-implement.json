@@ -1,0 +1,10 @@
+{
+  "name": "Phase: Implement",
+  "description": "Execute an approved plan. Consumes a plan task. No re-planning.",
+  "defaults": {
+    "type": "fullstack",
+    "tags": ["phase-implement"],
+    "priority": "medium",
+    "content": "### Description\n\n**Implementation goal:** _(restate what we're building — one sentence)_\n\n**Approved plan:** _(set `depends_on: [<plan-task-id>]` in the frontmatter. Agent MUST read that task's plan first.)_\n\n### Scope (STRICT)\n\nThis is an **implementation-only** task. The agent MUST:\n\n- [ ] Read the plan task referenced in `depends_on[0]` FIRST — the plan is the source of truth\n- [ ] Execute phase by phase, in order\n- [ ] Run verification (tests, lint, build) at each phase boundary before moving on\n- [ ] NOT re-plan or expand scope — if the plan is wrong, move task back to review with a note\n- [ ] Emit an approval request (feat-task-approval-checkpoints-001, when shipped) if a genuine ambiguity arises rather than guessing\n\n### Expected output\n\nCode changes committed phase by phase (or one commit if the plan is small). Task comment structured as:\n\n```markdown\n## Phase 1: <name> — DONE\n- Files changed: <list>\n- Verification: <test/lint/build result>\n- Notes: <any deviations from plan and why>\n\n## Phase 2: <name> — DONE\n...\n\n## Deviations from plan\n<anything that diverged from the plan, with reasoning>\n\n## Follow-ups\n<anything discovered during implementation that should become a separate task>\n```\n\n### Acceptance Criteria\n\n- [ ] Agent read the plan before writing code\n- [ ] All phases completed and verified\n- [ ] Tests/lint/build pass at each phase boundary\n- [ ] No scope creep — deviations documented, not absorbed silently\n- [ ] Follow-ups captured as notes (to become their own tasks later)\n\n### Comments"
+  }
+}

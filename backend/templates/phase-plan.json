@@ -1,0 +1,10 @@
+{
+  "name": "Phase: Plan",
+  "description": "Produce a phased implementation plan. Consumes a research task. NO code.",
+  "defaults": {
+    "type": "fullstack",
+    "tags": ["phase-plan"],
+    "priority": "medium",
+    "content": "### Description\n\n**Planning goal:** _(what are we planning to build/change?)_\n\n**Upstream research:** _(set `depends_on: [<research-task-id>]` in the frontmatter. Agent MUST read that task's findings first.)_\n\n### Scope (STRICT)\n\nThis is a **planning-only** task. The agent MUST:\n\n- [ ] Read the research task referenced in `depends_on[0]` FIRST\n- [ ] Share open questions + a phase outline with the human BEFORE writing the full plan\n- [ ] Produce a phased implementation plan (Phase 1, Phase 2, ...)\n- [ ] NOT write implementation code\n- [ ] NOT modify source files\n\n### Expected output\n\nThe plan goes in the task `Comments` section or as a separate `plan.md` file, structured as:\n\n```markdown\n## Open questions (ANSWER BEFORE PROCEEDING)\n1. <question> — <recommendation or choices>\n2. <question>\n\n## Plan\n\n### Phase 1: <name>\n- **Goal:** <one sentence>\n- **Files:**\n  - `path/to/file.js` — <what changes>\n- **Verification:** <how to know it worked>\n\n### Phase 2: <name>\n...\n\n## Rollback\n<how to undo if a phase fails mid-deploy>\n\n## Out of scope\n<things this plan explicitly does NOT do>\n```\n\n### Acceptance Criteria\n\n- [ ] Agent read the research task's output before planning\n- [ ] Open questions surfaced first; waited for human answers before full plan\n- [ ] Plan is phased (not a wall of steps); each phase has a clear verification\n- [ ] No source files modified\n- [ ] Human approves plan before moving to implementation\n\n### Next step\n\nWhen reviewed, use the \"Implement this plan\" continuation to spawn the implement task. Until that ships, create a `phase-implement` task manually with `depends_on: [<this-task-id>]`.\n\n### Comments"
+  }
+}
