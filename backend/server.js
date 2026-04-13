@@ -29,6 +29,7 @@ const chatRoutes = require('./routes/chat');
 const aiRoutes = require('./routes/ai');
 const designRoutes = require('./routes/design');
 const previewRoutes = require('./routes/preview');
+const approvalsRoutes = require('./routes/approvals');
 
 // --- Socket Handlers ---
 const { registerChatHandlers, handleChatDisconnect } = require('./sockets/chat');
@@ -219,6 +220,7 @@ app.use('/api/settings', requireAuth, settingsRoutes);
 app.use('/api/services', requireAuth, servicesRoutes);
 app.use('/api/projects', requireAuth, projectsRoutes);
 app.use('/api/tasks', requireAuth, tasksRoutes);
+app.use('/api/approvals', requireAuth, approvalsRoutes);
 app.use('/api/agents', requireAuth, agentsRoutes);
 app.use('/api/chat', requireAuth, chatRoutes);
 app.use('/api/ai', requireAuth, aiRoutes);
