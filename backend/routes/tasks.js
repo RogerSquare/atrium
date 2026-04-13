@@ -4,13 +4,16 @@ const path = require('path');
 const crypto = require('crypto');
 const matter = require('gray-matter');
 const { TASKS_DIR, HISTORY_DIR, TRASH_DIR } = require('../lib/constants');
-const { getAllTasks, findTaskFilePath, indexSet, indexDelete, atomicWriteFileSync, trimActivityLog, getFullActivityLog } = require('../lib/tasks');
+const { getAllTasks, findTaskFilePath, indexSet, indexDelete, atomicWriteFileSync, trimActivityLog, getFullActivityLog, generateSummary } = require('../lib/tasks');
 const { withLock } = require('../lib/lock');
 const { getIO } = require('../lib/io');
 const { sanitizeFilename, safePath } = require('../lib/sanitize');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
+
+// Attach a fresh summary to a task object before emitting / responding.
+const withSummary = (task) => ({ ...task, summary: generateSummary(task) });
 
 /**
  * @swagger
@@ -90,7 +93,7 @@ router.post('/from-template/:templateId', (req, res) => {
     const createdTask = { id: taskId, ...data, content: content || template.defaults.content || '', project: safeProject, template: req.params.templateId };
     res.status(201).json({ success: true, task: createdTask });
     const io = getIO();
-    if (io) io.emit('task_created', createdTask);
+    if (io) io.emit('task_created', withSummary(createdTask));
   } catch (error) {
     logger.error({ err: error }, 'Request failed');
     res.status(500).json({ error: 'Internal server error' });
@@ -345,7 +348,7 @@ router.put('/batch', async (req, res) => {
 
           const relativePath = path.relative(TASKS_DIR, path.dirname(filePath));
           const updatedTask = { ...newData, content: currentContent.trim(), project: relativePath || 'Root' };
-          if (io) io.emit('task_updated', updatedTask);
+          if (io) io.emit('task_updated', withSummary(updatedTask));
           updated++;
         });
       } catch (err) {
@@ -491,6 +494,67 @@ router.delete('/trash/purge', (req, res) => {
   } catch (error) {
     logger.error({ err: error }, 'Request failed');
     if (!res.headersSent) res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/tasks/{id}:
+ *   get:
+ *     summary: Get a single task with full metadata
+ *     tags: [Tasks]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Task object with frontmatter, content, project, and summary
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Task'
+ *       404:
+ *         description: Task not found
+ */
+router.get('/:id', (req, res) => {
+  const { id } = req.params;
+  try {
+    const filePath = findTaskFilePath(id);
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    const fileContent = fs.readFileSync(filePath, 'utf-8');
+    const { data, content } = matter(fileContent);
+    const relativePath = path.relative(TASKS_DIR, path.dirname(filePath));
+    const project = relativePath || 'Root';
+    const task = {
+      id: data.id || id,
+      title: data.title || 'Untitled',
+      status: data.status || 'todo',
+      priority: data.priority || 'medium',
+      assignee: data.assignee || null,
+      type: data.type || 'fullstack',
+      component: data.component || null,
+      tags: data.tags || [],
+      files_affected: data.files_affected || [],
+      parent_task: data.parent_task || null,
+      depends_on: data.depends_on || [],
+      due_date: data.due_date || null,
+      created_at: data.created_at || null,
+      started_at: data.started_at || null,
+      reviewed_at: data.reviewed_at || null,
+      done_at: data.done_at || null,
+      activity_log: data.activity_log || [],
+      project,
+      content: content.trim()
+    };
+    res.json(withSummary(task));
+  } catch (error) {
+    logger.error({ err: error }, 'Request failed');
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -702,10 +766,10 @@ router.put('/:id', async (req, res) => {
           newData.activity_log.push({ timestamp: now, action: `Status changed from ${currentData.status || 'todo'} to ${status} by ${actor}` });
         }
 
-        if ((status === 'todo' || status === 'in_progress') && newData.reviewed_at) {
+        if ((status === 'draft' || status === 'todo' || status === 'in_progress') && newData.reviewed_at) {
           newData.reviewed_at = null;
         }
-        if (status === 'todo' && newData.started_at) {
+        if ((status === 'draft' || status === 'todo') && newData.started_at) {
           newData.started_at = null;
         }
       }
@@ -767,7 +831,7 @@ router.put('/:id', async (req, res) => {
     const updatedTask = { ...newData, content: newBodyContent, project: project || originalProject };
     res.json({ success: true, task: updatedTask });
     const io = getIO();
-    if (io) io.emit('task_updated', updatedTask);
+    if (io) io.emit('task_updated', withSummary(updatedTask));
     }); // end withLock
   } catch (error) {
     logger.error({ err: error, taskId: id }, 'Task update failed');
@@ -902,10 +966,106 @@ router.post('/', (req, res) => {
     const createdTask = { id: taskId, ...data, content, project };
     res.status(201).json({ success: true, task: createdTask });
     const io = getIO();
-    if (io) io.emit('task_created', createdTask);
+    if (io) io.emit('task_created', withSummary(createdTask));
   } catch (error) {
     logger.error({ err: error }, 'Request failed');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/tasks/:id/continue — create a downstream phase task pre-filled from this one
+// Source must be phase-research → creates phase-plan; phase-plan → creates phase-implement.
+router.post('/:id/continue', async (req, res) => {
+  try {
+    const sourceId = req.params.id;
+    const sourcePath = findTaskFilePath(sourceId);
+    if (!sourcePath) return res.status(404).json({ error: 'Source task not found' });
+
+    const sourceFile = fs.readFileSync(sourcePath, 'utf-8');
+    const sourceParsed = matter(sourceFile);
+    const sourceData = sourceParsed.data || {};
+    const sourceContent = sourceParsed.content || '';
+    const sourceTags = Array.isArray(sourceData.tags) ? sourceData.tags : [];
+
+    let nextPhase = null;
+    let nextShort = null;
+    if (sourceTags.includes('phase-research')) { nextPhase = 'phase-plan'; nextShort = 'plan'; }
+    else if (sourceTags.includes('phase-plan')) { nextPhase = 'phase-implement'; nextShort = 'implement'; }
+    else return res.status(400).json({ error: 'Source task is not phased (expected phase-research or phase-plan tag)' });
+
+    // Base ID: strip any trailing phase suffix from the source, then append the next phase
+    const baseId = sourceId.replace(/-research$|-plan$|-implement$/, '');
+    let candidateId = `${baseId}-${nextShort}`;
+    // If already taken, suffix a counter
+    let counter = 2;
+    while (findTaskFilePath(candidateId)) {
+      candidateId = `${baseId}-${nextShort}-${counter}`;
+      counter++;
+    }
+    const newId = sanitizeFilename(candidateId);
+    if (!newId) return res.status(500).json({ error: 'Failed to derive new task ID' });
+
+    // Load the next phase template if present for its default content + type/priority hints
+    const templatePath = path.join(__dirname, '..', 'templates', `${nextPhase}.json`);
+    let template = null;
+    if (fs.existsSync(templatePath)) {
+      try { template = JSON.parse(fs.readFileSync(templatePath, 'utf-8')); } catch (e) { template = null; }
+    }
+
+    // Build the new task's description with the parent content injected at top
+    const injected = [
+      `### Context from parent\n`,
+      `This task continues from **${sourceId}** — _${sourceData.title || 'Untitled'}_.`,
+      nextPhase === 'phase-plan'
+        ? 'The research findings are below. Read them before proposing a plan. Share open questions with the human before writing the full plan.'
+        : 'The plan is below. Read it phase by phase. Do not re-plan; if the plan is wrong, move this task back to review with a note.',
+      `\n<details>\n<summary>Parent task body</summary>\n\n${sourceContent.trim()}\n\n</details>\n`,
+      `### Description\n\n_(add additional notes here; the parent content is above)_\n\n### Comments\n`,
+    ].join('\n');
+
+    const actor = req.user?.username || req.body?.created_by || 'Unknown User';
+    const now = new Date().toISOString();
+    const targetProject = sourceData.project || 'Root';
+    const safeProject = targetProject === 'Root' ? 'Root' : sanitizeFilename(targetProject);
+    // Derive target directory: same project folder as source (walk up from sourcePath)
+    const sourceDir = path.dirname(sourcePath);
+
+    const filePath = safePath(sourceDir, `${newId}.md`);
+    if (!filePath) return res.status(400).json({ error: 'Invalid target path' });
+    if (fs.existsSync(filePath)) return res.status(409).json({ error: 'Target task already exists', id: newId });
+
+    const templateTags = Array.isArray(template?.defaults?.tags) ? template.defaults.tags : [nextPhase];
+    const sourceOnlyTags = sourceTags.filter(t => !t.startsWith('phase-'));
+    const mergedTags = Array.from(new Set([...templateTags, ...sourceOnlyTags]));
+
+    const data = {
+      id: newId,
+      title: `${sourceData.title || 'Untitled'} — ${nextShort}`,
+      status: 'todo',
+      priority: template?.defaults?.priority || sourceData.priority || 'medium',
+      type: template?.defaults?.type || sourceData.type || 'fullstack',
+      component: sourceData.component || null,
+      tags: mergedTags,
+      files_affected: sourceData.files_affected || [],
+      parent_task: sourceId,
+      depends_on: [sourceId],
+      created_at: now,
+      activity_log: [
+        { timestamp: now, action: `Task created by ${actor} as continuation of ${sourceId}` },
+      ],
+    };
+    Object.keys(data).forEach(k => { if (data[k] === undefined || data[k] === null || data[k] === '') delete data[k]; });
+
+    const fileContent = matter.stringify(injected, data);
+    atomicWriteFileSync(filePath, fileContent);
+    indexSet(newId, filePath);
+
+    const createdTask = { id: newId, ...data, content: injected, project: targetProject };
+    res.status(201).json({ success: true, task: createdTask });
+    try { getIO()?.emit('task_created', withSummary(createdTask)); } catch (e) {}
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to continue task');
+    if (!res.headersSent) res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -976,7 +1136,7 @@ router.post('/batch', (req, res) => {
 
         const createdTask = { id: taskId, ...data, content, project };
         results.push({ id: taskId, success: true });
-        if (io) io.emit('task_created', createdTask);
+        if (io) io.emit('task_created', withSummary(createdTask));
       } catch (err) {
         results.push({ id: task.id || null, success: false, error: err.message });
       }
@@ -1213,7 +1373,7 @@ router.post('/:id/history/:filename/restore', async (req, res) => {
       const restoredTask = { ...data, content: parsed.content, project: path.relative(TASKS_DIR, path.dirname(currentPath)) || 'Root' };
       res.json({ success: true, task: restoredTask });
       const io = getIO();
-      if (io) io.emit('task_updated', restoredTask);
+      if (io) io.emit('task_updated', withSummary(restoredTask));
     });
   } catch (error) {
     logger.error({ err: error, taskId: id }, 'Task restore failed');
@@ -1251,7 +1411,7 @@ router.post('/:id/restore-from-trash', async (req, res) => {
     const restoredTask = { ...parsed.data, content: parsed.content.trim(), project };
     res.json({ success: true, task: restoredTask });
     const io = getIO();
-    if (io) io.emit('task_created', restoredTask);
+    if (io) io.emit('task_created', withSummary(restoredTask));
   } catch (error) {
     logger.error({ err: error, taskId: id }, 'Trash restore failed');
     if (!res.headersSent) res.status(500).json({ error: 'Internal server error' });

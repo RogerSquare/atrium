@@ -5,6 +5,8 @@ import remarkGfm from 'remark-gfm'
 import { API_URL, apiFetch } from '../config'
 import AgentLogPanel from './AgentLogPanel'
 import AIChatPanel from './AIChatPanel'
+import ApprovalPanel from './ApprovalPanel'
+import ContinueButton from './ContinueButton'
 import ModalOverlay from './ModalOverlay'
 
 const VIEWER_COLORS = ['#06b6d4', '#a78bfa', '#f472b6', '#fb923c', '#34d399', '#fbbf24', '#60a5fa']
@@ -421,6 +423,12 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
             </div>
           ) : (
             <>
+              {/* Approval requests */}
+              <ApprovalPanel task={task} socket={socket} />
+
+              {/* Phase continuation */}
+              <ContinueButton task={task} onSelectTask={onClose} />
+
               {/* Dev Meta — grouped list */}
               <div className="grid grid-cols-2 gap-4 mb-6" style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', background: 'var(--fill-secondary)' }}>
                 <div>

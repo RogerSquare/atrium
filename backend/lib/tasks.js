@@ -3,6 +3,7 @@ const path = require('path');
 const matter = require('gray-matter');
 const { TASKS_DIR, HISTORY_DIR } = require('./constants');
 const { logger } = require('./logger');
+const { generateSummary } = require('./taskSummary');
 
 // --- In-memory index: taskId -> filePath ---
 const taskIndex = new Map();
@@ -87,7 +88,7 @@ const scanAllTasks = (dirPath = TASKS_DIR, tasksArray = []) => {
       // Keep the index in sync during full scans
       taskIndex.set(id, filePath);
 
-      tasksArray.push({
+      const taskObj = {
         id,
         title: data.title || 'Untitled',
         status: data.status || 'todo',
@@ -106,7 +107,9 @@ const scanAllTasks = (dirPath = TASKS_DIR, tasksArray = []) => {
         project: project,
         content: content.trim(),
         filePath: filePath
-      });
+      };
+      taskObj.summary = generateSummary(taskObj);
+      tasksArray.push(taskObj);
     }
   });
 
@@ -193,4 +196,4 @@ const getFullActivityLog = (taskId, data) => {
   return archived.concat(current);
 };
 
-module.exports = { getAllTasks, findTaskFilePath, buildIndex, indexSet, indexDelete, invalidateCache, atomicWriteFileSync, cleanupTempFiles, trimActivityLog, getFullActivityLog };
+module.exports = { getAllTasks, findTaskFilePath, buildIndex, indexSet, indexDelete, invalidateCache, atomicWriteFileSync, cleanupTempFiles, trimActivityLog, getFullActivityLog, generateSummary };

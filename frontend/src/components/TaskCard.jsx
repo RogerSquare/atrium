@@ -146,9 +146,16 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
       )}
 
       {/* Title */}
-      <h3 className="break-words line-clamp-2 mb-3" style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-medium)', color: 'var(--text-app)', lineHeight: 'var(--leading-tight)' }}>
+      <h3 className="break-words line-clamp-2 mb-1" style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-medium)', color: 'var(--text-app)', lineHeight: 'var(--leading-tight)' }}>
         {task.title}
       </h3>
+
+      {/* Summary — one-line digest of recent state */}
+      {task.summary && (
+        <div className="truncate mb-3" style={{ fontSize: 'var(--text-caption1)', color: 'var(--text-muted)', fontStyle: 'italic' }} title={task.summary}>
+          {task.summary}
+        </div>
+      )}
 
       {/* Meta: viewers */}
       {viewers.length > 0 && (

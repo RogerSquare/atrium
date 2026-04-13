@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 import ModalOverlay from './ModalOverlay'
+import { apiFetch } from '../config'
 
 export default function CreateTaskModal({ projects, activeProject, onClose, onCreateTask }) {
   const [title, setTitle] = useState('')
@@ -8,11 +9,32 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
   const [type, setType] = useState('fullstack')
   const [priority, setPriority] = useState('medium')
   const [description, setDescription] = useState('### Description\nNew task description.\n\n### Comments\n')
+  const [tags, setTags] = useState([])
+  const [templates, setTemplates] = useState([])
+  const [selectedTemplate, setSelectedTemplate] = useState('')
 
-  const handleSubmit = (e) => {
-    e.preventDefault()
+  useEffect(() => {
+    apiFetch('/api/tasks/templates')
+      .then(r => r.ok ? r.json() : { templates: [] })
+      .then(d => setTemplates(d.templates || []))
+      .catch(() => setTemplates([]))
+  }, [])
+
+  const applyTemplate = (id) => {
+    setSelectedTemplate(id)
+    if (!id) return
+    const t = templates.find(x => x.id === id)
+    if (!t?.defaults) return
+    if (t.defaults.type) setType(t.defaults.type)
+    if (t.defaults.priority) setPriority(t.defaults.priority)
+    if (t.defaults.content) setDescription(t.defaults.content)
+    if (Array.isArray(t.defaults.tags)) setTags(t.defaults.tags)
+  }
+
+  const handleSubmit = (e, status = 'todo') => {
+    if (e?.preventDefault) e.preventDefault()
     if (!title.trim()) return
-    onCreateTask({ title, project, type, priority, content: description, status: 'todo' })
+    onCreateTask({ title, project, type, priority, content: description, status, tags })
     onClose()
   }
 
@@ -44,6 +66,19 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
         </header>
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar" style={{ padding: 'var(--space-5) var(--space-6)' }}>
+          {/* Template picker */}
+          {templates.length > 0 && (
+            <div style={{ marginBottom: 'var(--space-5)' }}>
+              <label style={{ display: 'block', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>Template (optional)</label>
+              <select value={selectedTemplate} onChange={(e) => applyTemplate(e.target.value)} style={selectStyle}>
+                <option value="">— None: write from scratch —</option>
+                {templates.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}{t.description ? ` — ${t.description}` : ''}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Title */}
           <div style={{ marginBottom: 'var(--space-5)' }}>
             <label style={{ display: 'block', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>Title</label>
@@ -126,7 +161,10 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
           <button type="button" onClick={onClose} className="apple-press" style={{ padding: '10px 20px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
             Cancel
           </button>
-          <button onClick={handleSubmit} disabled={!title.trim()} className="apple-press text-white" style={{ padding: '10px 24px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-semibold)', background: 'var(--accent-app)', boxShadow: 'var(--shadow-sm)', border: 'none', cursor: 'pointer', opacity: title.trim() ? 1 : 0.4 }}>
+          <button type="button" onClick={(e) => handleSubmit(e, 'draft')} disabled={!title.trim()} className="apple-press" style={{ padding: '10px 20px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-medium)', color: 'var(--text-app)', background: 'var(--fill-secondary)', border: 'none', cursor: 'pointer', opacity: title.trim() ? 1 : 0.4 }}>
+            Save as Draft
+          </button>
+          <button onClick={(e) => handleSubmit(e, 'todo')} disabled={!title.trim()} className="apple-press text-white" style={{ padding: '10px 24px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-semibold)', background: 'var(--accent-app)', boxShadow: 'var(--shadow-sm)', border: 'none', cursor: 'pointer', opacity: title.trim() ? 1 : 0.4 }}>
             Create Task
           </button>
         </footer>
