@@ -669,14 +669,13 @@ function BaseBranchesHeader({ baseBranches }) {
             key={`base-${entry.branch}`}
             href={linkUrl}
             target="_blank" rel="noreferrer"
-            className="flex items-center gap-1.5 apple-press min-w-0"
+            className="flex items-center gap-1.5 apple-press"
             style={{
               padding: '3px 10px',
               borderRadius: 'var(--radius-sm)',
               background: 'var(--fill-secondary)',
               color: 'var(--text-tertiary)',
               textDecoration: 'none',
-              maxWidth: '100%',
             }}
             title={subject ? `${entry.branch}: ${subject}` : entry.branch}
           >
@@ -684,11 +683,6 @@ function BaseBranchesHeader({ baseBranches }) {
             <span style={{ fontSize: '11px', fontWeight: 600, fontFamily: 'var(--font-mono, ui-monospace, monospace)', color: 'var(--text-app)' }}>
               {entry.branch}
             </span>
-            {subject && (
-              <span className="truncate" style={{ fontSize: '11px', color: 'var(--text-muted)', minWidth: 0 }}>
-                {subject}
-              </span>
-            )}
           </a>
         )
       })}
