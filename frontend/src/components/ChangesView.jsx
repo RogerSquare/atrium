@@ -297,6 +297,9 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
       </div>
 
       <div className="rounded-lg overflow-hidden" style={{ background: 'var(--bg-card)', border: '1px solid var(--separator)' }}>
+        {linksData?.base_branches?.length > 0 && (
+          <BaseBranchesHeader baseBranches={linksData.base_branches} />
+        )}
         <div className="relative" style={{ minHeight: visibleCount ? totalHeight : 120 }}>
           {/* SVG graph overlay — sits between the label column and the message column, doesn't capture clicks.
               The SVG height animates along with the collapsing rows so trail/nodes stay aligned. */}
@@ -629,6 +632,66 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
           <UnlinkedSection detached={linksData.detached} />
         )}
       </div>
+    </div>
+  )
+}
+
+function BaseBranchesHeader({ baseBranches }) {
+  // Compact always-visible strip at the top of the card — shows the default / mainline
+  // refs (main, master, etc.) with their latest commit subject. Clicking opens the branch
+  // on GitHub. This is separate from "Unlinked" because base branches are intentionally
+  // not tied to any single task, but users still want the "what's on main right now" signal.
+  return (
+    <div
+      className="flex items-center gap-2 flex-wrap"
+      style={{
+        padding: '8px 12px',
+        background: 'var(--bg-secondary)',
+        borderBottom: '0.5px solid var(--separator)',
+      }}
+    >
+      <span
+        style={{
+          fontSize: '10px',
+          fontWeight: 700,
+          color: 'var(--text-tertiary)',
+          letterSpacing: '0.05em',
+          textTransform: 'uppercase',
+        }}
+      >
+        Base
+      </span>
+      {baseBranches.map(entry => {
+        const linkUrl = entry.branch_url || '#'
+        const subject = entry.branch_subject || ''
+        return (
+          <a
+            key={`base-${entry.branch}`}
+            href={linkUrl}
+            target="_blank" rel="noreferrer"
+            className="flex items-center gap-1.5 apple-press min-w-0"
+            style={{
+              padding: '3px 10px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--fill-secondary)',
+              color: 'var(--text-tertiary)',
+              textDecoration: 'none',
+              maxWidth: '100%',
+            }}
+            title={subject ? `${entry.branch}: ${subject}` : entry.branch}
+          >
+            <GitBranch className="w-3 h-3 shrink-0" />
+            <span style={{ fontSize: '11px', fontWeight: 600, fontFamily: 'var(--font-mono, ui-monospace, monospace)', color: 'var(--text-app)' }}>
+              {entry.branch}
+            </span>
+            {subject && (
+              <span className="truncate" style={{ fontSize: '11px', color: 'var(--text-muted)', minWidth: 0 }}>
+                {subject}
+              </span>
+            )}
+          </a>
+        )
+      })}
     </div>
   )
 }

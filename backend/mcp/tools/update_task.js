@@ -6,6 +6,8 @@ const ALLOWED_FIELDS = new Set([
   'title', 'status', 'priority', 'assignee', 'type', 'component',
   'tags', 'files_affected', 'parent_task', 'depends_on', 'due_date',
   'content', 'project',
+  // Changes-view overrides — see CLAUDE.md "Branch & PR Linkage → Explicit override"
+  'github_branch', 'github_pr_url',
 ]);
 
 module.exports = {

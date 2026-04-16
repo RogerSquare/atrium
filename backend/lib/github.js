@@ -260,6 +260,11 @@ async function buildLinks(repoPath, tasks) {
 
   const byTaskId = {};
   const detached = [];
+  const baseBranches = [];
+  // Branches that are never task branches — integration / default / mainline refs.
+  // These are universally uninteresting to the "what task made this change?" view and
+  // belong in their own section rather than polluting the Unlinked list.
+  const BASE_BRANCH_NAMES = new Set(['main', 'master', 'develop', 'trunk', 'HEAD']);
 
   // Pass 1: explicit overrides from task frontmatter. A claimed task-id is taken out of
   // the substring-match pool so Pass 2 doesn't double-link a branch to two tasks.
@@ -285,6 +290,8 @@ async function buildLinks(repoPath, tasks) {
     const entry = buildEntryFromBranch(br, pr, remote);
     if (taskId) {
       byTaskId[taskId] = entry;
+    } else if (BASE_BRANCH_NAMES.has(br.name)) {
+      baseBranches.push(entry);
     } else {
       detached.push(entry);
     }
@@ -318,6 +325,7 @@ async function buildLinks(repoPath, tasks) {
     repo_url: remote ? `https://github.com/${remote.owner}/${remote.repo}` : null,
     by_task_id: byTaskId,
     detached,
+    base_branches: baseBranches,
     fetched_at: new Date().toISOString(),
   };
 }
