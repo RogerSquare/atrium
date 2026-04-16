@@ -99,10 +99,12 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
 
   useEffect(() => { fetchLinks(false) }, [fetchLinks])
 
-  const { lanes, rows, firstRowByLaneKey, allCategoryKeys } = useMemo(() => {
+  const { lanes, rows, firstRowByLaneKey, allCategoryKeys, visibleCount } = useMemo(() => {
     const links = linksData?.by_task_id || {}
 
-    // Each task becomes a row — drafts are excluded since they aren't committed work yet
+    // Each task becomes a row — drafts are excluded since they aren't committed work yet.
+    // ALL non-draft tasks are kept in the row list so that hidden rows can animate their
+    // collapse via CSS instead of unmounting instantly. Visibility is decided per-row below.
     const baseEnriched = tasks
       .filter(t => t.status !== 'draft')
       .map(t => {
@@ -110,26 +112,24 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
         const ts = link?.branch_date || t.updated_at || t.created_at || 0
         return { task: t, link, ts: new Date(ts).getTime() || 0 }
       })
+      .sort((a, b) => b.ts - a.ts)
 
-    // Capture all categories present BEFORE focus filtering, for the self-heal check
     const allCategoryKeys = new Set(
       baseEnriched.map(r => categoryOf(r.task.id) || UNCATEGORIZED_LANE)
     )
 
-    // Apply focus filter on top of the draft filter
-    const enriched = focusedCategory
-      ? baseEnriched.filter(r => (categoryOf(r.task.id) || UNCATEGORIZED_LANE) === focusedCategory)
-      : baseEnriched
+    // Annotate each row with its category + visibility
+    const annotated = baseEnriched.map(r => {
+      const categoryKey = categoryOf(r.task.id) || UNCATEGORIZED_LANE
+      const visible = !focusedCategory || focusedCategory === categoryKey
+      return { ...r, categoryKey, visible }
+    })
 
-    // Newest first
-    enriched.sort((a, b) => b.ts - a.ts)
-
-    // Lane = task category (bug / feat / ui / opt / devops / comp / mobile).
-    // Order lanes by most-recent activity in that category.
+    // Build lanes from VISIBLE rows only — a category with no visible tasks gets no lane.
     const lastTsByCat = new Map()
-    for (const r of enriched) {
-      const key = categoryOf(r.task.id) || UNCATEGORIZED_LANE
-      if (!lastTsByCat.has(key)) lastTsByCat.set(key, r.ts)
+    for (const r of annotated) {
+      if (!r.visible) continue
+      if (!lastTsByCat.has(r.categoryKey)) lastTsByCat.set(r.categoryKey, r.ts)
     }
     const laneList = Array.from(lastTsByCat.entries())
       .sort((a, b) => b[1] - a[1])
@@ -140,26 +140,31 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
         const label = key === UNCATEGORIZED_LANE ? 'other' : CATEGORY_STYLE[key]?.label || key
         return { key, color, label }
       })
-
     const laneByKey = new Map(laneList.map((l, i) => [l.key, { ...l, index: i }]))
 
-    const builtRows = enriched.map(r => {
-      const key = categoryOf(r.task.id) || UNCATEGORIZED_LANE
-      const lane = laneByKey.get(key)
-      return { ...r, lane }
+    // Assign each visible row a `visibleIndex` (its position among visible rows).
+    // SVG positions use visibleIndex so the trail/nodes only reference visible rows.
+    let vIdx = 0
+    const builtRows = annotated.map(r => {
+      const lane = r.visible ? laneByKey.get(r.categoryKey) : null
+      const visibleIndex = r.visible ? vIdx++ : -1
+      return { ...r, lane, visibleIndex }
     })
 
-    // Compute each lane's first-appearance row index so we know where to draw the label pill
+    // First-appearance row per lane (tracked by visibleIndex, used for label pill placement)
     const firstRowByLaneKey = new Map()
-    builtRows.forEach((r, i) => {
-      if (r.lane && !firstRowByLaneKey.has(r.lane.key)) firstRowByLaneKey.set(r.lane.key, i)
-    })
+    for (const r of builtRows) {
+      if (r.lane && !firstRowByLaneKey.has(r.lane.key)) {
+        firstRowByLaneKey.set(r.lane.key, r.visibleIndex)
+      }
+    }
 
     return {
       lanes: laneList.map((l, i) => ({ ...l, index: i })),
       rows: builtRows,
       firstRowByLaneKey,
       allCategoryKeys,
+      visibleCount: vIdx,
     }
   }, [tasks, linksData, focusedCategory])
 
@@ -171,7 +176,7 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
   }, [focusedCategory, allCategoryKeys, setFocus])
 
   const graphWidth = LANE_PAD_LEFT + lanes.length * LANE_WIDTH + LANE_PAD_RIGHT
-  const totalHeight = rows.length * ROW_STRIDE
+  const totalHeight = visibleCount * ROW_STRIDE
 
   const showRepoBanner = linksData && !linksData.repo && !error
   const repoUrl = linksData?.repo_url
@@ -257,25 +262,28 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
       </div>
 
       <div className="rounded-lg overflow-hidden" style={{ background: 'var(--bg-card)', border: '1px solid var(--separator)' }}>
-        <div className="relative" style={{ minHeight: rows.length ? totalHeight : 120 }}>
-          {/* SVG graph overlay — sits between the label column and the message column, doesn't capture clicks */}
+        <div className="relative" style={{ minHeight: visibleCount ? totalHeight : 120 }}>
+          {/* SVG graph overlay — sits between the label column and the message column, doesn't capture clicks.
+              The SVG height animates along with the collapsing rows so trail/nodes stay aligned. */}
           <svg
             width={graphWidth} height={totalHeight}
             className="absolute top-0"
-            style={{ left: `${LABEL_COL_WIDTH}px`, pointerEvents: 'none' }}
+            style={{
+              left: `${LABEL_COL_WIDTH}px`,
+              pointerEvents: 'none',
+              transition: 'height 260ms ease',
+            }}
           >
             {/* Lane lines — kept as muted vertical columns behind the trail so each category
                 still has a visible home. Drawn first so the trail overlays them. */}
             {lanes.map((lane) => {
               const x = LANE_PAD_LEFT + lane.index * LANE_WIDTH + LANE_WIDTH / 2
-              const rowsOnLane = rows
-                .map((r, i) => ({ r, i }))
-                .filter(({ r }) => r.lane?.key === lane.key)
+              const rowsOnLane = rows.filter(r => r.visible && r.lane?.key === lane.key)
               if (rowsOnLane.length < 2) return null
               const first = rowsOnLane[0]
               const last = rowsOnLane[rowsOnLane.length - 1]
-              const y1 = first.i * ROW_STRIDE + ROW_HEIGHT / 2
-              const y2 = last.i * ROW_STRIDE + ROW_HEIGHT / 2
+              const y1 = first.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
+              const y2 = last.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
               return (
                 <line
                   key={`${lane.key}-line`}
@@ -286,17 +294,17 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                 />
               )
             })}
-            {/* Progression trail — one connected path from newest (top) to oldest (bottom)
-                visiting every node. Each segment takes the arriving row's category color.
-                Cross-lane hops draw an L-shape: straight down from the top node, a single
-                rounded corner near the target row, then horizontal into the target node. */}
-            {rows.slice(1).map((curr, idx) => {
-              const prev = rows[idx]
-              if (!prev.lane || !curr.lane) return null
+            {/* Progression trail — one connected path visiting every VISIBLE node top-to-bottom.
+                Each segment takes the arriving row's category color. Cross-lane hops draw a
+                symmetric S with two rounded quarter-turns at the row midline. */}
+            {(() => {
+              const visibleRows = rows.filter(r => r.visible && r.lane)
+              return visibleRows.slice(1).map((curr, i) => {
+              const prev = visibleRows[i]
               const prevX = LANE_PAD_LEFT + prev.lane.index * LANE_WIDTH + LANE_WIDTH / 2
-              const prevY = idx * ROW_STRIDE + ROW_HEIGHT / 2
+              const prevY = prev.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
               const currX = LANE_PAD_LEFT + curr.lane.index * LANE_WIDTH + LANE_WIDTH / 2
-              const currY = (idx + 1) * ROW_STRIDE + ROW_HEIGHT / 2
+              const currY = curr.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
               const color = curr.lane.color
               const sameLane = prevX === currX
               let d
@@ -330,12 +338,13 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                   fill="none"
                 />
               )
-            })}
-            {/* Node circles — one per task, on its category lane, drawn on top of line endpoints */}
-            {rows.map((r, i) => {
-              if (!r.lane) return null
+              })
+            })()}
+            {/* Node circles — one per visible task, on its category lane */}
+            {rows.map((r) => {
+              if (!r.visible || !r.lane) return null
               const x = LANE_PAD_LEFT + r.lane.index * LANE_WIDTH + LANE_WIDTH / 2
-              const y = i * ROW_STRIDE + ROW_HEIGHT / 2
+              const y = r.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
               return (
                 <circle
                   key={r.task.id}
@@ -347,33 +356,38 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
             })}
           </svg>
 
-          {/* Rows — each row is a single horizontal band tinted by its lane color */}
+          {/* Rows — each row is a single horizontal band tinted by its lane color.
+              All non-draft rows always render; hidden rows animate to max-height: 0 and
+              fade out so the fold-away is visible instead of an instant DOM removal. */}
           {rows.map((r, i) => {
             const StatusIcon = STATUS_ICON[r.task.status] || Circle
             const justUpdated = recentlyUpdatedIds.includes(r.task.id)
             const prStyle = r.link?.pr_state ? PR_STATE_STYLE[r.link.pr_state] : null
-            const catKey = categoryOf(r.task.id)
-            const catStyle = catKey ? CATEGORY_STYLE[catKey] : null
-            const showLabel = r.lane && firstRowByLaneKey?.get(r.lane.key) === i
-            const laneTint = r.lane
-              ? `color-mix(in srgb, ${r.lane.color} ${justUpdated ? 22 : 10}%, transparent)`
-              : (justUpdated ? 'color-mix(in srgb, var(--accent-app) 6%, transparent)' : 'transparent')
+            const catStyle = CATEGORY_STYLE[r.categoryKey] || null
+            const showLabel = r.visible && r.lane && firstRowByLaneKey?.get(r.lane.key) === r.visibleIndex
+            // For the lane tint we use the row's category color even when hidden, so the
+            // collapse animation fades the tint in lockstep with the height.
+            const tintColor = catStyle?.color || 'var(--gray-1)'
+            const laneTint = `color-mix(in srgb, ${tintColor} ${justUpdated ? 22 : 10}%, transparent)`
+            const isLastVisible = r.visible && r.visibleIndex === visibleCount - 1
             return (
               <div
                 key={r.task.id}
-                onClick={() => onSelectTask(r.task)}
-                className="flex items-stretch cursor-pointer relative"
+                onClick={() => r.visible && onSelectTask(r.task)}
+                className="flex items-stretch relative"
                 style={{
-                  height: `${ROW_HEIGHT}px`,
-                  marginBottom: i === rows.length - 1 ? 0 : `${ROW_GAP}px`,
+                  cursor: r.visible ? 'pointer' : 'default',
+                  maxHeight: r.visible ? `${ROW_HEIGHT}px` : '0px',
+                  opacity: r.visible ? 1 : 0,
+                  marginBottom: r.visible && !isLastVisible ? `${ROW_GAP}px` : '0px',
+                  overflow: 'hidden',
                   borderRadius: '3px',
                   background: laneTint,
-                  transition: 'background var(--duration-fast) var(--ease-default)',
+                  transition: 'max-height 260ms ease, opacity 200ms ease, margin-bottom 260ms ease, background var(--duration-fast) var(--ease-default)',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = r.lane
-                    ? `color-mix(in srgb, ${r.lane.color} 20%, transparent)`
-                    : 'var(--fill-secondary)'
+                  if (!r.visible) return
+                  e.currentTarget.style.background = `color-mix(in srgb, ${tintColor} 20%, transparent)`
                 }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = laneTint }}
               >
