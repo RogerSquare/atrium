@@ -939,8 +939,18 @@ router.post('/', (req, res) => {
   try {
     const { title, status = 'todo', priority = 'medium', content = '', project = 'Root', type = 'fullstack', component = null, tags = [], parent_task = null, depends_on = [], due_date = null, id, created_by } = req.body;
 
-    const rawId = id || `task-${Date.now()}`;
-    const taskId = sanitizeFilename(rawId) || `task-${Date.now()}`;
+    // Enforce the canonical task-id convention at creation time. No fallback.
+    // See CLAUDE.md "Task ID (STRICT)".
+    const { validateTaskId } = require('../lib/taskIdValidator');
+    const idError = validateTaskId(id);
+    if (idError) return res.status(400).json(idError);
+    const taskId = sanitizeFilename(id);
+    if (!taskId || taskId !== id) {
+      return res.status(400).json({
+        error: 'id contains characters that cannot be used as a filename',
+        received: id,
+      });
+    }
     const safeProject = project === 'Root' ? 'Root' : sanitizeFilename(project);
     const targetDir = safeProject === 'Root' ? TASKS_DIR : safePath(TASKS_DIR, safeProject);
 
