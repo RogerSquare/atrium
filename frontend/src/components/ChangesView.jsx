@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useMemo, useCallback } from 'react'
-import { Circle, Loader2, Eye, CheckCircle2, GitBranch, GitPullRequest, ExternalLink, RefreshCw, X, Check, AlertCircle, Clock } from 'lucide-react'
+import { Circle, Loader2, Eye, CheckCircle2, GitBranch, GitPullRequest, ExternalLink, RefreshCw, X, Check, AlertCircle, Clock, GitPullRequestDraft, AlertTriangle, XCircle, ChevronDown, ChevronRight } from 'lucide-react'
 import { API_BASE, apiFetch } from '../config'
 import { STATUS_COLOR } from '../constants'
 
@@ -54,36 +54,39 @@ const PR_STATE_STYLE = {
   CLOSED: { color: 'var(--apple-red)',    label: 'closed' },
 }
 
-// Review-decision indicator — only rendered for OPEN PRs. Null/empty decision = awaiting
-// a first review, so it gets the clock icon.
-// Semantic: what the indicator SHOULD tell the user at a glance.
-//  - READY           — explicit approval OR no review required (solo repo / no reviewers). Green check.
-//  - BLOCKED         — a reviewer requested changes. Red alert.
-//  - AWAITING_REVIEW — branch protection / requested reviewers actively waiting. Yellow clock.
-//
-// `reviewDecision` from `gh pr list` maps onto this:
-//   APPROVED           -> READY
-//   CHANGES_REQUESTED  -> BLOCKED
-//   REVIEW_REQUIRED    -> AWAITING_REVIEW
-//   ""  / null         -> READY  (no branch protection AND no reviewers requested == nothing to wait on)
+// Review-decision indicator — only rendered for OPEN PRs.
+// Only explicit approval flips the indicator green. Explicit change requests flip it red.
+// Everything else (REVIEW_REQUIRED, empty, null) means "still open, not yet greenlit" and
+// gets the yellow pending-merge clock. Draft PRs are handled separately (hollow variant).
 const REVIEW_INDICATOR = {
-  READY:           { icon: Check,       color: 'var(--apple-green)',  label: 'Ready' },
-  BLOCKED:         { icon: AlertCircle, color: 'var(--apple-red)',    label: 'Changes requested' },
-  AWAITING_REVIEW: { icon: Clock,       color: 'var(--apple-yellow)', label: 'Awaiting review' },
+  APPROVED: { icon: Check,       color: 'var(--apple-green)',  label: 'Approved' },
+  BLOCKED:  { icon: AlertCircle, color: 'var(--apple-red)',    label: 'Changes requested' },
+  PENDING:  { icon: Clock,       color: 'var(--apple-yellow)', label: 'Pending merge' },
+  DRAFT:    { icon: Clock,       color: 'var(--text-tertiary)', label: 'Draft — not yet ready for review', hollow: true },
 }
-function reviewStyleFor(decision) {
-  switch (decision) {
-    case 'APPROVED':          return { ...REVIEW_INDICATOR.READY,           label: 'Approved' }
-    case 'CHANGES_REQUESTED': return REVIEW_INDICATOR.BLOCKED
-    case 'REVIEW_REQUIRED':   return REVIEW_INDICATOR.AWAITING_REVIEW
-    // Empty string or null: no branch protection requires a review AND no reviewers
-    // are requested, so the PR has nothing explicit to wait on. Treat as ready.
-    case '':
-    case null:
-    case undefined:
-      return { ...REVIEW_INDICATOR.READY, label: 'No review required' }
-    default: return null
-  }
+function reviewStyleFor(decision, { isDraft = false } = {}) {
+  if (isDraft) return REVIEW_INDICATOR.DRAFT
+  if (decision === 'APPROVED') return REVIEW_INDICATOR.APPROVED
+  if (decision === 'CHANGES_REQUESTED') return REVIEW_INDICATOR.BLOCKED
+  return REVIEW_INDICATOR.PENDING
+}
+
+// Composite blocker indicator — combines merge-state and CI into a single slot so the row
+// doesn't get cramped. Priority (highest first):
+//   1. merge-blocker (DIRTY = conflicts; BEHIND = needs rebase)    — red triangle
+//   2. CI failure                                                  — red X
+//   3. CI pending                                                  — yellow spinner
+//   4. CI success                                                  — green dot
+//   (anything else — null: render nothing)
+// Only rendered on OPEN non-draft PRs. Draft and merged/closed PRs have nothing here.
+function blockerStyleFor({ merge_state, ci_status, pr_state, is_draft }) {
+  if (pr_state !== 'OPEN' || is_draft) return null
+  if (merge_state === 'DIRTY')   return { icon: AlertTriangle, color: 'var(--apple-red)',    label: 'Conflicts — needs rebase' }
+  if (merge_state === 'BEHIND')  return { icon: AlertTriangle, color: 'var(--apple-orange)', label: 'Behind base — needs rebase' }
+  if (ci_status === 'FAILURE')   return { icon: XCircle,       color: 'var(--apple-red)',    label: 'CI failing' }
+  if (ci_status === 'PENDING')   return { icon: Loader2,       color: 'var(--apple-yellow)', label: 'CI running', spin: true }
+  if (ci_status === 'SUCCESS')   return { icon: Check,         color: 'var(--apple-green)',  label: 'CI passing' }
+  return null
 }
 
 const FOCUS_STORAGE_KEY = 'taskBoardChangesFocus'
@@ -541,8 +544,20 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                   {r.link?.pr_number && prStyle && (() => {
                     // Review-decision indicator is only meaningful while the PR is still OPEN.
                     // Once merged/closed, the PR badge color already tells the whole story.
-                    const reviewStyle = r.link.pr_state === 'OPEN' ? reviewStyleFor(r.link.review_decision) : null
+                    const isDraft = r.link.is_draft === true
+                    const reviewStyle = r.link.pr_state === 'OPEN' ? reviewStyleFor(r.link.review_decision, { isDraft }) : null
+                    const blockerStyle = blockerStyleFor(r.link)
                     const ReviewIcon = reviewStyle?.icon
+                    const BlockerIcon = blockerStyle?.icon
+                    const PrIcon = isDraft ? GitPullRequestDraft : GitPullRequest
+                    // Draft PRs render with a dashed border + muted palette — echoes GitHub's own draft visual vocabulary
+                    const prBadgeBg = isDraft ? 'var(--fill-secondary)' : `color-mix(in srgb, ${prStyle.color} 14%, transparent)`
+                    const prBadgeBorder = isDraft
+                      ? '1px dashed color-mix(in srgb, var(--text-tertiary) 55%, transparent)'
+                      : `1px solid color-mix(in srgb, ${prStyle.color} 35%, transparent)`
+                    const prBadgeColor = isDraft ? 'var(--text-tertiary)' : prStyle.color
+                    const stateLabel = isDraft ? 'draft' : prStyle.label
+                    const tooltipSuffix = [reviewStyle?.label, blockerStyle?.label].filter(Boolean).map(s => s.toLowerCase()).join(' · ')
                     return (
                       <>
                         {reviewStyle && (
@@ -552,12 +567,28 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                               width: '18px',
                               height: '18px',
                               borderRadius: '50%',
-                              background: `color-mix(in srgb, ${reviewStyle.color} 18%, transparent)`,
+                              background: reviewStyle.hollow ? 'transparent' : `color-mix(in srgb, ${reviewStyle.color} 18%, transparent)`,
+                              border: reviewStyle.hollow ? `1px dashed ${reviewStyle.color}` : 'none',
                               color: reviewStyle.color,
                             }}
                             title={reviewStyle.label}
                           >
                             <ReviewIcon className="w-3 h-3" />
+                          </span>
+                        )}
+                        {blockerStyle && (
+                          <span
+                            className="shrink-0 flex items-center justify-center"
+                            style={{
+                              width: '18px',
+                              height: '18px',
+                              borderRadius: '50%',
+                              background: `color-mix(in srgb, ${blockerStyle.color} 18%, transparent)`,
+                              color: blockerStyle.color,
+                            }}
+                            title={blockerStyle.label}
+                          >
+                            <BlockerIcon className={`w-3 h-3 ${blockerStyle.spin ? 'animate-spin' : ''}`} />
                           </span>
                         )}
                         <a
@@ -568,15 +599,15 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                           style={{
                             padding: '2px 6px',
                             borderRadius: '4px',
-                            background: `color-mix(in srgb, ${prStyle.color} 14%, transparent)`,
-                            border: `1px solid color-mix(in srgb, ${prStyle.color} 35%, transparent)`,
-                            color: prStyle.color,
+                            background: prBadgeBg,
+                            border: prBadgeBorder,
+                            color: prBadgeColor,
                             fontSize: '10px',
                             fontWeight: 600,
                           }}
-                          title={`PR #${r.link.pr_number}: ${r.link.pr_title} (${prStyle.label}${reviewStyle ? ` · ${reviewStyle.label.toLowerCase()}` : ''})`}
+                          title={`PR #${r.link.pr_number}: ${r.link.pr_title} (${stateLabel}${tooltipSuffix ? ` · ${tooltipSuffix}` : ''})`}
                         >
-                          <GitPullRequest className="w-2.5 h-2.5" />
+                          <PrIcon className="w-2.5 h-2.5" />
                           #{r.link.pr_number}
                         </a>
                       </>
@@ -592,7 +623,123 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
             </div>
           )}
         </div>
+        {/* Unlinked (detached) branches + PRs — branches that don't substring-match any task
+            id. Rendered as a collapsible footer so the graph never silently drops a branch. */}
+        {linksData?.detached?.length > 0 && (
+          <UnlinkedSection detached={linksData.detached} />
+        )}
       </div>
+    </div>
+  )
+}
+
+function UnlinkedSection({ detached }) {
+  const sorted = [...detached].sort((a, b) => {
+    const aT = new Date(a.branch_date || 0).getTime()
+    const bT = new Date(b.branch_date || 0).getTime()
+    return bT - aT
+  })
+  const [expanded, setExpanded] = useState(() => sorted.length <= 3)
+  return (
+    <div style={{ borderTop: '0.5px solid var(--separator)' }}>
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center gap-2 apple-press"
+        style={{
+          padding: '10px 16px',
+          fontSize: 'var(--text-caption2)',
+          fontWeight: 'var(--font-semibold)',
+          color: 'var(--text-tertiary)',
+          letterSpacing: '0.02em',
+          textTransform: 'uppercase',
+        }}
+        aria-expanded={expanded}
+      >
+        {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <GitBranch className="w-3 h-3" />
+        <span>Unlinked</span>
+        <span
+          style={{
+            padding: '1px 6px',
+            borderRadius: '999px',
+            background: 'var(--fill-secondary)',
+            color: 'var(--text-tertiary)',
+            fontSize: '10px',
+            fontWeight: 700,
+            minWidth: '20px',
+            textAlign: 'center',
+          }}
+        >
+          {sorted.length}
+        </span>
+        <span className="flex-1" />
+        <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-muted)', textTransform: 'none', fontWeight: 400 }}>
+          {expanded ? 'Hide' : 'Show'}
+        </span>
+      </button>
+      {expanded && (
+        <div style={{ padding: '0 8px 8px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          {sorted.map(entry => {
+            const prStyle = entry.pr_state ? PR_STATE_STYLE[entry.pr_state] : null
+            const isDraft = entry.is_draft === true
+            const linkUrl = entry.pr_url || entry.branch_url || '#'
+            const subtitle = entry.branch_subject || entry.pr_title || ''
+            return (
+              <a
+                key={`unlinked-${entry.branch}-${entry.pr_number || 'nopr'}`}
+                href={linkUrl}
+                target="_blank" rel="noreferrer"
+                className="flex items-center gap-2.5 apple-press"
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '4px',
+                  background: 'var(--fill-secondary)',
+                  color: 'var(--text-tertiary)',
+                  textDecoration: 'none',
+                  minHeight: '36px',
+                }}
+                title={subtitle || entry.branch}
+              >
+                <GitBranch className="w-3.5 h-3.5 shrink-0" style={{ opacity: 0.7 }} />
+                <span
+                  className="truncate"
+                  style={{ fontSize: 'var(--text-caption1)', fontFamily: 'var(--font-mono, ui-monospace, monospace)', color: 'var(--text-app)', flex: '0 1 auto', maxWidth: '40%' }}
+                >
+                  {entry.branch}
+                </span>
+                {subtitle && (
+                  <span
+                    className="truncate"
+                    style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-muted)', flex: '1 1 auto', minWidth: 0 }}
+                  >
+                    {subtitle}
+                  </span>
+                )}
+                {entry.pr_number && prStyle && (
+                  <span
+                    className="shrink-0 flex items-center gap-1"
+                    style={{
+                      padding: '1px 6px',
+                      borderRadius: '3px',
+                      background: isDraft ? 'transparent' : `color-mix(in srgb, ${prStyle.color} 14%, transparent)`,
+                      border: isDraft
+                        ? '1px dashed color-mix(in srgb, var(--text-tertiary) 55%, transparent)'
+                        : `1px solid color-mix(in srgb, ${prStyle.color} 35%, transparent)`,
+                      color: isDraft ? 'var(--text-tertiary)' : prStyle.color,
+                      fontSize: '10px',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {isDraft ? <GitPullRequestDraft className="w-2.5 h-2.5" /> : <GitPullRequest className="w-2.5 h-2.5" />}
+                    #{entry.pr_number}
+                  </span>
+                )}
+                <ExternalLink className="w-3 h-3 shrink-0" style={{ opacity: 0.5 }} />
+              </a>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
