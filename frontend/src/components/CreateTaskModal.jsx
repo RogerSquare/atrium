@@ -3,8 +3,13 @@ import { X } from 'lucide-react'
 import ModalOverlay from './ModalOverlay'
 import { apiFetch } from '../config'
 
+// Must match backend/lib/taskIdValidator.js. See CLAUDE.md "Task ID (STRICT)".
+const TASK_ID_REGEX = /^(feat|bug|ui|opt|comp|devops|mobile)(-[a-z0-9]+)+-\d{3}$/
+const TASK_ID_HELPER = 'Format: category-descriptor-NNN (e.g. feat-auth-001). Category: feat, bug, ui, opt, comp, devops, mobile.'
+
 export default function CreateTaskModal({ projects, activeProject, onClose, onCreateTask }) {
   const [title, setTitle] = useState('')
+  const [taskId, setTaskId] = useState('')
   const [project, setProject] = useState(activeProject === 'All' ? 'Root' : activeProject)
   const [type, setType] = useState('fullstack')
   const [priority, setPriority] = useState('medium')
@@ -12,6 +17,9 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
   const [tags, setTags] = useState([])
   const [templates, setTemplates] = useState([])
   const [selectedTemplate, setSelectedTemplate] = useState('')
+
+  const idValid = TASK_ID_REGEX.test(taskId)
+  const canSubmit = title.trim() && idValid
 
   useEffect(() => {
     apiFetch('/api/tasks/templates')
@@ -33,8 +41,8 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
 
   const handleSubmit = (e, status = 'todo') => {
     if (e?.preventDefault) e.preventDefault()
-    if (!title.trim()) return
-    onCreateTask({ title, project, type, priority, content: description, status, tags })
+    if (!canSubmit) return
+    onCreateTask({ id: taskId, title, project, type, priority, content: description, status, tags })
     onClose()
   }
 
@@ -104,6 +112,39 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
             />
           </div>
 
+          {/* Task ID */}
+          <div style={{ marginBottom: 'var(--space-5)' }}>
+            <label style={{ display: 'block', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>Task ID</label>
+            <input
+              type="text"
+              required
+              placeholder="feat-auth-001"
+              value={taskId}
+              onChange={(e) => setTaskId(e.target.value.trim())}
+              className="w-full focus:outline-none"
+              style={{
+                background: 'var(--fill-secondary)',
+                border: taskId && !idValid ? '1px solid var(--apple-red)' : '1px solid transparent',
+                borderRadius: 'var(--radius-md)',
+                padding: '10px 14px',
+                fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                fontSize: 'var(--text-subhead)',
+                color: 'var(--text-app)',
+              }}
+              onFocus={e => e.target.style.boxShadow = '0 0 0 3px color-mix(in srgb, var(--accent-app) 20%, transparent)'}
+              onBlur={e => e.target.style.boxShadow = 'none'}
+            />
+            <div
+              style={{
+                marginTop: '6px',
+                fontSize: 'var(--text-caption2)',
+                color: taskId && !idValid ? 'var(--apple-red)' : 'var(--text-tertiary)',
+              }}
+            >
+              {taskId && !idValid ? `"${taskId}" doesn't match the format. ` : ''}{TASK_ID_HELPER}
+            </div>
+          </div>
+
           {/* Fields — grouped */}
           <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', background: 'var(--fill-secondary)', marginBottom: 'var(--space-5)' }}>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -161,10 +202,10 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
           <button type="button" onClick={onClose} className="apple-press" style={{ padding: '10px 20px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
             Cancel
           </button>
-          <button type="button" onClick={(e) => handleSubmit(e, 'draft')} disabled={!title.trim()} className="apple-press" style={{ padding: '10px 20px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-medium)', color: 'var(--text-app)', background: 'var(--fill-secondary)', border: 'none', cursor: 'pointer', opacity: title.trim() ? 1 : 0.4 }}>
+          <button type="button" onClick={(e) => handleSubmit(e, 'draft')} disabled={!canSubmit} className="apple-press" style={{ padding: '10px 20px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-medium)', color: 'var(--text-app)', background: 'var(--fill-secondary)', border: 'none', cursor: canSubmit ? 'pointer' : 'not-allowed', opacity: canSubmit ? 1 : 0.4 }}>
             Save as Draft
           </button>
-          <button onClick={(e) => handleSubmit(e, 'todo')} disabled={!title.trim()} className="apple-press text-white" style={{ padding: '10px 24px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-semibold)', background: 'var(--accent-app)', boxShadow: 'var(--shadow-sm)', border: 'none', cursor: 'pointer', opacity: title.trim() ? 1 : 0.4 }}>
+          <button onClick={(e) => handleSubmit(e, 'todo')} disabled={!canSubmit} className="apple-press text-white" style={{ padding: '10px 24px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-semibold)', background: 'var(--accent-app)', boxShadow: 'var(--shadow-sm)', border: 'none', cursor: canSubmit ? 'pointer' : 'not-allowed', opacity: canSubmit ? 1 : 0.4 }}>
             Create Task
           </button>
         </footer>

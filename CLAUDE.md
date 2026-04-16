@@ -46,16 +46,27 @@ When creating multiple tasks at once:
 3.  **Verify** each task after creation — confirm the `content` field is populated, not empty.
 4.  If tasks are created with empty descriptions, update them immediately before proceeding.
 
-1.  **Task ID**: You MUST provide a human-readable `id` when creating tasks via the API. Use the format `{category}-{descriptor}-{number}`, for example: `feat-auth-001`, `ui-filters-003`, `mobile-header-002`, `opt-perf-004`. Common category prefixes:
-    - `feat-` — new features
-    - `comp-` — component build/refactor
-    - `ui-` — UI/UX improvements
-    - `opt-` — optimization (perf, security, reliability, architecture)
-    - `bug-` — bug fixes
-    - `devops-` — infrastructure/deployment
-    - `mobile-` — mobile-specific work
+1.  **Task ID (STRICT)**: Every task MUST have an `id` that matches this exact regex:
 
-    If no `id` is provided, the backend falls back to auto-generating `task-{timestamp}` — avoid this.
+    ```
+    ^(feat|bug|ui|opt|comp|devops|mobile)(-[a-z0-9]+)+-\d{3}$
+    ```
+
+    - **Format**: `{category}-{descriptor}-{NNN}` — e.g. `feat-auth-001`, `ui-filters-003`, `mobile-header-002`, `opt-perf-004`, `feat-project-archive-impl-007`.
+    - **Category** (required, fixed set):
+      - `feat-` — new features
+      - `bug-` — bug fixes
+      - `ui-` — UI/UX improvements
+      - `opt-` — optimization (perf, security, reliability, architecture)
+      - `comp-` — component build/refactor
+      - `devops-` — infrastructure/deployment
+      - `mobile-` — mobile-specific work
+    - **Descriptor**: one or more lowercase hyphen-separated segments (a-z 0-9 only; no underscores, no uppercase).
+    - **Number**: exactly 3 digits.
+
+    **Enforcement**: `POST /api/tasks` returns **400** if the id is missing or malformed, with `expected_format` + `examples` in the response body. The MCP tool `atrium_create_task` fails the same way before the HTTP round-trip. There is no timestamp fallback — a task must have a valid id to exist.
+
+    **Grandfathering**: tasks whose ids were created before this rule (e.g. `task-1763290321`, or unusual legacy formats) remain fully readable and updatable via GET / PUT / DELETE. Only CREATION is gated on the regex. If you spot a legacy id while working, prefer leaving it alone unless the human explicitly asks to rename.
 2.  **Timestamps**:
     - `created_at`: Force-injected on task creation.
     - `started_at`: Automatically set when status moves to `in_progress`.
