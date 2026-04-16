@@ -304,12 +304,17 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                 d = `M ${prevX} ${prevY} L ${currX} ${currY}`
               } else {
                 const dir = currX > prevX ? 1 : -1
-                // Clamp radius so it never exceeds the vertical run or the horizontal distance
-                const r = Math.min(10, (currY - prevY) * 0.5, Math.abs(currX - prevX))
+                const midY = (prevY + currY) / 2
+                // Symmetric S: short vertical leg out of each node, matching quarter-circle
+                // corners at the midline, and a horizontal bridge between them. Clamp radius
+                // so both corners fit the row height and the inter-lane distance.
+                const r = Math.min(10, (currY - prevY) / 4, Math.abs(currX - prevX) / 2)
                 d = [
                   `M ${prevX} ${prevY}`,
-                  `L ${prevX} ${currY - r}`,
-                  `Q ${prevX} ${currY}, ${prevX + dir * r} ${currY}`,
+                  `L ${prevX} ${midY - r}`,
+                  `Q ${prevX} ${midY}, ${prevX + dir * r} ${midY}`,
+                  `L ${currX - dir * r} ${midY}`,
+                  `Q ${currX} ${midY}, ${currX} ${midY + r}`,
                   `L ${currX} ${currY}`,
                 ].join(' ')
               }
