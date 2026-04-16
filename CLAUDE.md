@@ -207,6 +207,7 @@ When a task ships something **another agent or human would need to know to reuse
 - Styling tweaks, copy changes, dependency bumps
 - One-off debugging work that didn't produce a reusable pattern
 - Anything already covered by an existing wiki page — **update the existing page instead of creating a duplicate**
+- **Atrium-internal features that are tightly coupled to this repo's task/kanban model** and would not make sense to lift into another project (e.g. a kanban view that reads Atrium's `activity_log`, a setting tied to Atrium's `projects.json`). The r-that-wiki is a *cross-project* knowledge base; Atrium-shaped work belongs in this `CLAUDE.md`, in-code comments, and the task's Comments — not in the public wiki. When invoking this carve-out, add a bullet to the task's Comments explaining why (e.g. `- **Wiki:** skipped — feature is tightly coupled to Atrium's task model, not reusable elsewhere`).
 
 **Where the entry lives:**
 - `r-that-wiki/src/content/docs/components/<slug>.mdx` — reusable UI pieces
