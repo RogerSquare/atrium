@@ -221,6 +221,8 @@ router.post('/:idOrName/archive', (req, res) => {
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const updated = registry.archive(project.id);
     if (!updated) return res.status(404).json({ error: 'Project not found' });
+    // Physical folder moved; force the task scanner to rescan on next request.
+    require('../lib/tasks').invalidateCache();
     res.json({ success: true, project: updated });
     const io = getIO();
     if (io) io.emit('project_changed');
@@ -259,6 +261,7 @@ router.post('/:idOrName/unarchive', (req, res) => {
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const updated = registry.unarchive(project.id);
     if (!updated) return res.status(404).json({ error: 'Project not found' });
+    require('../lib/tasks').invalidateCache();
     res.json({ success: true, project: updated });
     const io = getIO();
     if (io) io.emit('project_changed');
