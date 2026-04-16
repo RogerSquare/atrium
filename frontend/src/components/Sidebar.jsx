@@ -117,15 +117,47 @@ function Sidebar({
   // Expanded sidebar
   return (
     <div className={`${mobile ? 'flex' : 'hidden sm:flex'} flex-col shrink-0`} style={{ width: mobile ? '100%' : '260px', height: '100%', background: 'var(--bg-secondary)', borderRight: '0.5px solid var(--separator)', transition: `width var(--duration-slow) var(--ease-default)`, overflow: 'hidden' }}>
-      {/* Header: logo + collapse toggle */}
+      {/* Header: logo + archive shortcut + collapse toggle */}
       <div className="flex items-center justify-between shrink-0" style={{ padding: '14px 14px 10px' }}>
         <div className="flex items-center gap-2.5">
           <img src="/favicon.svg" alt="Logo" style={{ width: '26px', height: '26px' }} />
           <span style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)', letterSpacing: 'var(--tracking-tight)' }}>Atrium</span>
         </div>
-        <button onClick={onToggleCollapse} className="apple-press" style={{ padding: '6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)' }} title="Collapse sidebar">
-          <PanelLeftClose className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          {archivedProjects.length > 0 && (
+            <button
+              onClick={onOpenArchivedModal}
+              className="apple-press relative"
+              style={{ padding: '6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)' }}
+              title={`Archived projects (${archivedProjects.length})`}
+              aria-label={`Archived projects (${archivedProjects.length})`}
+            >
+              <Archive className="w-4 h-4" />
+              <span
+                style={{
+                  position: 'absolute',
+                  top: '1px',
+                  right: '1px',
+                  minWidth: '14px',
+                  height: '14px',
+                  padding: '0 3px',
+                  borderRadius: '7px',
+                  background: 'var(--accent-app)',
+                  color: 'white',
+                  fontSize: '9px',
+                  fontWeight: 700,
+                  lineHeight: '14px',
+                  textAlign: 'center',
+                }}
+              >
+                {archivedProjects.length}
+              </span>
+            </button>
+          )}
+          <button onClick={onToggleCollapse} className="apple-press" style={{ padding: '6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)' }} title="Collapse sidebar">
+            <PanelLeftClose className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Scrollable middle section */}
@@ -212,17 +244,6 @@ function Sidebar({
             <Plus className="w-4 h-4 shrink-0" />
             <span>New Project</span>
           </button>
-          {archivedProjects.length > 0 && (
-            <button
-              onClick={onOpenArchivedModal}
-              className="w-full flex items-center gap-2.5 text-left apple-press"
-              style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)' }}
-              title="View archived projects"
-            >
-              <Archive className="w-3.5 h-3.5 shrink-0" style={{ opacity: 0.7 }} />
-              <span className="truncate flex-1">{archivedProjects.length} archived</span>
-            </button>
-          )}
         </div>
       </SidebarSection>
 
