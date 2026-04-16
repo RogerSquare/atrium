@@ -178,16 +178,29 @@ router.get('/', (req, res) => {
     let tasks = getAllTasks(TASKS_DIR);
     let safeTasks = tasks.map(({ filePath, ...rest }) => rest);
 
+    const projectRegistry = require('../lib/projectRegistry');
+
     // Filter by project if specified (supports both project name and project_id)
     if (req.query.project || req.query.project_id) {
       let projectFilter = req.query.project;
       if (req.query.project_id) {
-        const projectRegistry = require('../lib/projectRegistry');
         const proj = projectRegistry.resolve(req.query.project_id);
         if (proj) projectFilter = proj.folder;
       }
       if (projectFilter) {
         safeTasks = safeTasks.filter(t => t.project === projectFilter);
+      }
+    }
+
+    // Agent contract: tasks in archived projects are hidden by default.
+    // Pass ?include=archived or ?include=all to opt in (used by the UI's archived view).
+    const includeRaw = typeof req.query.include === 'string' ? req.query.include.toLowerCase() : 'active';
+    if (includeRaw !== 'archived' && includeRaw !== 'all') {
+      const archivedFolders = new Set(
+        Object.values(projectRegistry.getAll({ include: 'archived' })).map(p => p.folder)
+      );
+      if (archivedFolders.size > 0) {
+        safeTasks = safeTasks.filter(t => !archivedFolders.has(t.project));
       }
     }
 
@@ -642,6 +655,22 @@ router.put('/:id', async (req, res) => {
       filePath = path.join(TASKS_DIR, `${id}.md`);
     }
 
+    // Agent contract: tasks in archived projects are frozen — no updates.
+    // Also blocks transitioning a task INTO an archived project via the `project` field.
+    const projectRegistry = require('../lib/projectRegistry');
+    if (originalProject && originalProject !== 'Root') {
+      const origProj = projectRegistry.resolve(originalProject);
+      if (origProj && origProj.archived === true) {
+        return res.status(403).json({ error: 'Project is archived; cannot update tasks here' });
+      }
+    }
+    if (project && project !== 'Root' && project !== originalProject) {
+      const targetProj = projectRegistry.resolve(project);
+      if (targetProj && targetProj.archived === true) {
+        return res.status(403).json({ error: 'Target project is archived; cannot move tasks into it' });
+      }
+    }
+
     let currentData = { id };
     let currentContent = '';
 
@@ -914,6 +943,15 @@ router.post('/', (req, res) => {
 
     if (!targetDir) {
       return res.status(400).json({ error: 'Invalid project name' });
+    }
+
+    // Agent contract: tasks cannot be created in archived projects
+    if (safeProject !== 'Root') {
+      const projectRegistry = require('../lib/projectRegistry');
+      const proj = projectRegistry.resolve(safeProject);
+      if (proj && proj.archived === true) {
+        return res.status(403).json({ error: 'Project is archived; cannot create tasks here' });
+      }
     }
 
     if (!fs.existsSync(targetDir)) {

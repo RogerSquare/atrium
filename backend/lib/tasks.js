@@ -32,6 +32,9 @@ const scanDirectory = (dirPath) => {
     const filePath = path.join(dirPath, file);
     const stats = fs.statSync(filePath);
     if (stats.isDirectory()) {
+      // Skipping dot-prefixed dirs is what keeps archived projects out of the
+      // task index (.archived/) alongside .history/.trash. Do NOT loosen this
+      // rule without updating the archive route contract.
       if (!file.startsWith('.')) {
         scanDirectory(filePath);
       }

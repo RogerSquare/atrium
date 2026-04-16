@@ -350,6 +350,23 @@ PUT /api/tasks/<task-id>  with body { "project": "Root" }
 ```
 The backend will physically move the file from the subfolder to the top-level `backend/tasks/` directory.
 
+**Archived projects** live under `backend/tasks/.archived/<ProjectName>/` — the dot-prefix keeps them out of the task scanner's walk (see `backend/lib/tasks.js scanDirectory`). Registry entries for archived projects stay in `projects.json` with `archived: true` + `archived_at: ISO`. `Root` is never archivable.
+
+## Archived Projects (STRICT):
+A project can be archived (soft-retired) via `POST /api/projects/:idOrName/archive`. Archive physically moves the folder to `backend/tasks/.archived/<ProjectName>/` and flips `archived: true` in the registry. Restore via `POST /api/projects/:idOrName/unarchive` reverses both the folder move and the flag. Both endpoints are idempotent.
+
+**Agent contract (STRICT):**
+- `GET /api/projects` default-excludes archived projects. Pass `?include=archived` to list only archived, `?include=all` for both.
+- `GET /api/tasks` default-excludes tasks belonging to archived projects. Pass `?include=archived` or `?include=all` to opt in.
+- `POST /api/tasks` returns **403** if the target project is archived. Agents MUST NOT create tasks in archived projects.
+- `PUT /api/tasks/:id` returns **403** if the task's current project is archived, or if the update would move the task INTO an archived project. Agents MUST NOT transition tasks in archived projects.
+- When you encounter a task in an archived project via a direct-by-id lookup (outside the default queue), return it to the queue — do NOT silently absorb or pick it up.
+- The `Root` project cannot be archived. `POST /api/projects/root/archive` returns 400.
+
+**When to archive:** shipped side projects, completed experiments, repos you don't want cluttering the sidebar. Archive is reversible — use it freely in place of delete unless you actually want the tasks gone.
+
+**When NOT to archive:** active work, even if paused briefly. Use the task-level `status: draft` or `status: waiting_input` for short-term freezes; archive is for multi-week+ dormancy.
+
 ### Description
 Implement the login form and token storage.
 - [x] Create UI Form

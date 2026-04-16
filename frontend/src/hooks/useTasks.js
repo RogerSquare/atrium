@@ -4,6 +4,7 @@ import { API_URL, API_BASE, apiFetch } from '../config'
 export default function useTasks(user, socketRef) {
   const [tasks, setTasks] = useState([])
   const [projects, setProjects] = useState([{ id: 'root', name: 'Root', folder: 'Root' }])
+  const [archivedProjects, setArchivedProjects] = useState([])
   const [recentlyUpdatedIds, setRecentlyUpdatedIds] = useState([])
   const flashTimersRef = useRef({})
   const [activeProject, setActiveProject] = useState(localStorage.getItem('opusBoardActiveProject') || 'All')
@@ -24,24 +25,29 @@ export default function useTasks(user, socketRef) {
   const fetchData = useCallback(async () => {
     if (!user) return
     try {
-      const [tasksRes, projectsRes] = await Promise.all([
+      const [tasksRes, projectsRes, archivedRes] = await Promise.all([
         apiFetch(`${API_URL}/tasks`),
-        apiFetch(`${API_URL}/projects`)
+        apiFetch(`${API_URL}/projects?include=active`),
+        apiFetch(`${API_URL}/projects?include=archived`)
       ])
 
       if (tasksRes.ok && projectsRes.ok) {
         const tasksData = await tasksRes.json()
         const projectsData = await projectsRes.json()
+        const archivedData = archivedRes.ok ? await archivedRes.json() : []
         setTasks(tasksData)
         setProjects(projectsData)
+        setArchivedProjects(archivedData)
 
-        // Validate active project — if saved project no longer exists, pick first available
+        // Validate active project — if saved project was archived mid-session, fall back to 'All'
+        // rather than silently switching to something unrelated.
         setActiveProject(prev => {
           const folders = projectsData.map(p => p.folder || p)
-          if (prev === 'All' || !folders.includes(prev)) {
-            return folders.length > 0 ? folders[0] : 'Root'
-          }
-          return prev
+          const archivedFolders = archivedData.map(p => p.folder || p)
+          if (prev === 'All') return prev
+          if (folders.includes(prev)) return prev
+          if (archivedFolders.includes(prev)) return 'All'
+          return folders.length > 0 ? folders[0] : 'Root'
         })
 
         // Deep-link: open task from URL query param on first load
@@ -282,6 +288,38 @@ export default function useTasks(user, socketRef) {
     }
   }, [activeProject, projects, fetchData])
 
+  const archiveProject = useCallback(async (idOrName) => {
+    if (!idOrName || idOrName === 'Root' || idOrName === 'root') return { ok: false, error: 'Cannot archive Root' }
+    try {
+      const res = await apiFetch(`${API_URL}/projects/${encodeURIComponent(idOrName)}/archive`, { method: 'POST' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        return { ok: false, error: err.error || 'Archive failed' }
+      }
+      // If the archived project was active, fall back to 'All' so we don't land on nothing
+      setActiveProject(prev => prev === idOrName ? 'All' : prev)
+      await fetchData()
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: error.message }
+    }
+  }, [fetchData])
+
+  const unarchiveProject = useCallback(async (idOrName) => {
+    if (!idOrName || idOrName === 'Root' || idOrName === 'root') return { ok: false, error: 'Root is never archived' }
+    try {
+      const res = await apiFetch(`${API_URL}/projects/${encodeURIComponent(idOrName)}/unarchive`, { method: 'POST' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        return { ok: false, error: err.error || 'Restore failed' }
+      }
+      await fetchData()
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: error.message }
+    }
+  }, [fetchData])
+
   const activeFilterCount = [
     filterType !== 'all',
     filterPriority !== 'all',
@@ -379,6 +417,9 @@ export default function useTasks(user, socketRef) {
     handleCreateTask,
     handleCreateProject,
     handleDeleteProject,
+    archivedProjects,
+    archiveProject,
+    unarchiveProject,
     fetchData,
     recentlyUpdatedIds,
   }

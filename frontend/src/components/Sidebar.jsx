@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, memo } from 'react'
-import { ChevronDown, ChevronRight, ChevronLeft, Folder, Plus, Trash2, UserCircle2, Clock, SlidersHorizontal, X, BarChart3, Activity, Play, Square, Settings as SettingsIcon, MessageCircle, Eye, LogOut, PanelLeftClose, PanelLeftOpen, AlertCircle, Palette } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronLeft, Folder, Plus, Trash2, UserCircle2, Clock, SlidersHorizontal, X, BarChart3, Activity, Play, Square, Settings as SettingsIcon, MessageCircle, Eye, LogOut, PanelLeftClose, PanelLeftOpen, AlertCircle, Palette, MoreHorizontal, Archive } from 'lucide-react'
 import { API_BASE, apiFetch } from '../config'
 
 const FILTER_TYPES = ['all', 'frontend', 'backend', 'fullstack', 'devops']
@@ -25,6 +25,7 @@ function Sidebar({
   collapsed, onToggleCollapse, mobile,
   // Projects
   projects, tasks, activeProject, onSetActiveProject, onCreateProject, onDeleteProject,
+  archivedProjects = [], onArchiveProject, onOpenArchivedModal,
   // Filters
   filterType, setFilterType, filterPriority, setFilterPriority,
   filterAssignee, setFilterAssignee, filterToday, setFilterToday,
@@ -38,6 +39,7 @@ function Sidebar({
 }) {
   const [sectionsCollapsed, setSectionsCollapsed] = useState(() => mobile ? { filters: true, dashboard: true } : {})
   const toggleSection = (key) => setSectionsCollapsed(prev => ({ ...prev, [key]: !prev[key] }))
+  const [projectMenuOpenId, setProjectMenuOpenId] = useState(null)
 
   // Progress data
   const counts = useMemo(() => {
@@ -115,15 +117,28 @@ function Sidebar({
   // Expanded sidebar
   return (
     <div className={`${mobile ? 'flex' : 'hidden sm:flex'} flex-col shrink-0`} style={{ width: mobile ? '100%' : '260px', height: '100%', background: 'var(--bg-secondary)', borderRight: '0.5px solid var(--separator)', transition: `width var(--duration-slow) var(--ease-default)`, overflow: 'hidden' }}>
-      {/* Header: logo + collapse toggle */}
+      {/* Header: logo + archive shortcut + collapse toggle */}
       <div className="flex items-center justify-between shrink-0" style={{ padding: '14px 14px 10px' }}>
         <div className="flex items-center gap-2.5">
           <img src="/favicon.svg" alt="Logo" style={{ width: '26px', height: '26px' }} />
           <span style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)', letterSpacing: 'var(--tracking-tight)' }}>Atrium</span>
         </div>
-        <button onClick={onToggleCollapse} className="apple-press" style={{ padding: '6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)' }} title="Collapse sidebar">
-          <PanelLeftClose className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          {archivedProjects.length > 0 && (
+            <button
+              onClick={onOpenArchivedModal}
+              className="apple-press"
+              style={{ padding: '6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)' }}
+              title={`Archived projects (${archivedProjects.length})`}
+              aria-label={`Archived projects (${archivedProjects.length})`}
+            >
+              <Archive className="w-4 h-4" />
+            </button>
+          )}
+          <button onClick={onToggleCollapse} className="apple-press" style={{ padding: '6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)' }} title="Collapse sidebar">
+            <PanelLeftClose className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Scrollable middle section */}
@@ -137,28 +152,73 @@ function Sidebar({
             const projName = proj.name || proj
             const isActive = activeProject === folder
             const count = tasks.filter(t => t.project === folder).length
+            const menuOpen = projectMenuOpenId === folder
             return (
-              <button
-                key={folder}
-                onClick={() => onSetActiveProject(folder)}
-                className="w-full flex items-center gap-2.5 text-left apple-press group"
-                style={{
-                  padding: '7px 10px', borderRadius: 'var(--radius-sm)',
-                  fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)',
-                  color: isActive ? 'var(--text-app)' : 'var(--text-muted)',
-                  background: isActive ? 'var(--fill-secondary)' : 'transparent',
-                }}
-              >
-                <Folder className="w-4 h-4 shrink-0" style={{ color: isActive ? 'var(--accent-app)' : 'var(--text-tertiary)' }} />
-                <span className="truncate">{folder === 'Root' ? 'Unassigned' : projName}</span>
-                <span style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: isActive ? 'var(--accent-app)' : 'var(--text-tertiary)', background: isActive ? 'color-mix(in srgb, var(--accent-app) 12%, transparent)' : 'var(--fill-secondary)', padding: '1px 6px', borderRadius: 'var(--radius-full)', minWidth: '18px', textAlign: 'center', flexShrink: 0 }}>{count}</span>
-                <div className="flex-1" />
-                {folder !== 'Root' && isActive && (
-                  <button onClick={(e) => { e.stopPropagation(); onDeleteProject() }} className="apple-press opacity-0 group-hover:opacity-100 shrink-0" style={{ padding: '2px', borderRadius: 'var(--radius-xs)', color: 'var(--apple-red)', transition: `opacity var(--duration-fast)` }} title="Delete">
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+              <div key={folder} className="relative">
+                <button
+                  onClick={() => onSetActiveProject(folder)}
+                  className="w-full flex items-center gap-2.5 text-left apple-press group"
+                  style={{
+                    padding: '7px 10px', borderRadius: 'var(--radius-sm)',
+                    fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)',
+                    color: isActive ? 'var(--text-app)' : 'var(--text-muted)',
+                    background: isActive ? 'var(--fill-secondary)' : 'transparent',
+                  }}
+                >
+                  <Folder className="w-4 h-4 shrink-0" style={{ color: isActive ? 'var(--accent-app)' : 'var(--text-tertiary)' }} />
+                  <span className="truncate">{folder === 'Root' ? 'Unassigned' : projName}</span>
+                  <span style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: isActive ? 'var(--accent-app)' : 'var(--text-tertiary)', background: isActive ? 'color-mix(in srgb, var(--accent-app) 12%, transparent)' : 'var(--fill-secondary)', padding: '1px 6px', borderRadius: 'var(--radius-full)', minWidth: '18px', textAlign: 'center', flexShrink: 0 }}>{count}</span>
+                  <div className="flex-1" />
+                  {folder !== 'Root' && isActive && (
+                    <button onClick={(e) => { e.stopPropagation(); onDeleteProject() }} className="apple-press opacity-0 group-hover:opacity-100 shrink-0" style={{ padding: '2px', borderRadius: 'var(--radius-xs)', color: 'var(--apple-red)', transition: `opacity var(--duration-fast)` }} title="Delete">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                  {folder !== 'Root' && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setProjectMenuOpenId(menuOpen ? null : folder) }}
+                      className="apple-press opacity-0 group-hover:opacity-100 shrink-0"
+                      style={{ padding: '2px', borderRadius: 'var(--radius-xs)', color: 'var(--text-tertiary)', transition: `opacity var(--duration-fast)`, opacity: menuOpen ? 1 : undefined, minWidth: '20px', minHeight: '20px' }}
+                      title="More"
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpen}
+                    >
+                      <MoreHorizontal className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </button>
+                {menuOpen && folder !== 'Root' && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setProjectMenuOpenId(null)} />
+                    <div
+                      role="menu"
+                      className="absolute right-2 z-50 animate-fade-in"
+                      style={{
+                        top: 'calc(100% + 2px)',
+                        minWidth: '160px',
+                        padding: '4px',
+                        borderRadius: 'var(--radius-md)',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--separator)',
+                        boxShadow: 'var(--shadow-lg)',
+                      }}
+                    >
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setProjectMenuOpenId(null)
+                          onArchiveProject?.(folder, projName)
+                        }}
+                        className="w-full flex items-center gap-2 apple-press text-left"
+                        style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', color: 'var(--text-app)', minHeight: '32px' }}
+                      >
+                        <Archive className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--text-tertiary)' }} />
+                        <span>Archive</span>
+                      </button>
+                    </div>
+                  </>
                 )}
-              </button>
+              </div>
             )
           })}
           <button onClick={onCreateProject} className="w-full flex items-center gap-2.5 text-left apple-press" style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)' }}>
