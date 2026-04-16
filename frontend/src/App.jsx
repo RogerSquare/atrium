@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import { LogOut, Search, MessageCircle, X, Eye, Plus, Columns3, List, GitBranch, Menu, Copy, Check } from 'lucide-react'
+import { LogOut, Search, MessageCircle, X, Eye, Plus, Columns3, List, GitCommitHorizontal, Menu, Copy, Check } from 'lucide-react'
 import Board from './components/Board'
 import ListView from './components/ListView'
-import TreeView from './components/TreeView'
+import ChangesView from './components/ChangesView'
 import ViewSwitcher from './components/ViewSwitcher'
 import Sidebar from './components/Sidebar'
 import TaskModal from './components/TaskModal'
@@ -287,8 +287,8 @@ function AppContent() {
             <div className="text-center text-app-text-muted py-12 italic animate-pulse">Loading workspace...</div>
           ) : activeView === 'list' ? (
             <ListView tasks={filteredTasks} onSelectTask={selectTask} onUpdateTask={undoRedo.updateTaskWithUndo} activeAgents={activeAgents} taskViewers={taskViewers} currentUser={user?.username} selectable={bulkSelectMode} selectedIds={selectedTaskIds} onToggleSelect={toggleSelectTask} recentlyUpdatedIds={recentlyUpdatedIds} />
-          ) : activeView === 'tree' ? (
-            <TreeView tasks={filteredTasks} onSelectTask={selectTask} onUpdateTask={undoRedo.updateTaskWithUndo} activeAgents={activeAgents} taskViewers={taskViewers} currentUser={user?.username} selectable={bulkSelectMode} selectedIds={selectedTaskIds} onToggleSelect={toggleSelectTask} recentlyUpdatedIds={recentlyUpdatedIds} />
+          ) : activeView === 'changes' ? (
+            <ChangesView tasks={filteredTasks} projects={projects} activeProject={activeProject} onSelectTask={selectTask} recentlyUpdatedIds={recentlyUpdatedIds} />
           ) : (
             <Board
               tasks={filteredTasks} onUpdateTask={undoRedo.updateTaskWithUndo} onSelectTask={selectTask}
@@ -329,7 +329,7 @@ function AppContent() {
         <nav className="fixed bottom-0 left-0 right-0 z-40 flex sm:hidden items-end justify-around vibrancy-thick safe-bottom mobile-tab-bar">
           {[
             { icon: Menu, label: 'Menu', active: false, onClick: () => setShowMobileDrawer(true) },
-            { icon: activeView === 'list' ? List : activeView === 'tree' ? GitBranch : Columns3, label: activeView === 'list' ? 'List' : activeView === 'tree' ? 'Tree' : 'Board', active: true, onClick: () => handleChangeView(activeView === 'board' ? 'list' : activeView === 'list' ? 'tree' : 'board') },
+            { icon: activeView === 'list' ? List : activeView === 'changes' ? GitCommitHorizontal : Columns3, label: activeView === 'list' ? 'List' : activeView === 'changes' ? 'Changes' : 'Board', active: true, onClick: () => handleChangeView(activeView === 'board' ? 'list' : activeView === 'list' ? 'changes' : 'board') },
             { icon: MessageCircle, label: 'Chat', active: false, onClick: handleToggleChat, badge: chatUnread },
             { icon: Eye, label: 'Preview', active: showPreview, onClick: handleTogglePreview },
           ].map(({ icon: Icon, label, active, onClick, badge }) => (

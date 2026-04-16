@@ -30,6 +30,7 @@ const aiRoutes = require('./routes/ai');
 const designRoutes = require('./routes/design');
 const previewRoutes = require('./routes/preview');
 const approvalsRoutes = require('./routes/approvals');
+const githubRoutes = require('./routes/github');
 
 // --- Socket Handlers ---
 const { registerChatHandlers, handleChatDisconnect } = require('./sockets/chat');
@@ -226,6 +227,7 @@ app.use('/api/chat', requireAuth, chatRoutes);
 app.use('/api/ai', requireAuth, aiRoutes);
 app.use('/api/design', requireAuth, designRoutes);
 app.use('/api/preview', optionalAuth, previewRoutes);
+app.use('/api/github', requireAuth, githubRoutes);
 
 /**
  * @swagger

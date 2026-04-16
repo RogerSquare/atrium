@@ -118,6 +118,39 @@ The backend flips the task to `waiting_input` and emits a `approvalCreated` even
 
 **Never** transition a task out of `waiting_input` manually. The approval response handler does it for you.
 
+## Branch & PR Linkage (STRICT):
+Atrium's **Changes view** (third segment on the kanban toolbar) is a git-style timeline that groups tasks by category and surfaces the git branch + GitHub PR each task produced. For a task to show its branch and PR badges, you MUST create work on a branch whose name **embeds the task id as a substring** and open a PR from it.
+
+**When to create the branch:** immediately after you transition a task from `todo` → `in_progress`, before editing any code.
+
+**Required commands (from the project's working directory, NOT from `backend/tasks/`):**
+```bash
+git checkout -b <task-id>                  # e.g. git checkout -b feat-auth-001
+# ... make edits, stage, commit referencing the id in the trailer or body ...
+git push -u origin <task-id>
+gh pr create --title "<type>(<scope>): <summary>" --body "Task: <task-id>\n..."
+```
+
+**Branch-name rules:**
+- The task id must appear literally somewhere in the branch name. The matcher is case-insensitive and prefers the longest id when multiple match, so prefix or suffix decorations are fine: `feat-auth-001`, `claude/feat-auth-001`, `feat-auth-001-followup` all resolve to `feat-auth-001`.
+- Do NOT reuse a branch for multiple tasks. One branch per task keeps the Changes view readable.
+- Do NOT land work directly on `main` for tasks tagged with a category prefix (`feat-`, `bug-`, `ui-`, `opt-`, `devops-`, `comp-`, `mobile-`) — the Changes view cannot surface a PR badge for work that never had a branch or PR.
+
+**Commit + PR hygiene:**
+- First line of the commit follows conventional-commit style: `<type>(<scope>): <summary>`.
+- Include a `Task: <task-id>` trailer so the id is grep-able from `git log` even if the branch is deleted.
+- The PR body should reference the task id, summarize the user-visible change, and include a test plan.
+
+**What the Changes view does with this:**
+- Each task renders on a vertical lane keyed by its category prefix (bug / feat / ui / opt / devops / comp / mobile) — not by branch.
+- The right-hand side of each row shows a branch badge (links to the GitHub branch page) and a PR badge color-coded by state (green = OPEN, purple = MERGED, red = CLOSED).
+- Backend endpoint: `GET /api/github/links?project=<id>&refresh=1`. Results are cached for 5 minutes; add `?refresh=1` after landing a PR if you want an immediate update.
+- Tasks with `status: draft` are filtered out of the view entirely — drafts are not "changes" yet.
+
+**When this rule does NOT apply:**
+- Projects whose `workingDirectory` is not a GitHub repo (no `origin` remote, or a non-github.com remote). The Changes view still renders as a category timeline, but without branch/PR badges.
+- Meta tasks that don't touch code (e.g. `opt-` tasks that only update documentation or `.md` files inside `backend/tasks/`). A no-op PR is acceptable but not required — call it out in the task's Comments if you skip the branch.
+
 ## Pre-Review Checklist (STRICT):
 Before moving a task to `review`, you MUST complete the following checks:
 
@@ -126,30 +159,37 @@ Before moving a task to `review`, you MUST complete the following checks:
 - [ ] If you added a new API endpoint, verify it works with a curl test
 - [ ] If you modified existing functionality, verify it still works as before
 
-### 2. Security (for backend/API changes)
+### 2. Branch & PR (for tasks that ship code)
+- [ ] Work is on a branch whose name contains the task id (e.g. `feat-auth-001`)
+- [ ] Branch is pushed to `origin`
+- [ ] PR is open, title follows conventional-commit style, body references the task id
+- [ ] Task `### Comments` block includes a bullet: `- **PR:** <url>` so the link is discoverable even when the Changes-view cache is stale
+- [ ] After pushing the final commit, hit `GET /api/github/links?project=<id>&refresh=1` (or the Refresh button in the Changes view) so the badge reflects current state
+
+### 3. Security (for backend/API changes)
 - [ ] New endpoints have proper auth (requireAuth / optionalAuth / public — choose deliberately)
 - [ ] Input is validated (reject missing/invalid params with 400)
 - [ ] Error responses do NOT leak stack traces or internal details
 - [ ] Rate limiting is applied if the endpoint is public-facing
 - [ ] Audit logging is added for state-changing operations (create, update, delete)
 
-### 3. Mobile/Responsive (for frontend/UI changes)
+### 4. Mobile/Responsive (for frontend/UI changes)
 - [ ] Test at mobile viewport width (375px) — no horizontal overflow
 - [ ] Interactive elements have minimum 44px touch targets
 - [ ] Fixed/sticky elements don't overlap scrollable content
 - [ ] Bottom tab bar (if present) doesn't cover content
 
-### 4. Cleanup Completeness (for database/file changes)
+### 5. Cleanup Completeness (for database/file changes)
 - [ ] If you added a new file field (e.g., `preview_path`, `analysis_path`), update ALL delete/cleanup paths
 - [ ] If you added a new DB table/column, update the migration in db.js
 - [ ] If you added a new column to images, check: single delete, bulk delete, user purge, orphan cleanup
 
-### 5. Docker/Deployment (if applicable)
+### 6. Docker/Deployment (if applicable)
 - [ ] If the project has a Dockerfile, verify the build still works
 - [ ] Test with production env vars (NODE_ENV=production)
 - [ ] No hardcoded paths that won't work in containers
 
-### 6. Lint
+### 7. Lint
 - [ ] Run `npm run lint` (if configured) and fix any errors (warnings are acceptable)
 
 ## Wiki Documentation (STRICT):
