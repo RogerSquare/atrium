@@ -245,12 +245,25 @@ async function buildLinks(repoPath, tasks) {
     }
   }
 
-  // Pass 3: surface PRs whose branch was deleted locally (still only for tasks
-  // not already claimed by a Pass-1 override or Pass-2 local branch).
+  // Pass 3: consider PRs by themselves. Two cases:
+  //   a. PR's branch was deleted locally — surface it so the row shows something.
+  //   b. PR's branch matches a task via substring, but Pass 2 already claimed the
+  //      task with a DIFFERENT branch whose PR is MERGED/CLOSED. An OPEN PR for
+  //      the same task should win over a stale merged/closed one — otherwise
+  //      follow-up work (reverts, v2 branches) never surfaces on the row.
   for (const pr of prs) {
     if (claimedBranches.has(pr.headRefName)) continue;
     const taskId = matchBranchToTaskId(pr.headRefName, fallbackIds);
-    if (taskId && !byTaskId[taskId]) {
+    if (!taskId) continue;
+    const existing = byTaskId[taskId];
+    if (!existing) {
+      byTaskId[taskId] = buildEntryFromPrOnly(pr, remote);
+      continue;
+    }
+    // Existing entry (from Pass 2) has a non-OPEN PR or no PR at all; promote
+    // this OPEN PR to the row. Demote the old entry into `detached` so it isn't lost.
+    if (pr.state === 'OPEN' && existing.pr_state !== 'OPEN') {
+      detached.push(existing);
       byTaskId[taskId] = buildEntryFromPrOnly(pr, remote);
     }
   }
