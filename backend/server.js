@@ -7,7 +7,7 @@ const { Server } = require('socket.io');
 const rateLimit = require('express-rate-limit');
 
 // --- Shared Config ---
-const { PORT, TASKS_DIR, HISTORY_DIR, TRASH_DIR, USERS_DIR, SETTINGS_FILE, SERVICES_FILE, CHAT_DIR, CHAT_FILE } = require('./lib/constants');
+const { PORT, TASKS_DIR, HISTORY_DIR, TRASH_DIR, ARCHIVED_DIR, USERS_DIR, SETTINGS_FILE, SERVICES_FILE, CHAT_DIR, CHAT_FILE } = require('./lib/constants');
 const { setIO } = require('./lib/io');
 const { logger, requestLogger } = require('./lib/logger');
 
@@ -89,7 +89,7 @@ app.use(express.json());
 app.use(requestLogger);
 
 // --- Ensure Directories Exist ---
-[TASKS_DIR, HISTORY_DIR, TRASH_DIR, USERS_DIR, CHAT_DIR].forEach(dir => {
+[TASKS_DIR, HISTORY_DIR, TRASH_DIR, ARCHIVED_DIR, USERS_DIR, CHAT_DIR].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
 if (!fs.existsSync(SETTINGS_FILE)) fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ workingDirectory: '' }));

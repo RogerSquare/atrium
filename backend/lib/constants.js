@@ -6,6 +6,7 @@ const PORT = 3001;
 const TASKS_DIR = path.join(__dirname, '..', 'tasks');
 const HISTORY_DIR = path.join(TASKS_DIR, '.history');
 const TRASH_DIR = path.join(TASKS_DIR, '.trash');
+const ARCHIVED_DIR = path.join(TASKS_DIR, '.archived');
 const APPROVALS_DIR = path.join(__dirname, '..', 'approvals');
 const AGENT_TOKENS_DIR = path.join(__dirname, '..', 'agent-tokens');
 const AGENT_TOKENS_BLOCKLIST = path.join(AGENT_TOKENS_DIR, '.blocklist.json');
@@ -57,6 +58,6 @@ const JWT_SECRET = resolveJwtSecret();
 module.exports = {
   PORT, TASKS_DIR, HISTORY_DIR, USERS_DIR, SETTINGS_FILE,
   SERVICES_FILE, CHAT_DIR, CHAT_FILE, MAX_CHAT_MESSAGES,
-  INSTRUCTIONS_FILE, JWT_SECRET, TRASH_DIR, PROJECTS_FILE, APPROVALS_DIR,
+  INSTRUCTIONS_FILE, JWT_SECRET, TRASH_DIR, ARCHIVED_DIR, PROJECTS_FILE, APPROVALS_DIR,
   AGENT_TOKENS_DIR, AGENT_TOKENS_BLOCKLIST
 };

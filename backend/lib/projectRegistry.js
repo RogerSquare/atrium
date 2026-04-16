@@ -1,5 +1,6 @@
 const fs = require('fs');
-const { PROJECTS_FILE } = require('./constants');
+const path = require('path');
+const { PROJECTS_FILE, TASKS_DIR, ARCHIVED_DIR } = require('./constants');
 
 /**
  * Project Registry
@@ -48,11 +49,19 @@ function generateId(name) {
   return candidate;
 }
 
-function getAll() {
+function getAll({ include = 'active' } = {}) {
   const registry = load();
-  // Always include root
-  const result = { root: { name: 'Root', folder: 'Root' } };
-  Object.assign(result, registry);
+  const isArchived = (proj) => proj && proj.archived === true;
+  const result = {};
+  // Root is never archivable; always include it when active/all requested
+  if (include === 'active' || include === 'all') {
+    result.root = { name: 'Root', folder: 'Root' };
+  }
+  for (const [id, proj] of Object.entries(registry)) {
+    if (include === 'active' && isArchived(proj)) continue;
+    if (include === 'archived' && !isArchived(proj)) continue;
+    result[id] = proj;
+  }
   return result;
 }
 
@@ -143,21 +152,27 @@ function remove(id) {
 /**
  * Sync registry with actual project directories on disk.
  * Registers any unregistered folders and removes entries for deleted folders.
+ * NOTE: `tasksDirs` should be the ACTIVE project folders only (i.e. direct
+ * children of TASKS_DIR, excluding dot-prefixed dirs like `.archived/`).
+ * Archived entries stay in the registry even though their folder lives under
+ * ARCHIVED_DIR — we check that location before removing them.
  */
 function syncWithDisk(tasksDirs) {
   const registry = load();
-  const existingFolders = new Set(tasksDirs);
+  const existingActive = new Set(tasksDirs);
   let changed = false;
 
-  // Remove entries for deleted folders
+  // Remove entries for deleted folders — but keep archived entries whose folder
+  // physically lives under ARCHIVED_DIR.
   for (const [id, proj] of Object.entries(registry)) {
-    if (!existingFolders.has(proj.folder)) {
-      delete registry[id];
-      changed = true;
-    }
+    if (existingActive.has(proj.folder)) continue;
+    const archivedPath = path.join(ARCHIVED_DIR, proj.folder);
+    if (fs.existsSync(archivedPath)) continue;
+    delete registry[id];
+    changed = true;
   }
 
-  // Register new folders
+  // Register new folders (active side only)
   const registeredFolders = new Set(Object.values(registry).map(p => p.folder));
   for (const folder of tasksDirs) {
     if (folder !== 'Root' && !registeredFolders.has(folder)) {
@@ -171,7 +186,54 @@ function syncWithDisk(tasksDirs) {
   return registry;
 }
 
+function archive(id) {
+  if (id === 'root') return null;
+  const registry = load();
+  const proj = registry[id];
+  if (!proj) return null;
+  if (proj.archived === true) return { id, ...proj };
+  const src = path.join(TASKS_DIR, proj.folder);
+  const dst = path.join(ARCHIVED_DIR, proj.folder);
+  if (!fs.existsSync(ARCHIVED_DIR)) fs.mkdirSync(ARCHIVED_DIR, { recursive: true });
+  if (fs.existsSync(src)) {
+    if (fs.existsSync(dst)) {
+      throw new Error(`Destination already exists: ${dst}`);
+    }
+    fs.renameSync(src, dst);
+  }
+  proj.archived = true;
+  proj.archived_at = new Date().toISOString();
+  save(registry);
+  return { id, ...proj };
+}
+
+function unarchive(id) {
+  if (id === 'root') return null;
+  const registry = load();
+  const proj = registry[id];
+  if (!proj) return null;
+  if (proj.archived !== true) return { id, ...proj };
+  const src = path.join(ARCHIVED_DIR, proj.folder);
+  const dst = path.join(TASKS_DIR, proj.folder);
+  if (fs.existsSync(src)) {
+    if (fs.existsSync(dst)) {
+      throw new Error(`Destination already exists: ${dst}`);
+    }
+    fs.renameSync(src, dst);
+  }
+  proj.archived = false;
+  delete proj.archived_at;
+  save(registry);
+  return { id, ...proj };
+}
+
+function getArchived() {
+  const all = getAll({ include: 'archived' });
+  return all;
+}
+
 module.exports = {
   getAll, getById, getByFolder, getByName, resolve,
-  register, updateId, setName, remove, syncWithDisk, generateId
+  register, updateId, setName, remove, syncWithDisk, generateId,
+  archive, unarchive, getArchived
 };

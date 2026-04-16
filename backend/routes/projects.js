@@ -40,14 +40,19 @@ router.get('/', (req, res) => {
 
     const folders = getDirs(TASKS_DIR);
 
-    // Sync registry with disk
+    // Sync registry with disk (active side only; archived folders live under .archived/)
     registry.syncWithDisk(folders);
 
-    const all = registry.getAll();
+    const includeRaw = typeof req.query.include === 'string' ? req.query.include.toLowerCase() : 'active';
+    const include = ['active', 'archived', 'all'].includes(includeRaw) ? includeRaw : 'active';
+
+    const all = registry.getAll({ include });
     const projects = Object.entries(all).map(([id, proj]) => ({
       id,
       name: proj.name,
-      folder: proj.folder
+      folder: proj.folder,
+      archived: proj.archived === true,
+      ...(proj.archived_at ? { archived_at: proj.archived_at } : {}),
     }));
 
     // Sort: Root first, then alphabetical
@@ -177,6 +182,84 @@ router.delete('/:idOrName', (req, res) => {
     }
 
     res.json({ success: true });
+    const io = getIO();
+    if (io) io.emit('project_changed');
+  } catch (error) {
+    logger.error({ err: error }, 'Request failed');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/projects/{idOrName}/archive:
+ *   post:
+ *     summary: Archive a project (soft retire)
+ *     description: Physically moves the project folder to tasks/.archived/ and flips archived=true. Idempotent. Root cannot be archived.
+ *     tags: [Projects]
+ *     parameters:
+ *       - in: path
+ *         name: idOrName
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Project archived (or already archived)
+ *       400:
+ *         description: Root cannot be archived
+ *       404:
+ *         description: Project not found
+ */
+router.post('/:idOrName/archive', (req, res) => {
+  try {
+    const { idOrName } = req.params;
+    if (idOrName === 'Root' || idOrName === 'root') {
+      return res.status(400).json({ error: 'Cannot archive Root project' });
+    }
+    const project = registry.resolve(idOrName);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const updated = registry.archive(project.id);
+    if (!updated) return res.status(404).json({ error: 'Project not found' });
+    res.json({ success: true, project: updated });
+    const io = getIO();
+    if (io) io.emit('project_changed');
+  } catch (error) {
+    logger.error({ err: error }, 'Request failed');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/projects/{idOrName}/unarchive:
+ *   post:
+ *     summary: Restore an archived project
+ *     description: Moves the folder back from tasks/.archived/ to tasks/ and flips archived=false. Idempotent.
+ *     tags: [Projects]
+ *     parameters:
+ *       - in: path
+ *         name: idOrName
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Project restored (or already active)
+ *       404:
+ *         description: Project not found
+ */
+router.post('/:idOrName/unarchive', (req, res) => {
+  try {
+    const { idOrName } = req.params;
+    if (idOrName === 'Root' || idOrName === 'root') {
+      return res.status(400).json({ error: 'Root is never archived' });
+    }
+    const project = registry.resolve(idOrName);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const updated = registry.unarchive(project.id);
+    if (!updated) return res.status(404).json({ error: 'Project not found' });
+    res.json({ success: true, project: updated });
     const io = getIO();
     if (io) io.emit('project_changed');
   } catch (error) {
