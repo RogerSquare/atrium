@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useMemo, useCallback } from 'react'
-import { Circle, Loader2, Eye, CheckCircle2, GitBranch, GitPullRequest, ExternalLink, RefreshCw } from 'lucide-react'
+import { Circle, Loader2, Eye, CheckCircle2, GitBranch, GitPullRequest, ExternalLink, RefreshCw, X } from 'lucide-react'
 import { API_BASE, apiFetch } from '../config'
 import { STATUS_COLOR } from '../constants'
 
@@ -54,10 +54,23 @@ const PR_STATE_STYLE = {
   CLOSED: { color: 'var(--apple-red)',    label: 'closed' },
 }
 
+const FOCUS_STORAGE_KEY = 'taskBoardChangesFocus'
+
 function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpdatedIds = [] }) {
   const [linksData, setLinksData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [focusedCategory, setFocusedCategory] = useState(() => {
+    try { return localStorage.getItem(FOCUS_STORAGE_KEY) } catch { return null }
+  })
+
+  const setFocus = useCallback((key) => {
+    setFocusedCategory(key)
+    try {
+      if (key) localStorage.setItem(FOCUS_STORAGE_KEY, key)
+      else localStorage.removeItem(FOCUS_STORAGE_KEY)
+    } catch { /* ignore storage errors */ }
+  }, [])
 
   const projectInfo = useMemo(() => {
     if (!activeProject || activeProject === 'All') return null
@@ -86,17 +99,27 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
 
   useEffect(() => { fetchLinks(false) }, [fetchLinks])
 
-  const { lanes, rows, firstRowByLaneKey } = useMemo(() => {
+  const { lanes, rows, firstRowByLaneKey, allCategoryKeys } = useMemo(() => {
     const links = linksData?.by_task_id || {}
 
     // Each task becomes a row — drafts are excluded since they aren't committed work yet
-    const enriched = tasks
+    const baseEnriched = tasks
       .filter(t => t.status !== 'draft')
       .map(t => {
         const link = links[t.id] || null
         const ts = link?.branch_date || t.updated_at || t.created_at || 0
         return { task: t, link, ts: new Date(ts).getTime() || 0 }
       })
+
+    // Capture all categories present BEFORE focus filtering, for the self-heal check
+    const allCategoryKeys = new Set(
+      baseEnriched.map(r => categoryOf(r.task.id) || UNCATEGORIZED_LANE)
+    )
+
+    // Apply focus filter on top of the draft filter
+    const enriched = focusedCategory
+      ? baseEnriched.filter(r => (categoryOf(r.task.id) || UNCATEGORIZED_LANE) === focusedCategory)
+      : baseEnriched
 
     // Newest first
     enriched.sort((a, b) => b.ts - a.ts)
@@ -136,14 +159,25 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
       lanes: laneList.map((l, i) => ({ ...l, index: i })),
       rows: builtRows,
       firstRowByLaneKey,
+      allCategoryKeys,
     }
-  }, [tasks, linksData])
+  }, [tasks, linksData, focusedCategory])
+
+  // Self-heal: if the persisted focus is for a category no task currently has, exit focus mode
+  useEffect(() => {
+    if (focusedCategory && allCategoryKeys && !allCategoryKeys.has(focusedCategory)) {
+      setFocus(null)
+    }
+  }, [focusedCategory, allCategoryKeys, setFocus])
 
   const graphWidth = LANE_PAD_LEFT + lanes.length * LANE_WIDTH + LANE_PAD_RIGHT
   const totalHeight = rows.length * ROW_STRIDE
 
   const showRepoBanner = linksData && !linksData.repo && !error
   const repoUrl = linksData?.repo_url
+  const focusStyle = focusedCategory && focusedCategory !== UNCATEGORIZED_LANE
+    ? CATEGORY_STYLE[focusedCategory]
+    : null
 
   return (
     <div className="w-full">
@@ -177,6 +211,34 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
               GitHub fetch failed: {error}
             </span>
           )}
+          {focusedCategory && (
+            <button
+              type="button"
+              onClick={() => setFocus(null)}
+              className="apple-press flex items-center gap-1"
+              style={{
+                padding: '4px 8px 4px 10px',
+                borderRadius: 'var(--radius-md)',
+                background: focusStyle
+                  ? `color-mix(in srgb, ${focusStyle.color} 18%, transparent)`
+                  : 'var(--fill-secondary)',
+                border: focusStyle
+                  ? `1px solid color-mix(in srgb, ${focusStyle.color} 45%, transparent)`
+                  : '1px solid var(--separator)',
+                color: focusStyle ? focusStyle.color : 'var(--text-tertiary)',
+                fontSize: 'var(--text-caption2)',
+                fontWeight: 600,
+                fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                letterSpacing: '0.02em',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+              }}
+              title="Show all categories"
+            >
+              {focusStyle?.label || 'other'}
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
         <button
           onClick={() => fetchLinks(true)} disabled={loading}
@@ -202,14 +264,13 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
             className="absolute top-0"
             style={{ left: `${LABEL_COL_WIDTH}px`, pointerEvents: 'none' }}
           >
-            {/* Lane lines — only BETWEEN consecutive nodes on the same lane. No extension past
-                the first or last node, so the line visibly terminates at circles at both ends. */}
+            {/* Lane lines — kept as muted vertical columns behind the trail so each category
+                still has a visible home. Drawn first so the trail overlays them. */}
             {lanes.map((lane) => {
               const x = LANE_PAD_LEFT + lane.index * LANE_WIDTH + LANE_WIDTH / 2
               const rowsOnLane = rows
                 .map((r, i) => ({ r, i }))
                 .filter(({ r }) => r.lane?.key === lane.key)
-              // Since each lane is a single category, a solid line in the category color is enough
               if (rowsOnLane.length < 2) return null
               const first = rowsOnLane[0]
               const last = rowsOnLane[rowsOnLane.length - 1]
@@ -220,8 +281,53 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                   key={`${lane.key}-line`}
                   x1={x} x2={x} y1={y1} y2={y2}
                   stroke={lane.color}
-                  strokeWidth="2"
-                  strokeOpacity="0.6"
+                  strokeWidth="1.5"
+                  strokeOpacity="0.28"
+                />
+              )
+            })}
+            {/* Progression trail — one connected path from newest (top) to oldest (bottom)
+                visiting every node. Each segment takes the arriving row's category color.
+                Cross-lane hops draw an L-shape: straight down from the top node, a single
+                rounded corner near the target row, then horizontal into the target node. */}
+            {rows.slice(1).map((curr, idx) => {
+              const prev = rows[idx]
+              if (!prev.lane || !curr.lane) return null
+              const prevX = LANE_PAD_LEFT + prev.lane.index * LANE_WIDTH + LANE_WIDTH / 2
+              const prevY = idx * ROW_STRIDE + ROW_HEIGHT / 2
+              const currX = LANE_PAD_LEFT + curr.lane.index * LANE_WIDTH + LANE_WIDTH / 2
+              const currY = (idx + 1) * ROW_STRIDE + ROW_HEIGHT / 2
+              const color = curr.lane.color
+              const sameLane = prevX === currX
+              let d
+              if (sameLane) {
+                d = `M ${prevX} ${prevY} L ${currX} ${currY}`
+              } else {
+                const dir = currX > prevX ? 1 : -1
+                const midY = (prevY + currY) / 2
+                // Symmetric S: short vertical leg out of each node, matching quarter-circle
+                // corners at the midline, and a horizontal bridge between them. Clamp radius
+                // so both corners fit the row height and the inter-lane distance.
+                const r = Math.min(10, (currY - prevY) / 4, Math.abs(currX - prevX) / 2)
+                d = [
+                  `M ${prevX} ${prevY}`,
+                  `L ${prevX} ${midY - r}`,
+                  `Q ${prevX} ${midY}, ${prevX + dir * r} ${midY}`,
+                  `L ${currX - dir * r} ${midY}`,
+                  `Q ${currX} ${midY}, ${currX} ${midY + r}`,
+                  `L ${currX} ${currY}`,
+                ].join(' ')
+              }
+              return (
+                <path
+                  key={`trail-${curr.task.id}`}
+                  d={d}
+                  stroke={color}
+                  strokeWidth="2.5"
+                  strokeOpacity="0.95"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
                 />
               )
             })}
@@ -277,25 +383,36 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                   style={{ width: `${LABEL_COL_WIDTH}px`, padding: '0 10px 0 12px' }}
                 >
                   {showLabel && (
-                    <span
-                      className="flex items-center gap-1.5 whitespace-nowrap"
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setFocus(focusedCategory === r.lane.key ? null : r.lane.key)
+                      }}
+                      className="apple-press flex items-center gap-1.5 whitespace-nowrap"
                       style={{
                         padding: '3px 10px',
                         borderRadius: 'var(--radius-sm)',
                         background: r.lane.key === UNCATEGORIZED_LANE
                           ? 'var(--fill-secondary)'
-                          : `color-mix(in srgb, ${r.lane.color} 26%, transparent)`,
+                          : `color-mix(in srgb, ${r.lane.color} ${focusedCategory === r.lane.key ? 42 : 26}%, transparent)`,
                         color: r.lane.key === UNCATEGORIZED_LANE ? 'var(--text-tertiary)' : r.lane.color,
                         fontSize: '11px',
                         fontWeight: 600,
                         fontFamily: 'var(--font-mono, ui-monospace, monospace)',
                         letterSpacing: '0.02em',
                         textTransform: 'uppercase',
+                        border: focusedCategory === r.lane.key
+                          ? `1px solid color-mix(in srgb, ${r.lane.color} 60%, transparent)`
+                          : '1px solid transparent',
+                        cursor: 'pointer',
                       }}
-                      title={`Category: ${r.lane.label}`}
+                      title={focusedCategory === r.lane.key
+                        ? `Showing only ${r.lane.label} — click to show all`
+                        : `Focus on ${r.lane.label} only`}
                     >
                       {r.lane.label}
-                    </span>
+                    </button>
                   )}
                 </div>
 
