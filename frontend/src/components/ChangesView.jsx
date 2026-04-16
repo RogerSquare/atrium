@@ -56,14 +56,34 @@ const PR_STATE_STYLE = {
 
 // Review-decision indicator — only rendered for OPEN PRs. Null/empty decision = awaiting
 // a first review, so it gets the clock icon.
-const REVIEW_DECISION_STYLE = {
-  APPROVED:          { icon: Check,        color: 'var(--apple-green)',  label: 'Approved' },
-  CHANGES_REQUESTED: { icon: AlertCircle,  color: 'var(--apple-red)',    label: 'Changes requested' },
-  REVIEW_REQUIRED:   { icon: Clock,        color: 'var(--apple-yellow)', label: 'Awaiting review' },
+// Semantic: what the indicator SHOULD tell the user at a glance.
+//  - READY           — explicit approval OR no review required (solo repo / no reviewers). Green check.
+//  - BLOCKED         — a reviewer requested changes. Red alert.
+//  - AWAITING_REVIEW — branch protection / requested reviewers actively waiting. Yellow clock.
+//
+// `reviewDecision` from `gh pr list` maps onto this:
+//   APPROVED           -> READY
+//   CHANGES_REQUESTED  -> BLOCKED
+//   REVIEW_REQUIRED    -> AWAITING_REVIEW
+//   ""  / null         -> READY  (no branch protection AND no reviewers requested == nothing to wait on)
+const REVIEW_INDICATOR = {
+  READY:           { icon: Check,       color: 'var(--apple-green)',  label: 'Ready' },
+  BLOCKED:         { icon: AlertCircle, color: 'var(--apple-red)',    label: 'Changes requested' },
+  AWAITING_REVIEW: { icon: Clock,       color: 'var(--apple-yellow)', label: 'Awaiting review' },
 }
 function reviewStyleFor(decision) {
-  if (!decision) return REVIEW_DECISION_STYLE.REVIEW_REQUIRED
-  return REVIEW_DECISION_STYLE[decision] || null
+  switch (decision) {
+    case 'APPROVED':          return { ...REVIEW_INDICATOR.READY,           label: 'Approved' }
+    case 'CHANGES_REQUESTED': return REVIEW_INDICATOR.BLOCKED
+    case 'REVIEW_REQUIRED':   return REVIEW_INDICATOR.AWAITING_REVIEW
+    // Empty string or null: no branch protection requires a review AND no reviewers
+    // are requested, so the PR has nothing explicit to wait on. Treat as ready.
+    case '':
+    case null:
+    case undefined:
+      return { ...REVIEW_INDICATOR.READY, label: 'No review required' }
+    default: return null
+  }
 }
 
 const FOCUS_STORAGE_KEY = 'taskBoardChangesFocus'
