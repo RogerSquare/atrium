@@ -474,27 +474,38 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                   >
                     {r.task.id}
                   </span>
-                  {r.link?.branch && (
-                    <a
-                      href={r.link.branch_url || '#'}
-                      target="_blank" rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="shrink-0 flex items-center gap-1"
-                      style={{
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        background: 'var(--fill-secondary)',
-                        color: 'var(--text-tertiary)',
-                        fontSize: '10px',
-                        fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-                        maxWidth: '180px',
-                      }}
-                      title={`Branch: ${r.link.branch}`}
-                    >
-                      <GitBranch className="w-2.5 h-2.5 shrink-0" />
-                      <span className="truncate">{r.link.branch}</span>
-                    </a>
-                  )}
+                  {r.link?.branch && (() => {
+                    // The branch badge is the larger, more clickable target, so make it the
+                    // primary "take me to this task's GitHub home" affordance: prefer the PR
+                    // URL when one exists, fall back to the branch tree page only if no PR
+                    // has been opened yet.
+                    const hasPr = !!r.link.pr_url
+                    const href = hasPr ? r.link.pr_url : (r.link.branch_url || '#')
+                    const tooltip = hasPr
+                      ? `Open PR #${r.link.pr_number}: ${r.link.pr_title || r.link.branch}`
+                      : `Open branch ${r.link.branch}`
+                    return (
+                      <a
+                        href={href}
+                        target="_blank" rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="shrink-0 flex items-center gap-1"
+                        style={{
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          background: 'var(--fill-secondary)',
+                          color: 'var(--text-tertiary)',
+                          fontSize: '10px',
+                          fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                          maxWidth: '180px',
+                        }}
+                        title={tooltip}
+                      >
+                        <GitBranch className="w-2.5 h-2.5 shrink-0" />
+                        <span className="truncate">{r.link.branch}</span>
+                      </a>
+                    )
+                  })()}
                   {r.link?.pr_number && prStyle && (
                     <a
                       href={r.link.pr_url}
