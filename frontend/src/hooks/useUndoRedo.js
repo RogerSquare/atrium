@@ -74,7 +74,10 @@ export default function useUndoRedo(tasks, handleUpdateTask) {
         return next.length > MAX_STACK ? next.slice(-MAX_STACK) : next
       })
 
-      if (entry.batch) {
+      if (entry.custom) {
+        entry.custom.undoFn?.()
+        showToast(entry.custom.undoneMessage || 'Undone')
+      } else if (entry.batch) {
         entry.batch.forEach(e => handleUpdateTask(e.id, e.prev))
         showToast(`Undone ${entry.batch.length} tasks`)
       } else {
@@ -96,16 +99,32 @@ export default function useUndoRedo(tasks, handleUpdateTask) {
         return next.length > MAX_STACK ? next.slice(-MAX_STACK) : next
       })
 
-      if (entry.batch) {
+      if (entry.custom) {
+        entry.custom.redoFn?.()
+        showToast(entry.custom.redoneMessage || 'Redone')
+      } else if (entry.batch) {
         entry.batch.forEach(e => handleUpdateTask(e.id, e.next))
         showToast(`Redone ${entry.batch.length} tasks`)
       } else {
         handleUpdateTask(entry.id, entry.next)
-        showToast('Redone')
+        showToast(`Redone`)
       }
       return rest
     })
   }, [handleUpdateTask, showToast])
+
+  // For non-task undo actions (e.g. project archive/restore). Caller provides
+  // the functions that reverse / re-apply the action; the hook pushes onto the
+  // same stack and shows the same toast UI.
+  const pushCustomUndo = useCallback((message, { undoFn, redoFn, undoneMessage, redoneMessage } = {}) => {
+    if (!undoFn) return
+    setUndoStack(prev => {
+      const next = [...prev, { custom: { undoFn, redoFn, undoneMessage, redoneMessage } }]
+      return next.length > MAX_STACK ? next.slice(-MAX_STACK) : next
+    })
+    setRedoStack([])
+    if (message) showToast(message)
+  }, [showToast])
 
   // Push a batch undo entry: array of { id, prev, next } changes
   const pushBatchUndo = useCallback((entries, message) => {
@@ -147,6 +166,7 @@ export default function useUndoRedo(tasks, handleUpdateTask) {
   return {
     updateTaskWithUndo,
     pushBatchUndo,
+    pushCustomUndo,
     undo,
     redo,
     canUndo: undoStack.length > 0,

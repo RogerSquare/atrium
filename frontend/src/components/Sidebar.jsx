@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, memo } from 'react'
-import { ChevronDown, ChevronRight, ChevronLeft, Folder, Plus, Trash2, UserCircle2, Clock, SlidersHorizontal, X, BarChart3, Activity, Play, Square, Settings as SettingsIcon, MessageCircle, Eye, LogOut, PanelLeftClose, PanelLeftOpen, AlertCircle, Palette } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronLeft, Folder, Plus, Trash2, UserCircle2, Clock, SlidersHorizontal, X, BarChart3, Activity, Play, Square, Settings as SettingsIcon, MessageCircle, Eye, LogOut, PanelLeftClose, PanelLeftOpen, AlertCircle, Palette, MoreHorizontal, Archive, ArchiveRestore } from 'lucide-react'
 import { API_BASE, apiFetch } from '../config'
 
 const FILTER_TYPES = ['all', 'frontend', 'backend', 'fullstack', 'devops']
@@ -25,6 +25,7 @@ function Sidebar({
   collapsed, onToggleCollapse, mobile,
   // Projects
   projects, tasks, activeProject, onSetActiveProject, onCreateProject, onDeleteProject,
+  archivedProjects = [], onArchiveProject, onUnarchiveProject,
   // Filters
   filterType, setFilterType, filterPriority, setFilterPriority,
   filterAssignee, setFilterAssignee, filterToday, setFilterToday,
@@ -36,8 +37,9 @@ function Sidebar({
   user, onLogout, onOpenSettings, onOpenChat, onOpenPreview, onOpenDesignStudio,
   chatUnread, showPreview,
 }) {
-  const [sectionsCollapsed, setSectionsCollapsed] = useState(() => mobile ? { filters: true, dashboard: true } : {})
+  const [sectionsCollapsed, setSectionsCollapsed] = useState(() => mobile ? { filters: true, dashboard: true, archived: true } : { archived: true })
   const toggleSection = (key) => setSectionsCollapsed(prev => ({ ...prev, [key]: !prev[key] }))
+  const [projectMenuOpenId, setProjectMenuOpenId] = useState(null)
 
   // Progress data
   const counts = useMemo(() => {
@@ -137,28 +139,73 @@ function Sidebar({
             const projName = proj.name || proj
             const isActive = activeProject === folder
             const count = tasks.filter(t => t.project === folder).length
+            const menuOpen = projectMenuOpenId === folder
             return (
-              <button
-                key={folder}
-                onClick={() => onSetActiveProject(folder)}
-                className="w-full flex items-center gap-2.5 text-left apple-press group"
-                style={{
-                  padding: '7px 10px', borderRadius: 'var(--radius-sm)',
-                  fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)',
-                  color: isActive ? 'var(--text-app)' : 'var(--text-muted)',
-                  background: isActive ? 'var(--fill-secondary)' : 'transparent',
-                }}
-              >
-                <Folder className="w-4 h-4 shrink-0" style={{ color: isActive ? 'var(--accent-app)' : 'var(--text-tertiary)' }} />
-                <span className="truncate">{folder === 'Root' ? 'Unassigned' : projName}</span>
-                <span style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: isActive ? 'var(--accent-app)' : 'var(--text-tertiary)', background: isActive ? 'color-mix(in srgb, var(--accent-app) 12%, transparent)' : 'var(--fill-secondary)', padding: '1px 6px', borderRadius: 'var(--radius-full)', minWidth: '18px', textAlign: 'center', flexShrink: 0 }}>{count}</span>
-                <div className="flex-1" />
-                {folder !== 'Root' && isActive && (
-                  <button onClick={(e) => { e.stopPropagation(); onDeleteProject() }} className="apple-press opacity-0 group-hover:opacity-100 shrink-0" style={{ padding: '2px', borderRadius: 'var(--radius-xs)', color: 'var(--apple-red)', transition: `opacity var(--duration-fast)` }} title="Delete">
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+              <div key={folder} className="relative">
+                <button
+                  onClick={() => onSetActiveProject(folder)}
+                  className="w-full flex items-center gap-2.5 text-left apple-press group"
+                  style={{
+                    padding: '7px 10px', borderRadius: 'var(--radius-sm)',
+                    fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)',
+                    color: isActive ? 'var(--text-app)' : 'var(--text-muted)',
+                    background: isActive ? 'var(--fill-secondary)' : 'transparent',
+                  }}
+                >
+                  <Folder className="w-4 h-4 shrink-0" style={{ color: isActive ? 'var(--accent-app)' : 'var(--text-tertiary)' }} />
+                  <span className="truncate">{folder === 'Root' ? 'Unassigned' : projName}</span>
+                  <span style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: isActive ? 'var(--accent-app)' : 'var(--text-tertiary)', background: isActive ? 'color-mix(in srgb, var(--accent-app) 12%, transparent)' : 'var(--fill-secondary)', padding: '1px 6px', borderRadius: 'var(--radius-full)', minWidth: '18px', textAlign: 'center', flexShrink: 0 }}>{count}</span>
+                  <div className="flex-1" />
+                  {folder !== 'Root' && isActive && (
+                    <button onClick={(e) => { e.stopPropagation(); onDeleteProject() }} className="apple-press opacity-0 group-hover:opacity-100 shrink-0" style={{ padding: '2px', borderRadius: 'var(--radius-xs)', color: 'var(--apple-red)', transition: `opacity var(--duration-fast)` }} title="Delete">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                  {folder !== 'Root' && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setProjectMenuOpenId(menuOpen ? null : folder) }}
+                      className="apple-press opacity-0 group-hover:opacity-100 shrink-0"
+                      style={{ padding: '2px', borderRadius: 'var(--radius-xs)', color: 'var(--text-tertiary)', transition: `opacity var(--duration-fast)`, opacity: menuOpen ? 1 : undefined, minWidth: '20px', minHeight: '20px' }}
+                      title="More"
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpen}
+                    >
+                      <MoreHorizontal className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </button>
+                {menuOpen && folder !== 'Root' && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setProjectMenuOpenId(null)} />
+                    <div
+                      role="menu"
+                      className="absolute right-2 z-50 animate-fade-in"
+                      style={{
+                        top: 'calc(100% + 2px)',
+                        minWidth: '160px',
+                        padding: '4px',
+                        borderRadius: 'var(--radius-md)',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--separator)',
+                        boxShadow: 'var(--shadow-lg)',
+                      }}
+                    >
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setProjectMenuOpenId(null)
+                          onArchiveProject?.(folder, projName)
+                        }}
+                        className="w-full flex items-center gap-2 apple-press text-left"
+                        style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', color: 'var(--text-app)', minHeight: '32px' }}
+                      >
+                        <Archive className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--text-tertiary)' }} />
+                        <span>Archive</span>
+                      </button>
+                    </div>
+                  </>
                 )}
-              </button>
+              </div>
             )
           })}
           <button onClick={onCreateProject} className="w-full flex items-center gap-2.5 text-left apple-press" style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)' }}>
@@ -167,6 +214,46 @@ function Sidebar({
           </button>
         </div>
       </SidebarSection>
+
+      {/* Archived projects — only rendered when there are any */}
+      {archivedProjects.length > 0 && (
+        <SidebarSection
+          title="Archived"
+          collapsed={sectionsCollapsed.archived !== false}
+          onToggle={() => toggleSection('archived')}
+          badge={archivedProjects.length}
+        >
+          <div className="flex flex-col gap-0.5">
+            {[...archivedProjects].sort((a, b) => (a.name || a).localeCompare(b.name || b)).map(proj => {
+              const folder = proj.folder || proj
+              const projName = proj.name || proj
+              return (
+                <div
+                  key={`archived-${folder}`}
+                  className="w-full flex items-center gap-2.5 group"
+                  style={{
+                    padding: '7px 10px', borderRadius: 'var(--radius-sm)',
+                    fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)',
+                    color: 'var(--text-tertiary)',
+                    minHeight: '32px',
+                  }}
+                >
+                  <Archive className="w-4 h-4 shrink-0" style={{ color: 'var(--text-tertiary)', opacity: 0.7 }} />
+                  <span className="truncate flex-1" title={projName}>{projName}</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onUnarchiveProject?.(folder, projName) }}
+                    className="apple-press shrink-0"
+                    style={{ padding: '4px', borderRadius: 'var(--radius-xs)', color: 'var(--apple-green)', minWidth: '24px', minHeight: '24px' }}
+                    title={`Restore ${projName}`}
+                  >
+                    <ArchiveRestore className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </SidebarSection>
+      )}
 
       <div style={{ height: '0.5px', background: 'var(--separator)', margin: '4px 14px' }} />
 
