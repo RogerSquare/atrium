@@ -36,12 +36,16 @@ router.get('/links', async (req, res) => {
     if (!proj) return res.status(404).json({ error: 'project not found' });
 
     const tasks = getAllTasks(TASKS_DIR);
-    const taskIds = tasks
-      .filter(t => (t.project || 'Root') === proj.folder)
-      .map(t => t.id)
-      .filter(Boolean);
+    const taskProjections = tasks
+      .filter(t => (t.project || 'Root') === proj.folder && t.id)
+      .map(t => ({
+        id: t.id,
+        // Optional frontmatter overrides — see CLAUDE.md "Branch & PR Linkage"
+        github_branch: t.github_branch || null,
+        github_pr_url: t.github_pr_url || null,
+      }));
 
-    const data = await getLinks(project, taskIds, { refresh: req.query.refresh === '1' });
+    const data = await getLinks(project, taskProjections, { refresh: req.query.refresh === '1' });
     res.json(data);
   } catch (error) {
     logger.error({ err: error }, 'github links request failed');

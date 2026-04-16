@@ -106,37 +106,138 @@ function matchBranchToTaskId(branchName, taskIds) {
   return best;
 }
 
-async function buildLinks(repoPath, taskIds) {
+// Parse `github_pr_url` (https://github.com/owner/repo/pull/NNN) -> integer, or null
+function parsePrNumberFromUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  const m = url.match(/\/pull\/(\d+)\b/);
+  return m ? Number(m[1]) : null;
+}
+
+function buildEntryFromBranch(br, pr, remote) {
+  return {
+    branch: br.name,
+    branch_url: remote ? `https://github.com/${remote.owner}/${remote.repo}/tree/${encodeURIComponent(br.name)}` : null,
+    branch_date: br.date,
+    branch_sha: br.sha,
+    branch_subject: br.subject,
+    branch_missing: false,
+    pr_number: pr ? pr.number : null,
+    pr_url: pr ? pr.url : null,
+    pr_state: pr ? pr.state : null,
+    pr_title: pr ? pr.title : null,
+    // `reviewDecision` is one of 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED'
+    // or '' (empty) when no reviews yet. Older gh versions may omit the field entirely.
+    review_decision: pr && pr.reviewDecision ? pr.reviewDecision : null,
+  };
+}
+
+function buildEntryFromPrOnly(pr, remote) {
+  return {
+    branch: pr.headRefName,
+    branch_url: remote ? `https://github.com/${remote.owner}/${remote.repo}/tree/${encodeURIComponent(pr.headRefName)}` : null,
+    branch_date: pr.updatedAt,
+    branch_sha: null,
+    branch_subject: pr.title,
+    branch_missing: false,
+    pr_number: pr.number,
+    pr_url: pr.url,
+    pr_state: pr.state,
+    pr_title: pr.title,
+    review_decision: pr.reviewDecision || null,
+  };
+}
+
+// Explicit override — task has `github_branch` and/or `github_pr_url` in frontmatter.
+// The override always wins. If the named branch doesn't exist locally AND no matching PR
+// is found, we still emit an entry with `branch_missing: true` so the UI can render a
+// muted "linked but missing" badge instead of silently falling back to substring match.
+function buildEntryFromOverride(task, branchesByName, prsByBranch, prsByNumber, remote) {
+  const explicitBranch = task.github_branch || null;
+  const explicitPrNum = parsePrNumberFromUrl(task.github_pr_url);
+
+  let branchName = explicitBranch;
+  let pr = null;
+
+  if (explicitPrNum != null) {
+    pr = prsByNumber.get(explicitPrNum) || null;
+    if (pr && !branchName) branchName = pr.headRefName;
+  }
+
+  if (branchName && !pr) pr = prsByBranch.get(branchName) || null;
+
+  if (!branchName && !pr) return null; // nothing to link
+
+  const br = branchName ? branchesByName.get(branchName) : null;
+  if (br) return buildEntryFromBranch(br, pr, remote);
+  if (pr) {
+    // Branch name isn't local; fall through to PR-only shape which still carries branch info
+    const entry = buildEntryFromPrOnly(pr, remote);
+    // If the override named a branch different from the PR's headRefName, honor the override
+    if (branchName && branchName !== pr.headRefName) {
+      entry.branch = branchName;
+      entry.branch_url = remote
+        ? `https://github.com/${remote.owner}/${remote.repo}/tree/${encodeURIComponent(branchName)}`
+        : null;
+    }
+    return entry;
+  }
+  // Neither local branch nor PR exists — emit a "missing" marker so the UI can show
+  // a muted badge and the user sees their override is in place but unresolved.
+  return {
+    branch: branchName,
+    branch_url: remote ? `https://github.com/${remote.owner}/${remote.repo}/tree/${encodeURIComponent(branchName)}` : null,
+    branch_date: null,
+    branch_sha: null,
+    branch_subject: null,
+    branch_missing: true,
+    pr_number: explicitPrNum || null,
+    pr_url: task.github_pr_url || null,
+    pr_state: null,
+    pr_title: null,
+    review_decision: null,
+  };
+}
+
+async function buildLinks(repoPath, tasks) {
   const [remote, branches, prs] = await Promise.all([
     getRemote(repoPath),
     getBranches(repoPath),
     getPullRequests(repoPath),
   ]);
 
-  const prByBranch = new Map();
-  for (const pr of prs) prByBranch.set(pr.headRefName, pr);
+  const branchesByName = new Map(branches.map(b => [b.name, b]));
+  const prsByBranch = new Map();
+  const prsByNumber = new Map();
+  for (const pr of prs) {
+    prsByBranch.set(pr.headRefName, pr);
+    prsByNumber.set(pr.number, pr);
+  }
 
   const byTaskId = {};
   const detached = [];
 
+  // Pass 1: explicit overrides from task frontmatter. A claimed task-id is taken out of
+  // the substring-match pool so Pass 2 doesn't double-link a branch to two tasks.
+  const overriddenIds = new Set();
+  const claimedBranches = new Set();
+  for (const task of tasks) {
+    if (!task.github_branch && !task.github_pr_url) continue;
+    const entry = buildEntryFromOverride(task, branchesByName, prsByBranch, prsByNumber, remote);
+    if (entry) {
+      byTaskId[task.id] = entry;
+      overriddenIds.add(task.id);
+      if (entry.branch) claimedBranches.add(entry.branch);
+    }
+  }
+
+  // Pass 2: substring fallback over branches that weren't claimed by an override,
+  // against task ids that weren't claimed by an override.
+  const fallbackIds = tasks.filter(t => !overriddenIds.has(t.id)).map(t => t.id);
   for (const br of branches) {
-    const taskId = matchBranchToTaskId(br.name, taskIds);
-    const pr = prByBranch.get(br.name);
-    const branchUrl = remote ? `https://github.com/${remote.owner}/${remote.repo}/tree/${encodeURIComponent(br.name)}` : null;
-    const entry = {
-      branch: br.name,
-      branch_url: branchUrl,
-      branch_date: br.date,
-      branch_sha: br.sha,
-      branch_subject: br.subject,
-      pr_number: pr ? pr.number : null,
-      pr_url: pr ? pr.url : null,
-      pr_state: pr ? pr.state : null,
-      pr_title: pr ? pr.title : null,
-      // `reviewDecision` is one of 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED'
-      // or '' (empty) when no reviews yet. Older gh versions may omit the field entirely.
-      review_decision: pr && pr.reviewDecision ? pr.reviewDecision : null,
-    };
+    if (claimedBranches.has(br.name)) continue;
+    const taskId = matchBranchToTaskId(br.name, fallbackIds);
+    const pr = prsByBranch.get(br.name);
+    const entry = buildEntryFromBranch(br, pr, remote);
     if (taskId) {
       byTaskId[taskId] = entry;
     } else {
@@ -144,23 +245,13 @@ async function buildLinks(repoPath, taskIds) {
     }
   }
 
-  // Surface PRs whose branch was deleted locally but still exist on GitHub
+  // Pass 3: surface PRs whose branch was deleted locally (still only for tasks
+  // not already claimed by a Pass-1 override or Pass-2 local branch).
   for (const pr of prs) {
-    if (prByBranch.has(pr.headRefName) && byTaskId[matchBranchToTaskId(pr.headRefName, taskIds)]) continue;
-    const taskId = matchBranchToTaskId(pr.headRefName, taskIds);
+    if (claimedBranches.has(pr.headRefName)) continue;
+    const taskId = matchBranchToTaskId(pr.headRefName, fallbackIds);
     if (taskId && !byTaskId[taskId]) {
-      byTaskId[taskId] = {
-        branch: pr.headRefName,
-        branch_url: remote ? `https://github.com/${remote.owner}/${remote.repo}/tree/${encodeURIComponent(pr.headRefName)}` : null,
-        branch_date: pr.updatedAt,
-        branch_sha: null,
-        branch_subject: pr.title,
-        pr_number: pr.number,
-        pr_url: pr.url,
-        pr_state: pr.state,
-        pr_title: pr.title,
-        review_decision: pr.reviewDecision || null,
-      };
+      byTaskId[taskId] = buildEntryFromPrOnly(pr, remote);
     }
   }
 
@@ -173,11 +264,18 @@ async function buildLinks(repoPath, taskIds) {
   };
 }
 
-async function getLinks(projectIdOrName, taskIds, { refresh = false } = {}) {
+// `tasks` is an array of minimal task projections: { id, github_branch?, github_pr_url? }.
+// Callers that still have the old (just-ids) shape are auto-wrapped for backward compat.
+async function getLinks(projectIdOrName, tasks, { refresh = false } = {}) {
   const repoPath = resolveProjectRepoPath(projectIdOrName);
   if (!repoPath) {
     return { repo: null, repo_url: null, by_task_id: {}, detached: [], fetched_at: new Date().toISOString(), reason: 'no_git_repo' };
   }
+
+  // Backward compat: accept a plain string[] of ids
+  const normalizedTasks = Array.isArray(tasks)
+    ? tasks.map(t => (typeof t === 'string' ? { id: t } : t)).filter(t => t && t.id)
+    : [];
 
   const cacheKey = repoPath;
   const cached = cache.get(cacheKey);
@@ -185,7 +283,7 @@ async function getLinks(projectIdOrName, taskIds, { refresh = false } = {}) {
     return cached.data;
   }
 
-  const data = await buildLinks(repoPath, taskIds);
+  const data = await buildLinks(repoPath, normalizedTasks);
   cache.set(cacheKey, { fetchedAt: Date.now(), data });
   return data;
 }
@@ -198,6 +296,7 @@ module.exports = {
   getLinks,
   clearCache,
   parseGithubRemote,
+  parsePrNumberFromUrl,
   matchBranchToTaskId,
   resolveProjectRepoPath,
 };
