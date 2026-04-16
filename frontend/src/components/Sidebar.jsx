@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, memo } from 'react'
-import { ChevronDown, ChevronRight, ChevronLeft, Folder, Plus, Trash2, UserCircle2, Clock, SlidersHorizontal, X, BarChart3, Activity, Play, Square, Settings as SettingsIcon, MessageCircle, Eye, LogOut, PanelLeftClose, PanelLeftOpen, AlertCircle, Palette, MoreHorizontal, Archive, ArchiveRestore } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronLeft, Folder, Plus, Trash2, UserCircle2, Clock, SlidersHorizontal, X, BarChart3, Activity, Play, Square, Settings as SettingsIcon, MessageCircle, Eye, LogOut, PanelLeftClose, PanelLeftOpen, AlertCircle, Palette, MoreHorizontal, Archive } from 'lucide-react'
 import { API_BASE, apiFetch } from '../config'
 
 const FILTER_TYPES = ['all', 'frontend', 'backend', 'fullstack', 'devops']
@@ -25,7 +25,7 @@ function Sidebar({
   collapsed, onToggleCollapse, mobile,
   // Projects
   projects, tasks, activeProject, onSetActiveProject, onCreateProject, onDeleteProject,
-  archivedProjects = [], onArchiveProject, onUnarchiveProject,
+  archivedProjects = [], onArchiveProject, onOpenArchivedModal,
   // Filters
   filterType, setFilterType, filterPriority, setFilterPriority,
   filterAssignee, setFilterAssignee, filterToday, setFilterToday,
@@ -37,7 +37,7 @@ function Sidebar({
   user, onLogout, onOpenSettings, onOpenChat, onOpenPreview, onOpenDesignStudio,
   chatUnread, showPreview,
 }) {
-  const [sectionsCollapsed, setSectionsCollapsed] = useState(() => mobile ? { filters: true, dashboard: true, archived: true } : { archived: true })
+  const [sectionsCollapsed, setSectionsCollapsed] = useState(() => mobile ? { filters: true, dashboard: true } : {})
   const toggleSection = (key) => setSectionsCollapsed(prev => ({ ...prev, [key]: !prev[key] }))
   const [projectMenuOpenId, setProjectMenuOpenId] = useState(null)
 
@@ -212,48 +212,19 @@ function Sidebar({
             <Plus className="w-4 h-4 shrink-0" />
             <span>New Project</span>
           </button>
+          {archivedProjects.length > 0 && (
+            <button
+              onClick={onOpenArchivedModal}
+              className="w-full flex items-center gap-2.5 text-left apple-press"
+              style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)' }}
+              title="View archived projects"
+            >
+              <Archive className="w-3.5 h-3.5 shrink-0" style={{ opacity: 0.7 }} />
+              <span className="truncate flex-1">{archivedProjects.length} archived</span>
+            </button>
+          )}
         </div>
       </SidebarSection>
-
-      {/* Archived projects — only rendered when there are any */}
-      {archivedProjects.length > 0 && (
-        <SidebarSection
-          title="Archived"
-          collapsed={sectionsCollapsed.archived !== false}
-          onToggle={() => toggleSection('archived')}
-          badge={archivedProjects.length}
-        >
-          <div className="flex flex-col gap-0.5">
-            {[...archivedProjects].sort((a, b) => (a.name || a).localeCompare(b.name || b)).map(proj => {
-              const folder = proj.folder || proj
-              const projName = proj.name || proj
-              return (
-                <div
-                  key={`archived-${folder}`}
-                  className="w-full flex items-center gap-2.5 group"
-                  style={{
-                    padding: '7px 10px', borderRadius: 'var(--radius-sm)',
-                    fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)',
-                    color: 'var(--text-tertiary)',
-                    minHeight: '32px',
-                  }}
-                >
-                  <Archive className="w-4 h-4 shrink-0" style={{ color: 'var(--text-tertiary)', opacity: 0.7 }} />
-                  <span className="truncate flex-1" title={projName}>{projName}</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onUnarchiveProject?.(folder, projName) }}
-                    className="apple-press shrink-0"
-                    style={{ padding: '4px', borderRadius: 'var(--radius-xs)', color: 'var(--apple-green)', minWidth: '24px', minHeight: '24px' }}
-                    title={`Restore ${projName}`}
-                  >
-                    <ArchiveRestore className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-        </SidebarSection>
-      )}
 
       <div style={{ height: '0.5px', background: 'var(--separator)', margin: '4px 14px' }} />
 

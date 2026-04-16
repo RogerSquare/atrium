@@ -8,6 +8,7 @@ import Sidebar from './components/Sidebar'
 import TaskModal from './components/TaskModal'
 import CreateTaskModal from './components/CreateTaskModal'
 import CreateProjectModal from './components/CreateProjectModal'
+import ArchivedProjectsModal from './components/ArchivedProjectsModal'
 import Login from './components/Login'
 import Settings from './components/Settings'
 import ProjectDescription from './components/ProjectDescription'
@@ -70,6 +71,7 @@ function AppContent() {
   const [showSettings, setShowSettings] = useState(false)
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false)
   const [showCreateProjectModal, setShowCreateProjectModal] = useState(false)
+  const [showArchivedModal, setShowArchivedModal] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [previewServices, setPreviewServices] = useState([])
   const [dashboardCollapsed, setDashboardCollapsed] = useState(() => localStorage.getItem('taskBoardDashCollapsed') === 'true')
@@ -180,7 +182,7 @@ function AppContent() {
     onDeleteProject: handleDeleteProject,
     archivedProjects,
     onArchiveProject: handleArchiveProject,
-    onUnarchiveProject: handleUnarchiveProject,
+    onOpenArchivedModal: () => setShowArchivedModal(true),
     filterType, setFilterType,
     filterPriority, setFilterPriority,
     filterAssignee, setFilterAssignee,
@@ -340,6 +342,15 @@ function AppContent() {
         )}
         {showCreateTaskModal && <CreateTaskModal projects={projects} activeProject={activeProject} onClose={() => setShowCreateTaskModal(false)} onCreateTask={handleCreateTask} />}
         {showCreateProjectModal && <CreateProjectModal onClose={() => setShowCreateProjectModal(false)} onCreateProject={handleCreateProject} />}
+        {showArchivedModal && (
+          <ArchivedProjectsModal
+            archivedProjects={archivedProjects}
+            onClose={() => setShowArchivedModal(false)}
+            onUnarchiveProject={(idOrName, displayName) => {
+              handleUnarchiveProject(idOrName, displayName)
+            }}
+          />
+        )}
         {showSettings && <Settings theme={theme} onSetTheme={setTheme} onClose={() => setShowSettings(false)} currentUser={user} onUserUpdate={updateUser} onOpenPreview={() => { fetchPreviewServices(); setShowPreview(true) }} />}
         {showPreview && <PreviewPanel services={previewServices} onClose={() => setShowPreview(false)} socket={socketRef.current} activeProject={activeProject} />}
         {showDesignStudio && <DesignStudio services={previewServices} onClose={() => setShowDesignStudio(false)} activeProject={activeProject} user={user} socket={socketRef.current} />}
