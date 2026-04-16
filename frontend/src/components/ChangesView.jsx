@@ -377,13 +377,16 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                 className="flex items-stretch relative"
                 style={{
                   cursor: r.visible ? 'pointer' : 'default',
-                  maxHeight: r.visible ? `${ROW_HEIGHT}px` : '0px',
+                  // Explicit height (not max-height) so visible rows are always exactly
+                  // ROW_HEIGHT tall — this keeps the DOM row grid in lockstep with the
+                  // SVG trail which assumes `visibleIndex * ROW_STRIDE` positions.
+                  height: r.visible ? `${ROW_HEIGHT}px` : '0px',
                   opacity: r.visible ? 1 : 0,
                   marginBottom: r.visible && !isLastVisible ? `${ROW_GAP}px` : '0px',
                   overflow: 'hidden',
                   borderRadius: '3px',
                   background: laneTint,
-                  transition: 'max-height 260ms ease, opacity 200ms ease, margin-bottom 260ms ease, background var(--duration-fast) var(--ease-default)',
+                  transition: 'height 260ms ease, opacity 200ms ease, margin-bottom 260ms ease, background var(--duration-fast) var(--ease-default)',
                 }}
                 onMouseEnter={(e) => {
                   if (!r.visible) return
