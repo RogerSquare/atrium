@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useMemo, useCallback } from 'react'
-import { Circle, Loader2, Eye, CheckCircle2, GitBranch, GitPullRequest, ExternalLink, RefreshCw } from 'lucide-react'
+import { Circle, Loader2, Eye, CheckCircle2, GitBranch, GitPullRequest, ExternalLink, RefreshCw, X } from 'lucide-react'
 import { API_BASE, apiFetch } from '../config'
 import { STATUS_COLOR } from '../constants'
 
@@ -54,10 +54,23 @@ const PR_STATE_STYLE = {
   CLOSED: { color: 'var(--apple-red)',    label: 'closed' },
 }
 
+const FOCUS_STORAGE_KEY = 'taskBoardChangesFocus'
+
 function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpdatedIds = [] }) {
   const [linksData, setLinksData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [focusedCategory, setFocusedCategory] = useState(() => {
+    try { return localStorage.getItem(FOCUS_STORAGE_KEY) } catch { return null }
+  })
+
+  const setFocus = useCallback((key) => {
+    setFocusedCategory(key)
+    try {
+      if (key) localStorage.setItem(FOCUS_STORAGE_KEY, key)
+      else localStorage.removeItem(FOCUS_STORAGE_KEY)
+    } catch { /* ignore storage errors */ }
+  }, [])
 
   const projectInfo = useMemo(() => {
     if (!activeProject || activeProject === 'All') return null
@@ -86,17 +99,27 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
 
   useEffect(() => { fetchLinks(false) }, [fetchLinks])
 
-  const { lanes, rows, firstRowByLaneKey } = useMemo(() => {
+  const { lanes, rows, firstRowByLaneKey, allCategoryKeys } = useMemo(() => {
     const links = linksData?.by_task_id || {}
 
     // Each task becomes a row — drafts are excluded since they aren't committed work yet
-    const enriched = tasks
+    const baseEnriched = tasks
       .filter(t => t.status !== 'draft')
       .map(t => {
         const link = links[t.id] || null
         const ts = link?.branch_date || t.updated_at || t.created_at || 0
         return { task: t, link, ts: new Date(ts).getTime() || 0 }
       })
+
+    // Capture all categories present BEFORE focus filtering, for the self-heal check
+    const allCategoryKeys = new Set(
+      baseEnriched.map(r => categoryOf(r.task.id) || UNCATEGORIZED_LANE)
+    )
+
+    // Apply focus filter on top of the draft filter
+    const enriched = focusedCategory
+      ? baseEnriched.filter(r => (categoryOf(r.task.id) || UNCATEGORIZED_LANE) === focusedCategory)
+      : baseEnriched
 
     // Newest first
     enriched.sort((a, b) => b.ts - a.ts)
@@ -136,14 +159,25 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
       lanes: laneList.map((l, i) => ({ ...l, index: i })),
       rows: builtRows,
       firstRowByLaneKey,
+      allCategoryKeys,
     }
-  }, [tasks, linksData])
+  }, [tasks, linksData, focusedCategory])
+
+  // Self-heal: if the persisted focus is for a category no task currently has, exit focus mode
+  useEffect(() => {
+    if (focusedCategory && allCategoryKeys && !allCategoryKeys.has(focusedCategory)) {
+      setFocus(null)
+    }
+  }, [focusedCategory, allCategoryKeys, setFocus])
 
   const graphWidth = LANE_PAD_LEFT + lanes.length * LANE_WIDTH + LANE_PAD_RIGHT
   const totalHeight = rows.length * ROW_STRIDE
 
   const showRepoBanner = linksData && !linksData.repo && !error
   const repoUrl = linksData?.repo_url
+  const focusStyle = focusedCategory && focusedCategory !== UNCATEGORIZED_LANE
+    ? CATEGORY_STYLE[focusedCategory]
+    : null
 
   return (
     <div className="w-full">
@@ -176,6 +210,34 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
             <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--apple-red)' }}>
               GitHub fetch failed: {error}
             </span>
+          )}
+          {focusedCategory && (
+            <button
+              type="button"
+              onClick={() => setFocus(null)}
+              className="apple-press flex items-center gap-1"
+              style={{
+                padding: '4px 8px 4px 10px',
+                borderRadius: 'var(--radius-md)',
+                background: focusStyle
+                  ? `color-mix(in srgb, ${focusStyle.color} 18%, transparent)`
+                  : 'var(--fill-secondary)',
+                border: focusStyle
+                  ? `1px solid color-mix(in srgb, ${focusStyle.color} 45%, transparent)`
+                  : '1px solid var(--separator)',
+                color: focusStyle ? focusStyle.color : 'var(--text-tertiary)',
+                fontSize: 'var(--text-caption2)',
+                fontWeight: 600,
+                fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                letterSpacing: '0.02em',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+              }}
+              title="Show all categories"
+            >
+              {focusStyle?.label || 'other'}
+              <X className="w-3 h-3" />
+            </button>
           )}
         </div>
         <button
@@ -277,25 +339,36 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                   style={{ width: `${LABEL_COL_WIDTH}px`, padding: '0 10px 0 12px' }}
                 >
                   {showLabel && (
-                    <span
-                      className="flex items-center gap-1.5 whitespace-nowrap"
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setFocus(focusedCategory === r.lane.key ? null : r.lane.key)
+                      }}
+                      className="apple-press flex items-center gap-1.5 whitespace-nowrap"
                       style={{
                         padding: '3px 10px',
                         borderRadius: 'var(--radius-sm)',
                         background: r.lane.key === UNCATEGORIZED_LANE
                           ? 'var(--fill-secondary)'
-                          : `color-mix(in srgb, ${r.lane.color} 26%, transparent)`,
+                          : `color-mix(in srgb, ${r.lane.color} ${focusedCategory === r.lane.key ? 42 : 26}%, transparent)`,
                         color: r.lane.key === UNCATEGORIZED_LANE ? 'var(--text-tertiary)' : r.lane.color,
                         fontSize: '11px',
                         fontWeight: 600,
                         fontFamily: 'var(--font-mono, ui-monospace, monospace)',
                         letterSpacing: '0.02em',
                         textTransform: 'uppercase',
+                        border: focusedCategory === r.lane.key
+                          ? `1px solid color-mix(in srgb, ${r.lane.color} 60%, transparent)`
+                          : '1px solid transparent',
+                        cursor: 'pointer',
                       }}
-                      title={`Category: ${r.lane.label}`}
+                      title={focusedCategory === r.lane.key
+                        ? `Showing only ${r.lane.label} — click to show all`
+                        : `Focus on ${r.lane.label} only`}
                     >
                       {r.lane.label}
-                    </span>
+                    </button>
                   )}
                 </div>
 
