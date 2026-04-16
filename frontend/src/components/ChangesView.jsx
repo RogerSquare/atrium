@@ -23,12 +23,30 @@ const LANE_PALETTE = [
   'var(--apple-red)',
 ]
 
-const LANE_WIDTH = 22
+const LANE_WIDTH = 28
 const LANE_PAD_LEFT = 14
-const LANE_PAD_RIGHT = 14
-const ROW_HEIGHT = 44
-const HEADER_HEIGHT = 36
-const NO_BRANCH_LANE = '__no_branch__'
+const LANE_PAD_RIGHT = 18
+const ROW_HEIGHT = 38
+const ROW_GAP = 3
+const ROW_STRIDE = ROW_HEIGHT + ROW_GAP
+const LABEL_COL_WIDTH = 180
+const UNCATEGORIZED_LANE = '__other__'
+
+const CATEGORY_STYLE = {
+  bug:    { color: 'var(--apple-red)',    label: 'bug'    },
+  feat:   { color: 'var(--apple-blue)',   label: 'feat'   },
+  ui:     { color: 'var(--apple-teal)',   label: 'ui'     },
+  opt:    { color: 'var(--apple-orange)', label: 'opt'    },
+  devops: { color: 'var(--apple-purple)', label: 'devops' },
+  comp:   { color: 'var(--gray-1)',       label: 'comp'   },
+  mobile: { color: 'var(--apple-pink)',   label: 'mobile' },
+}
+
+function categoryOf(taskId) {
+  if (!taskId) return null
+  const prefix = taskId.split('-')[0]?.toLowerCase()
+  return CATEGORY_STYLE[prefix] ? prefix : null
+}
 
 const PR_STATE_STYLE = {
   OPEN:   { color: 'var(--apple-green)',  label: 'open'   },
@@ -68,42 +86,61 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
 
   useEffect(() => { fetchLinks(false) }, [fetchLinks])
 
-  const { lanes, rows } = useMemo(() => {
+  const { lanes, rows, firstRowByLaneKey } = useMemo(() => {
     const links = linksData?.by_task_id || {}
 
-    // Each task becomes a row
-    const enriched = tasks.map(t => {
-      const link = links[t.id] || null
-      const ts = link?.branch_date || t.updated_at || t.created_at || 0
-      return { task: t, link, ts: new Date(ts).getTime() || 0 }
-    })
+    // Each task becomes a row — drafts are excluded since they aren't committed work yet
+    const enriched = tasks
+      .filter(t => t.status !== 'draft')
+      .map(t => {
+        const link = links[t.id] || null
+        const ts = link?.branch_date || t.updated_at || t.created_at || 0
+        return { task: t, link, ts: new Date(ts).getTime() || 0 }
+      })
 
     // Newest first
     enriched.sort((a, b) => b.ts - a.ts)
 
-    // Lane order: most-recently-active branch first, then "no branch"
-    const seen = new Map()
+    // Lane = task category (bug / feat / ui / opt / devops / comp / mobile).
+    // Order lanes by most-recent activity in that category.
+    const lastTsByCat = new Map()
     for (const r of enriched) {
-      const key = r.link?.branch || NO_BRANCH_LANE
-      if (!seen.has(key)) seen.set(key, r.ts)
+      const key = categoryOf(r.task.id) || UNCATEGORIZED_LANE
+      if (!lastTsByCat.has(key)) lastTsByCat.set(key, r.ts)
     }
-    const laneList = Array.from(seen.entries())
+    const laneList = Array.from(lastTsByCat.entries())
       .sort((a, b) => b[1] - a[1])
-      .map(([key], idx) => ({ key, color: LANE_PALETTE[idx % LANE_PALETTE.length] }))
+      .map(([key]) => {
+        const color = key === UNCATEGORIZED_LANE
+          ? 'var(--gray-1)'
+          : CATEGORY_STYLE[key]?.color || 'var(--gray-1)'
+        const label = key === UNCATEGORIZED_LANE ? 'other' : CATEGORY_STYLE[key]?.label || key
+        return { key, color, label }
+      })
 
     const laneByKey = new Map(laneList.map((l, i) => [l.key, { ...l, index: i }]))
 
     const builtRows = enriched.map(r => {
-      const key = r.link?.branch || NO_BRANCH_LANE
+      const key = categoryOf(r.task.id) || UNCATEGORIZED_LANE
       const lane = laneByKey.get(key)
       return { ...r, lane }
     })
 
-    return { lanes: laneList.map((l, i) => ({ ...l, index: i })), rows: builtRows }
+    // Compute each lane's first-appearance row index so we know where to draw the label pill
+    const firstRowByLaneKey = new Map()
+    builtRows.forEach((r, i) => {
+      if (r.lane && !firstRowByLaneKey.has(r.lane.key)) firstRowByLaneKey.set(r.lane.key, i)
+    })
+
+    return {
+      lanes: laneList.map((l, i) => ({ ...l, index: i })),
+      rows: builtRows,
+      firstRowByLaneKey,
+    }
   }, [tasks, linksData])
 
   const graphWidth = LANE_PAD_LEFT + lanes.length * LANE_WIDTH + LANE_PAD_RIGHT
-  const totalHeight = HEADER_HEIGHT + rows.length * ROW_HEIGHT
+  const totalHeight = rows.length * ROW_STRIDE
 
   const showRepoBanner = linksData && !linksData.repo && !error
   const repoUrl = linksData?.repo_url
@@ -158,95 +195,117 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
       </div>
 
       <div className="rounded-lg overflow-hidden" style={{ background: 'var(--bg-card)', border: '1px solid var(--separator)' }}>
-        <div className="flex">
-          {/* Graph column */}
-          <div className="shrink-0 relative" style={{ width: `${graphWidth}px` }}>
-            <svg
-              width={graphWidth} height={totalHeight}
-              style={{ display: 'block' }}
-            >
-              {/* Lane vertical lines */}
-              {lanes.map((lane) => {
-                const x = LANE_PAD_LEFT + lane.index * LANE_WIDTH + LANE_WIDTH / 2
-                return (
-                  <line
-                    key={lane.key}
-                    x1={x} x2={x}
-                    y1={HEADER_HEIGHT - 4} y2={totalHeight}
-                    stroke={lane.color}
-                    strokeWidth="2"
-                    strokeOpacity="0.45"
-                  />
-                )
-              })}
-              {/* Nodes */}
-              {rows.map((r, i) => {
-                if (!r.lane) return null
-                const x = LANE_PAD_LEFT + r.lane.index * LANE_WIDTH + LANE_WIDTH / 2
-                const y = HEADER_HEIGHT + i * ROW_HEIGHT + ROW_HEIGHT / 2
-                return (
-                  <g key={r.task.id}>
-                    <circle cx={x} cy={y} r="5" fill="var(--bg-card)" stroke={r.lane.color} strokeWidth="2" />
-                  </g>
-                )
-              })}
-            </svg>
-          </div>
-
-          {/* Right summary column */}
-          <div className="flex-1 min-w-0">
-            {/* Lane label header row */}
-            <div
-              className="flex items-center gap-1.5 overflow-x-auto"
-              style={{
-                height: `${HEADER_HEIGHT}px`,
-                padding: '0 12px',
-                borderBottom: '0.5px solid var(--separator)',
-                background: 'var(--bg-secondary)',
-              }}
-            >
-              {lanes.map(lane => (
-                <span
-                  key={lane.key}
-                  className="flex items-center gap-1 whitespace-nowrap"
-                  style={{
-                    padding: '3px 8px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: `color-mix(in srgb, ${lane.color} 14%, transparent)`,
-                    border: `1px solid color-mix(in srgb, ${lane.color} 35%, transparent)`,
-                    color: lane.color,
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-                  }}
-                >
-                  {lane.key === NO_BRANCH_LANE ? (
-                    <>no branch</>
-                  ) : (
-                    <><GitBranch className="w-2.5 h-2.5" /> {lane.key}</>
-                  )}
-                </span>
-              ))}
-            </div>
-            {/* Rows */}
-            {rows.map((r, i) => {
-              const StatusIcon = STATUS_ICON[r.task.status] || Circle
-              const justUpdated = recentlyUpdatedIds.includes(r.task.id)
-              const prStyle = r.link?.pr_state ? PR_STATE_STYLE[r.link.pr_state] : null
+        <div className="relative" style={{ minHeight: rows.length ? totalHeight : 120 }}>
+          {/* SVG graph overlay — sits between the label column and the message column, doesn't capture clicks */}
+          <svg
+            width={graphWidth} height={totalHeight}
+            className="absolute top-0"
+            style={{ left: `${LABEL_COL_WIDTH}px`, pointerEvents: 'none' }}
+          >
+            {/* Lane lines — only BETWEEN consecutive nodes on the same lane. No extension past
+                the first or last node, so the line visibly terminates at circles at both ends. */}
+            {lanes.map((lane) => {
+              const x = LANE_PAD_LEFT + lane.index * LANE_WIDTH + LANE_WIDTH / 2
+              const rowsOnLane = rows
+                .map((r, i) => ({ r, i }))
+                .filter(({ r }) => r.lane?.key === lane.key)
+              // Since each lane is a single category, a solid line in the category color is enough
+              if (rowsOnLane.length < 2) return null
+              const first = rowsOnLane[0]
+              const last = rowsOnLane[rowsOnLane.length - 1]
+              const y1 = first.i * ROW_STRIDE + ROW_HEIGHT / 2
+              const y2 = last.i * ROW_STRIDE + ROW_HEIGHT / 2
               return (
-                <div
+                <line
+                  key={`${lane.key}-line`}
+                  x1={x} x2={x} y1={y1} y2={y2}
+                  stroke={lane.color}
+                  strokeWidth="2"
+                  strokeOpacity="0.6"
+                />
+              )
+            })}
+            {/* Node circles — one per task, on its category lane, drawn on top of line endpoints */}
+            {rows.map((r, i) => {
+              if (!r.lane) return null
+              const x = LANE_PAD_LEFT + r.lane.index * LANE_WIDTH + LANE_WIDTH / 2
+              const y = i * ROW_STRIDE + ROW_HEIGHT / 2
+              return (
+                <circle
                   key={r.task.id}
-                  onClick={() => onSelectTask(r.task)}
-                  className="flex items-center gap-2.5 cursor-pointer"
-                  style={{
-                    height: `${ROW_HEIGHT}px`,
-                    padding: '0 12px',
-                    borderBottom: i === rows.length - 1 ? 'none' : '0.5px solid var(--separator)',
-                    background: justUpdated ? 'color-mix(in srgb, var(--accent-app) 6%, transparent)' : 'transparent',
-                    transition: 'background var(--duration-fast) var(--ease-default)',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--fill-secondary)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = justUpdated ? 'color-mix(in srgb, var(--accent-app) 6%, transparent)' : 'transparent' }}
+                  cx={x} cy={y} r="5.5"
+                  fill="var(--bg-card)"
+                  stroke={r.lane.color} strokeWidth="2.25"
+                />
+              )
+            })}
+          </svg>
+
+          {/* Rows — each row is a single horizontal band tinted by its lane color */}
+          {rows.map((r, i) => {
+            const StatusIcon = STATUS_ICON[r.task.status] || Circle
+            const justUpdated = recentlyUpdatedIds.includes(r.task.id)
+            const prStyle = r.link?.pr_state ? PR_STATE_STYLE[r.link.pr_state] : null
+            const catKey = categoryOf(r.task.id)
+            const catStyle = catKey ? CATEGORY_STYLE[catKey] : null
+            const showLabel = r.lane && firstRowByLaneKey?.get(r.lane.key) === i
+            const laneTint = r.lane
+              ? `color-mix(in srgb, ${r.lane.color} ${justUpdated ? 22 : 10}%, transparent)`
+              : (justUpdated ? 'color-mix(in srgb, var(--accent-app) 6%, transparent)' : 'transparent')
+            return (
+              <div
+                key={r.task.id}
+                onClick={() => onSelectTask(r.task)}
+                className="flex items-stretch cursor-pointer relative"
+                style={{
+                  height: `${ROW_HEIGHT}px`,
+                  marginBottom: i === rows.length - 1 ? 0 : `${ROW_GAP}px`,
+                  borderRadius: '3px',
+                  background: laneTint,
+                  transition: 'background var(--duration-fast) var(--ease-default)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = r.lane
+                    ? `color-mix(in srgb, ${r.lane.color} 20%, transparent)`
+                    : 'var(--fill-secondary)'
+                }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = laneTint }}
+              >
+                {/* Label column — category name shown only on the first (topmost) row of each lane */}
+                <div
+                  className="shrink-0 flex items-center justify-end"
+                  style={{ width: `${LABEL_COL_WIDTH}px`, padding: '0 10px 0 12px' }}
+                >
+                  {showLabel && (
+                    <span
+                      className="flex items-center gap-1.5 whitespace-nowrap"
+                      style={{
+                        padding: '3px 10px',
+                        borderRadius: 'var(--radius-sm)',
+                        background: r.lane.key === UNCATEGORIZED_LANE
+                          ? 'var(--fill-secondary)'
+                          : `color-mix(in srgb, ${r.lane.color} 26%, transparent)`,
+                        color: r.lane.key === UNCATEGORIZED_LANE ? 'var(--text-tertiary)' : r.lane.color,
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                        letterSpacing: '0.02em',
+                        textTransform: 'uppercase',
+                      }}
+                      title={`Category: ${r.lane.label}`}
+                    >
+                      {r.lane.label}
+                    </span>
+                  )}
+                </div>
+
+                {/* Graph column spacer (SVG overlays this region) */}
+                <div className="shrink-0" style={{ width: `${graphWidth}px` }} />
+
+                {/* Message column */}
+                <div
+                  className="flex-1 flex items-center gap-2.5 min-w-0"
+                  style={{ padding: '0 12px' }}
                 >
                   <StatusIcon
                     className={`w-3.5 h-3.5 shrink-0 ${r.task.status === 'in_progress' ? 'animate-spin' : ''}`}
@@ -268,10 +327,16 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                   <span
                     className="shrink-0"
                     style={{
+                      padding: catStyle ? '2px 6px' : 0,
+                      borderRadius: '4px',
+                      background: catStyle ? `color-mix(in srgb, ${catStyle.color} 14%, transparent)` : 'transparent',
+                      border: catStyle ? `1px solid color-mix(in srgb, ${catStyle.color} 35%, transparent)` : 'none',
+                      color: catStyle ? catStyle.color : 'var(--text-muted)',
                       fontSize: '10px',
-                      color: 'var(--text-muted)',
+                      fontWeight: catStyle ? 600 : 400,
                       fontFamily: 'var(--font-mono, ui-monospace, monospace)',
                     }}
+                    title={catStyle ? `Category: ${catStyle.label}` : undefined}
                   >
                     {r.task.id}
                   </span>
@@ -284,8 +349,8 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                       style={{
                         padding: '2px 6px',
                         borderRadius: '4px',
-                        background: r.lane ? `color-mix(in srgb, ${r.lane.color} 12%, transparent)` : 'var(--fill-secondary)',
-                        color: r.lane?.color || 'var(--text-tertiary)',
+                        background: 'var(--fill-secondary)',
+                        color: 'var(--text-tertiary)',
                         fontSize: '10px',
                         fontFamily: 'var(--font-mono, ui-monospace, monospace)',
                         maxWidth: '180px',
@@ -318,14 +383,14 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                     </a>
                   )}
                 </div>
-              )
-            })}
-            {rows.length === 0 && (
-              <div className="text-center py-12" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-subhead)' }}>
-                No tasks to display
               </div>
-            )}
-          </div>
+            )
+          })}
+          {rows.length === 0 && (
+            <div className="text-center py-12" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-subhead)' }}>
+              No tasks to display
+            </div>
+          )}
         </div>
       </div>
     </div>
