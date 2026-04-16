@@ -81,7 +81,7 @@ async function getPullRequests(repoPath) {
     'pr', 'list',
     '--state', 'all',
     '--limit', '200',
-    '--json', 'number,title,headRefName,url,state,updatedAt,reviewDecision'
+    '--json', 'number,title,headRefName,url,state,updatedAt,reviewDecision,isDraft,mergeStateStatus,statusCheckRollup'
   ]);
   if (!out) return [];
   try {
@@ -113,6 +113,40 @@ function parsePrNumberFromUrl(url) {
   return m ? Number(m[1]) : null;
 }
 
+// Derive a single CI state from gh's `statusCheckRollup` array.
+// Each entry has a `conclusion` (SUCCESS/FAILURE/CANCELLED/SKIPPED/NEUTRAL/TIMED_OUT/
+// ACTION_REQUIRED) or a `status` (QUEUED/IN_PROGRESS/COMPLETED/PENDING).
+// Rules: any failure-like outcome -> FAILURE; any in-flight check -> PENDING;
+// every check green (or no blocking checks) -> SUCCESS. Empty / missing -> null.
+function deriveCiStatus(checks) {
+  if (!Array.isArray(checks) || checks.length === 0) return null;
+  let anyPending = false;
+  let anyNonSuccessTerminal = false;
+  let anyTerminalSuccess = false;
+  for (const c of checks) {
+    const conclusion = (c.conclusion || '').toUpperCase();
+    const state = (c.state || c.status || '').toUpperCase();
+    // In-flight work
+    if (!conclusion && (state === 'IN_PROGRESS' || state === 'QUEUED' || state === 'PENDING' || state === 'EXPECTED' || state === 'WAITING')) {
+      anyPending = true;
+      continue;
+    }
+    // Terminal outcomes
+    if (conclusion === 'SUCCESS') { anyTerminalSuccess = true; continue; }
+    if (conclusion === 'SKIPPED' || conclusion === 'NEUTRAL') continue; // treat as pass-through
+    if (conclusion === 'FAILURE' || conclusion === 'CANCELLED' || conclusion === 'TIMED_OUT' || conclusion === 'ACTION_REQUIRED' || conclusion === 'STARTUP_FAILURE') {
+      anyNonSuccessTerminal = true;
+      continue;
+    }
+    // Unknown shape — treat as pending rather than claim green
+    if (!conclusion && state !== 'COMPLETED') anyPending = true;
+  }
+  if (anyNonSuccessTerminal) return 'FAILURE';
+  if (anyPending) return 'PENDING';
+  if (anyTerminalSuccess) return 'SUCCESS';
+  return null;
+}
+
 function buildEntryFromBranch(br, pr, remote) {
   return {
     branch: br.name,
@@ -128,6 +162,11 @@ function buildEntryFromBranch(br, pr, remote) {
     // `reviewDecision` is one of 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED'
     // or '' (empty) when no reviews yet. Older gh versions may omit the field entirely.
     review_decision: pr && pr.reviewDecision ? pr.reviewDecision : null,
+    is_draft: pr ? pr.isDraft === true : false,
+    // CLEAN | BEHIND | BLOCKED | DIRTY | DRAFT | UNSTABLE | HAS_HOOKS | UNKNOWN
+    merge_state: pr && pr.mergeStateStatus ? pr.mergeStateStatus : null,
+    // Derived: SUCCESS | FAILURE | PENDING | null
+    ci_status: pr ? deriveCiStatus(pr.statusCheckRollup) : null,
   };
 }
 
@@ -144,6 +183,9 @@ function buildEntryFromPrOnly(pr, remote) {
     pr_state: pr.state,
     pr_title: pr.title,
     review_decision: pr.reviewDecision || null,
+    is_draft: pr.isDraft === true,
+    merge_state: pr.mergeStateStatus || null,
+    ci_status: deriveCiStatus(pr.statusCheckRollup),
   };
 }
 
@@ -195,6 +237,9 @@ function buildEntryFromOverride(task, branchesByName, prsByBranch, prsByNumber, 
     pr_state: null,
     pr_title: null,
     review_decision: null,
+    is_draft: false,
+    merge_state: null,
+    ci_status: null,
   };
 }
 
