@@ -641,7 +641,7 @@ router.put('/:id', async (req, res) => {
   const { id } = req.params;
   try {
     await withLock(`task:${id}`, async () => {
-    const { title, status, priority, content, project, assignee, type, component, tags, files_affected, parent_task, depends_on, due_date, updated_by } = req.body;
+    const { title, status, priority, content, project, assignee, type, component, tags, files_affected, parent_task, depends_on, due_date, updated_by, github_branch, github_pr_url } = req.body;
 
     let filePath = findTaskFilePath(id);
     let originalProject = '';
@@ -694,6 +694,9 @@ router.put('/:id', async (req, res) => {
       parent_task: parent_task !== undefined ? parent_task : (currentData.parent_task || null),
       depends_on: depends_on !== undefined ? depends_on : (currentData.depends_on || []),
       due_date: due_date !== undefined ? due_date : (currentData.due_date || null),
+      // Optional Changes-view overrides — see CLAUDE.md "Branch & PR Linkage → Explicit override"
+      github_branch: github_branch !== undefined ? github_branch : (currentData.github_branch || null),
+      github_pr_url: github_pr_url !== undefined ? github_pr_url : (currentData.github_pr_url || null),
       created_at: currentData.created_at || new Date().toISOString(),
       started_at: currentData.started_at || null,
       reviewed_at: currentData.reviewed_at || null,

@@ -151,6 +151,28 @@ gh pr create --title "<type>(<scope>): <summary>" --body "Task: <task-id>\n..."
 - Projects whose `workingDirectory` is not a GitHub repo (no `origin` remote, or a non-github.com remote). The Changes view still renders as a category timeline, but without branch/PR badges.
 - Meta tasks that don't touch code (e.g. `opt-` tasks that only update documentation or `.md` files inside `backend/tasks/`). A no-op PR is acceptable but not required — call it out in the task's Comments if you skip the branch.
 
+**Explicit override (when the branch-name convention doesn't fit):**
+Add one or both of these optional fields to the task's YAML frontmatter and the backend links the task directly, bypassing the substring match:
+
+```yaml
+---
+id: feat-project-archive-impl-007
+title: Implement archive / restore for projects
+...
+github_branch: feat-project-archive-007     # bare branch name, no URL needed
+github_pr_url: https://github.com/RogerSquare/atrium/pull/5   # optional; fills in PR badge + review state even if the branch is deleted locally
+---
+```
+
+- `github_branch` takes a bare branch name. The backend builds the URL, cross-references the PR list, and pulls in state + review decision automatically.
+- `github_pr_url` can stand alone — the backend parses the PR number from the URL, looks it up in `gh pr list`, and uses the PR's head branch as the lane. Useful for tasks whose local branch has already been deleted after merge.
+- If both fields are present, `github_branch` wins for the branch badge; `github_pr_url` wins for the PR badge.
+- If the named branch doesn't exist locally AND no PR references it, the row still renders with a muted **branch-missing** badge so you see the override is in place but unresolved — it does NOT silently fall back to substring matching.
+
+**When to override vs. rename the branch:**
+- **Rename the branch** when the mismatch happened at cut time and the PR is still active — keeps the convention intact for every future task.
+- **Use `github_branch` / `github_pr_url`** when the branch is already merged/closed, or the branch legitimately can't fit the full id (phased-task `-plan-` / `-impl-` segments dropped, legacy branches pre-dating the convention, shared branches that cover multiple related tasks).
+
 ## Pre-Review Checklist (STRICT):
 Before moving a task to `review`, you MUST complete the following checks:
 
