@@ -287,9 +287,9 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
               )
             })}
             {/* Progression trail — one connected path from newest (top) to oldest (bottom)
-                visiting every node. Each segment takes the arriving row's category color, so
-                the trail changes color every time the project shifted between categories.
-                Straight when consecutive rows share a lane, cubic-bezier curve when they jump. */}
+                visiting every node. Each segment takes the arriving row's category color.
+                Cross-lane hops draw an L-shape: straight down from the top node, a single
+                rounded corner near the target row, then horizontal into the target node. */}
             {rows.slice(1).map((curr, idx) => {
               const prev = rows[idx]
               if (!prev.lane || !curr.lane) return null
@@ -299,14 +299,20 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
               const currY = (idx + 1) * ROW_STRIDE + ROW_HEIGHT / 2
               const color = curr.lane.color
               const sameLane = prevX === currX
-              const d = sameLane
-                ? `M ${prevX} ${prevY} L ${currX} ${currY}`
-                // Cubic bezier: control points at the vertical midpoint of the segment,
-                // held on each node's x so the curve eases in and out smoothly.
-                : (() => {
-                    const midY = (prevY + currY) / 2
-                    return `M ${prevX} ${prevY} C ${prevX} ${midY}, ${currX} ${midY}, ${currX} ${currY}`
-                  })()
+              let d
+              if (sameLane) {
+                d = `M ${prevX} ${prevY} L ${currX} ${currY}`
+              } else {
+                const dir = currX > prevX ? 1 : -1
+                // Clamp radius so it never exceeds the vertical run or the horizontal distance
+                const r = Math.min(10, (currY - prevY) * 0.5, Math.abs(currX - prevX))
+                d = [
+                  `M ${prevX} ${prevY}`,
+                  `L ${prevX} ${currY - r}`,
+                  `Q ${prevX} ${currY}, ${prevX + dir * r} ${currY}`,
+                  `L ${currX} ${currY}`,
+                ].join(' ')
+              }
               return (
                 <path
                   key={`trail-${curr.task.id}`}
@@ -315,6 +321,7 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                   strokeWidth="2.5"
                   strokeOpacity="0.95"
                   strokeLinecap="round"
+                  strokeLinejoin="round"
                   fill="none"
                 />
               )
