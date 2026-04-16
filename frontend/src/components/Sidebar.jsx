@@ -127,31 +127,12 @@ function Sidebar({
           {archivedProjects.length > 0 && (
             <button
               onClick={onOpenArchivedModal}
-              className="apple-press relative"
+              className="apple-press"
               style={{ padding: '6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)' }}
               title={`Archived projects (${archivedProjects.length})`}
               aria-label={`Archived projects (${archivedProjects.length})`}
             >
               <Archive className="w-4 h-4" />
-              <span
-                style={{
-                  position: 'absolute',
-                  top: '1px',
-                  right: '1px',
-                  minWidth: '14px',
-                  height: '14px',
-                  padding: '0 3px',
-                  borderRadius: '7px',
-                  background: 'var(--accent-app)',
-                  color: 'white',
-                  fontSize: '9px',
-                  fontWeight: 700,
-                  lineHeight: '14px',
-                  textAlign: 'center',
-                }}
-              >
-                {archivedProjects.length}
-              </span>
             </button>
           )}
           <button onClick={onToggleCollapse} className="apple-press" style={{ padding: '6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)' }} title="Collapse sidebar">
