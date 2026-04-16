@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useMemo, useCallback } from 'react'
-import { Circle, Loader2, Eye, CheckCircle2, GitBranch, GitPullRequest, ExternalLink, RefreshCw, X } from 'lucide-react'
+import { Circle, Loader2, Eye, CheckCircle2, GitBranch, GitPullRequest, ExternalLink, RefreshCw, X, Check, AlertCircle, Clock } from 'lucide-react'
 import { API_BASE, apiFetch } from '../config'
 import { STATUS_COLOR } from '../constants'
 
@@ -52,6 +52,18 @@ const PR_STATE_STYLE = {
   OPEN:   { color: 'var(--apple-green)',  label: 'open'   },
   MERGED: { color: 'var(--apple-purple)', label: 'merged' },
   CLOSED: { color: 'var(--apple-red)',    label: 'closed' },
+}
+
+// Review-decision indicator — only rendered for OPEN PRs. Null/empty decision = awaiting
+// a first review, so it gets the clock icon.
+const REVIEW_DECISION_STYLE = {
+  APPROVED:          { icon: Check,        color: 'var(--apple-green)',  label: 'Approved' },
+  CHANGES_REQUESTED: { icon: AlertCircle,  color: 'var(--apple-red)',    label: 'Changes requested' },
+  REVIEW_REQUIRED:   { icon: Clock,        color: 'var(--apple-yellow)', label: 'Awaiting review' },
+}
+function reviewStyleFor(decision) {
+  if (!decision) return REVIEW_DECISION_STYLE.REVIEW_REQUIRED
+  return REVIEW_DECISION_STYLE[decision] || null
 }
 
 const FOCUS_STORAGE_KEY = 'taskBoardChangesFocus'
@@ -506,27 +518,50 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                       </a>
                     )
                   })()}
-                  {r.link?.pr_number && prStyle && (
-                    <a
-                      href={r.link.pr_url}
-                      target="_blank" rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="shrink-0 flex items-center gap-1"
-                      style={{
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        background: `color-mix(in srgb, ${prStyle.color} 14%, transparent)`,
-                        border: `1px solid color-mix(in srgb, ${prStyle.color} 35%, transparent)`,
-                        color: prStyle.color,
-                        fontSize: '10px',
-                        fontWeight: 600,
-                      }}
-                      title={`PR #${r.link.pr_number}: ${r.link.pr_title} (${prStyle.label})`}
-                    >
-                      <GitPullRequest className="w-2.5 h-2.5" />
-                      #{r.link.pr_number}
-                    </a>
-                  )}
+                  {r.link?.pr_number && prStyle && (() => {
+                    // Review-decision indicator is only meaningful while the PR is still OPEN.
+                    // Once merged/closed, the PR badge color already tells the whole story.
+                    const reviewStyle = r.link.pr_state === 'OPEN' ? reviewStyleFor(r.link.review_decision) : null
+                    const ReviewIcon = reviewStyle?.icon
+                    return (
+                      <>
+                        {reviewStyle && (
+                          <span
+                            className="shrink-0 flex items-center justify-center"
+                            style={{
+                              width: '18px',
+                              height: '18px',
+                              borderRadius: '50%',
+                              background: `color-mix(in srgb, ${reviewStyle.color} 18%, transparent)`,
+                              color: reviewStyle.color,
+                            }}
+                            title={reviewStyle.label}
+                          >
+                            <ReviewIcon className="w-3 h-3" />
+                          </span>
+                        )}
+                        <a
+                          href={r.link.pr_url}
+                          target="_blank" rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="shrink-0 flex items-center gap-1"
+                          style={{
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            background: `color-mix(in srgb, ${prStyle.color} 14%, transparent)`,
+                            border: `1px solid color-mix(in srgb, ${prStyle.color} 35%, transparent)`,
+                            color: prStyle.color,
+                            fontSize: '10px',
+                            fontWeight: 600,
+                          }}
+                          title={`PR #${r.link.pr_number}: ${r.link.pr_title} (${prStyle.label}${reviewStyle ? ` · ${reviewStyle.label.toLowerCase()}` : ''})`}
+                        >
+                          <GitPullRequest className="w-2.5 h-2.5" />
+                          #{r.link.pr_number}
+                        </a>
+                      </>
+                    )
+                  })()}
                 </div>
               </div>
             )

@@ -81,7 +81,7 @@ async function getPullRequests(repoPath) {
     'pr', 'list',
     '--state', 'all',
     '--limit', '200',
-    '--json', 'number,title,headRefName,url,state,updatedAt'
+    '--json', 'number,title,headRefName,url,state,updatedAt,reviewDecision'
   ]);
   if (!out) return [];
   try {
@@ -133,6 +133,9 @@ async function buildLinks(repoPath, taskIds) {
       pr_url: pr ? pr.url : null,
       pr_state: pr ? pr.state : null,
       pr_title: pr ? pr.title : null,
+      // `reviewDecision` is one of 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED'
+      // or '' (empty) when no reviews yet. Older gh versions may omit the field entirely.
+      review_decision: pr && pr.reviewDecision ? pr.reviewDecision : null,
     };
     if (taskId) {
       byTaskId[taskId] = entry;
@@ -156,6 +159,7 @@ async function buildLinks(repoPath, taskIds) {
         pr_url: pr.url,
         pr_state: pr.state,
         pr_title: pr.title,
+        review_decision: pr.reviewDecision || null,
       };
     }
   }
