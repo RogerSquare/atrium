@@ -264,14 +264,13 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
             className="absolute top-0"
             style={{ left: `${LABEL_COL_WIDTH}px`, pointerEvents: 'none' }}
           >
-            {/* Lane lines — only BETWEEN consecutive nodes on the same lane. No extension past
-                the first or last node, so the line visibly terminates at circles at both ends. */}
+            {/* Lane lines — kept as muted vertical columns behind the trail so each category
+                still has a visible home. Drawn first so the trail overlays them. */}
             {lanes.map((lane) => {
               const x = LANE_PAD_LEFT + lane.index * LANE_WIDTH + LANE_WIDTH / 2
               const rowsOnLane = rows
                 .map((r, i) => ({ r, i }))
                 .filter(({ r }) => r.lane?.key === lane.key)
-              // Since each lane is a single category, a solid line in the category color is enough
               if (rowsOnLane.length < 2) return null
               const first = rowsOnLane[0]
               const last = rowsOnLane[rowsOnLane.length - 1]
@@ -282,8 +281,41 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                   key={`${lane.key}-line`}
                   x1={x} x2={x} y1={y1} y2={y2}
                   stroke={lane.color}
-                  strokeWidth="2"
-                  strokeOpacity="0.6"
+                  strokeWidth="1.5"
+                  strokeOpacity="0.28"
+                />
+              )
+            })}
+            {/* Progression trail — one connected path from newest (top) to oldest (bottom)
+                visiting every node. Each segment takes the arriving row's category color, so
+                the trail changes color every time the project shifted between categories.
+                Straight when consecutive rows share a lane, cubic-bezier curve when they jump. */}
+            {rows.slice(1).map((curr, idx) => {
+              const prev = rows[idx]
+              if (!prev.lane || !curr.lane) return null
+              const prevX = LANE_PAD_LEFT + prev.lane.index * LANE_WIDTH + LANE_WIDTH / 2
+              const prevY = idx * ROW_STRIDE + ROW_HEIGHT / 2
+              const currX = LANE_PAD_LEFT + curr.lane.index * LANE_WIDTH + LANE_WIDTH / 2
+              const currY = (idx + 1) * ROW_STRIDE + ROW_HEIGHT / 2
+              const color = curr.lane.color
+              const sameLane = prevX === currX
+              const d = sameLane
+                ? `M ${prevX} ${prevY} L ${currX} ${currY}`
+                // Cubic bezier: control points at the vertical midpoint of the segment,
+                // held on each node's x so the curve eases in and out smoothly.
+                : (() => {
+                    const midY = (prevY + currY) / 2
+                    return `M ${prevX} ${prevY} C ${prevX} ${midY}, ${currX} ${midY}, ${currX} ${currY}`
+                  })()
+              return (
+                <path
+                  key={`trail-${curr.task.id}`}
+                  d={d}
+                  stroke={color}
+                  strokeWidth="2.5"
+                  strokeOpacity="0.95"
+                  strokeLinecap="round"
+                  fill="none"
                 />
               )
             })}
