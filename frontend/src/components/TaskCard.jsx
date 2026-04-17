@@ -1,6 +1,6 @@
 import { memo, useState, useCallback } from 'react'
 import { AlertCircle, AlignLeft, CheckCircle2, Circle, Copy, Check, UserCircle2, Link, Loader2, CalendarClock, Clock } from 'lucide-react'
-import { STATUS_OPTIONS, PRIORITY_COLOR, TYPE_STYLE, VIEWER_COLORS } from '../constants'
+import { STATUS_OPTIONS, PRIORITY_COLOR, TYPE_STYLE, VIEWER_COLORS, MERGE_STATUS } from '../constants'
 import { Badge, Select } from './ui'
 
 const PRIORITY_ICONS = {
@@ -9,7 +9,7 @@ const PRIORITY_ICONS = {
   high: <AlertCircle className="w-3 h-3" fill="currentColor" />
 }
 
-function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewers = [], selectable, selected, onToggleSelect, onShiftSelect, orderedTaskIds, justUpdated, compact, isStale }) {
+function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewers = [], selectable, selected, onToggleSelect, onShiftSelect, orderedTaskIds, justUpdated, compact, isStale, githubLinks = {} }) {
   const [copied, setCopied] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
   const hasComments = task.content && task.content.includes('### Comments') && task.content.split('### Comments')[1].trim().length > 0
@@ -125,7 +125,12 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
             {selected && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
           </div>
         )}
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }} title={task.id}>
+        <span className="flex items-center gap-1.5" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }} title={task.id}>
+          {(() => {
+            const link = githubLinks[task.id]
+            const ms = link?.pr_state ? MERGE_STATUS[link.pr_state] : null
+            return ms ? <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ms.dotColor, flexShrink: 0 }} title={`PR ${ms.label}`} /> : null
+          })()}
           {task.id}
         </span>
         <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', textTransform: 'uppercase', color: typeStyle.color, background: typeStyle.bg, padding: '2px 8px', borderRadius: 'var(--radius-sm)' }}>

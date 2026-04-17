@@ -50,6 +50,7 @@ function AppContent() {
     handleBatchUpdate, handleBatchDelete,
     errorToast, setErrorToast,
     recentlyUpdatedIds,
+    githubLinks,
   } = ctx
 
   // Active project ID lookup
@@ -320,7 +321,7 @@ function AppContent() {
           {loading ? (
             <div className="text-center text-app-text-muted py-12 italic animate-pulse">Loading workspace...</div>
           ) : activeView === 'list' ? (
-            <ListView tasks={filteredTasks} onSelectTask={selectTask} onUpdateTask={undoRedo.updateTaskWithUndo} activeAgents={activeAgents} taskViewers={taskViewers} currentUser={user?.username} selectable={bulkSelectMode} selectedIds={selectedTaskIds} onToggleSelect={toggleSelectTask} recentlyUpdatedIds={recentlyUpdatedIds} />
+            <ListView tasks={filteredTasks} onSelectTask={selectTask} onUpdateTask={undoRedo.updateTaskWithUndo} activeAgents={activeAgents} taskViewers={taskViewers} currentUser={user?.username} selectable={bulkSelectMode} selectedIds={selectedTaskIds} onToggleSelect={toggleSelectTask} recentlyUpdatedIds={recentlyUpdatedIds} githubLinks={githubLinks} />
           ) : activeView === 'changes' ? (
             <ChangesView tasks={filteredTasks} projects={projects} activeProject={activeProject} onSelectTask={selectTask} recentlyUpdatedIds={recentlyUpdatedIds} />
           ) : (
@@ -332,13 +333,14 @@ function AppContent() {
               onToggleSelect={toggleSelectTask} onShiftSelect={shiftSelectTask} onToggleSelectColumn={toggleSelectColumn}
               recentlyUpdatedIds={recentlyUpdatedIds}
               onToggleBulkSelect={() => setBulkSelectMode(prev => { if (prev) { ctx.deselectAll(); return false } return true })}
+              githubLinks={githubLinks}
             />
           )}
         </div>
 
         {/* Modals */}
         {selectedTask && (
-          <TaskModal task={selectedTask} projects={projects} currentUser={user} onClose={() => selectTask(null)} onUpdateTask={undoRedo.updateTaskWithUndo} onDeleteTask={handleDeleteTask} activeAgents={activeAgents} onStartAgent={handleStartAgent} onStopAgent={handleStopAgent} socket={socketRef.current} taskViewers={taskViewers[selectedTask?.id] || []} agentsEnabled={agentsEnabled} canRunAgents={user?.can_run_agents !== false} aiChatEnabled={aiChatEnabled} />
+          <TaskModal task={selectedTask} projects={projects} currentUser={user} onClose={() => selectTask(null)} onUpdateTask={undoRedo.updateTaskWithUndo} onDeleteTask={handleDeleteTask} activeAgents={activeAgents} onStartAgent={handleStartAgent} onStopAgent={handleStopAgent} socket={socketRef.current} taskViewers={taskViewers[selectedTask?.id] || []} agentsEnabled={agentsEnabled} canRunAgents={user?.can_run_agents !== false} aiChatEnabled={aiChatEnabled} githubLinks={githubLinks} />
         )}
         {showCreateTaskModal && <CreateTaskModal projects={projects} activeProject={activeProject} onClose={() => setShowCreateTaskModal(false)} onCreateTask={handleCreateTask} />}
         {showCreateProjectModal && <CreateProjectModal onClose={() => setShowCreateProjectModal(false)} onCreateProject={handleCreateProject} />}
