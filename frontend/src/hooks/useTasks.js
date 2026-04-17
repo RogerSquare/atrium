@@ -349,7 +349,7 @@ export default function useTasks(user, socketRef) {
     const todayStart = filterToday ? new Date().setHours(0, 0, 0, 0) : 0
 
     return tasks.filter(t => {
-      const standardStatusIds = ['todo', 'in_progress', 'review', 'done']
+      const standardStatusIds = ['draft', 'todo', 'in_progress', 'waiting_input', 'review', 'done']
       const isUncategorized = !standardStatusIds.includes(t.status)
 
       const projectMatch = activeProject === 'All' || t.project === activeProject || isUncategorized
