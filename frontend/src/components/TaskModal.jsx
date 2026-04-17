@@ -498,9 +498,10 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
                 <option value="devops">DevOps</option>
               </select>
             </div>
+
+            {/* GitHub section — inline with the pills */}
+            <GitHubLinkFields task={task} onUpdateTask={onUpdateTask} githubLinks={githubLinks} />
           </div>
-          {/* GitHub branch / PR link overrides */}
-          <GitHubLinkFields task={task} onUpdateTask={onUpdateTask} githubLinks={githubLinks} />
         </header>
 
         {/* Content area */}
@@ -796,20 +797,41 @@ function GitHubLinkFields({ task, onUpdateTask, githubLinks = {} }) {
   }
 
   return (
-    <div style={{ margin: '0 var(--space-4)', padding: '0 var(--space-3) var(--space-2)', borderRadius: 'var(--radius-md)', background: 'color-mix(in srgb, var(--bg-secondary) 80%, var(--bg-card) 20%)', border: '1px solid var(--separator)' }}>
+    <div className="relative" style={{ display: 'inline-flex', flexDirection: 'column' }}>
       <button
         onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-center gap-2 apple-press"
-        style={{ padding: '8px 0', fontSize: 'var(--text-caption2)', fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: '0.03em', textTransform: 'uppercase' }}
+        className="flex items-center gap-1.5 apple-press"
+        style={{
+          padding: '3px 10px',
+          borderRadius: 'var(--radius-full)',
+          background: 'color-mix(in srgb, var(--bg-secondary) 80%, var(--bg-card) 20%)',
+          border: '1px solid var(--separator)',
+          fontSize: 'var(--text-caption1)',
+          fontWeight: 'var(--font-medium)',
+          color: 'var(--text-tertiary)',
+        }}
       >
         <GitBranch className="w-3 h-3" />
-        <span>GitHub</span>
-        {!hasAny && <span style={{ fontSize: '10px', fontWeight: 500, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>auto</span>}
-        <span className="flex-1" />
-        {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 600, letterSpacing: '0.02em' }}>GitHub</span>
+        {!hasAny && <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>auto</span>}
+        {expanded ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRight className="w-2.5 h-2.5" />}
       </button>
       {expanded && (
-        <div className="flex flex-col gap-2 pb-1">
+        <>
+        <div className="fixed inset-0 z-40" onClick={() => setExpanded(false)} />
+        <div
+          className="absolute left-0 z-50 flex flex-col gap-2 animate-fade-in"
+          style={{
+            top: 'calc(100% + 6px)',
+            minWidth: '320px',
+            maxWidth: '420px',
+            padding: 'var(--space-3)',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--bg-card)',
+            border: '1px solid var(--separator)',
+            boxShadow: 'var(--shadow-lg)',
+          }}
+        >
           {/* PR status line — read-only, shows merge state when a PR is linked */}
           {(() => {
             const link = githubLinks[task.id]
@@ -886,6 +908,7 @@ function GitHubLinkFields({ task, onUpdateTask, githubLinks = {} }) {
             />
           </div>
         </div>
+        </>
       )}
     </div>
   )
