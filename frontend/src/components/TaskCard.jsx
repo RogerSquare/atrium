@@ -1,5 +1,6 @@
 import { memo, useState, useCallback } from 'react'
 import { AlertCircle, AlignLeft, CheckCircle2, Circle, Copy, Check, UserCircle2, Link, Loader2, CalendarClock, Clock } from 'lucide-react'
+import { GitPullRequest, GitMerge } from 'lucide-react'
 import { STATUS_OPTIONS, PRIORITY_COLOR, TYPE_STYLE, VIEWER_COLORS, MERGE_STATUS } from '../constants'
 import { Badge, Select } from './ui'
 
@@ -125,12 +126,7 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
             {selected && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
           </div>
         )}
-        <span className="flex items-center gap-1.5" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }} title={task.id}>
-          {(() => {
-            const link = githubLinks[task.id]
-            const ms = link?.pr_state ? MERGE_STATUS[link.pr_state] : null
-            return ms ? <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ms.dotColor, flexShrink: 0 }} title={`PR ${ms.label}`} /> : null
-          })()}
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }} title={task.id}>
           {task.id}
         </span>
         <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', textTransform: 'uppercase', color: typeStyle.color, background: typeStyle.bg, padding: '2px 8px', borderRadius: 'var(--radius-sm)' }}>
@@ -243,6 +239,32 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
           {STATUS_OPTIONS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
         </Select>
       </div>
+      {/* PR merge status — clean chip at the bottom of the card */}
+      {(() => {
+        const link = githubLinks[task.id]
+        if (!link?.pr_number) return null
+        const ms = MERGE_STATUS[link.pr_state]
+        if (!ms) return null
+        const PrIcon = link.pr_state === 'MERGED' ? GitMerge : GitPullRequest
+        return (
+          <div
+            className="flex items-center gap-1.5 mt-2"
+            style={{
+              padding: '4px 8px',
+              borderRadius: 'var(--radius-sm)',
+              background: `color-mix(in srgb, ${ms.color} 10%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${ms.color} 25%, transparent)`,
+              fontSize: '10px',
+              fontWeight: 600,
+              color: ms.color,
+              alignSelf: 'flex-start',
+            }}
+          >
+            <PrIcon className="w-3 h-3" />
+            <span>{ms.label} #{link.pr_number}</span>
+          </div>
+        )
+      })()}
     </div>
   )
 }

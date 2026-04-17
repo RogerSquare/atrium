@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useMemo, useRef, Fragment } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ArrowUp, ArrowDown, Copy, Check, Loader2, UserCircle2, Circle, AlertCircle, CheckCircle2, Eye, Clock, ChevronRight, ChevronDown, ChevronsUpDown, Layers } from 'lucide-react'
+import { ArrowUp, ArrowDown, Copy, Check, Loader2, UserCircle2, Circle, AlertCircle, CheckCircle2, Eye, Clock, ChevronRight, ChevronDown, ChevronsUpDown, Layers, GitPullRequest, GitMerge } from 'lucide-react'
 import { STATUS_OPTIONS, PRIORITY_COLOR, STATUS_COLOR, TYPE_STYLE, VIEWER_COLORS, MERGE_STATUS } from '../constants'
 
 const PRIORITY_CYCLE = ['low', 'medium', 'high']
@@ -145,18 +145,38 @@ function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
             <input type="checkbox" checked={selectedIds.includes(task.id)} onChange={() => onToggleSelect(task.id)} style={{ accentColor: 'var(--accent-app)', cursor: 'pointer' }} />
           </td>
         )}
-        {/* ID */}
+        {/* ID + PR status */}
         <td style={{ padding: '8px 12px' }}>
           <div className="flex items-center gap-1.5">
-            {(() => {
-              const link = githubLinks[task.id]
-              const ms = link?.pr_state ? MERGE_STATUS[link.pr_state] : null
-              return ms ? <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ms.dotColor, flexShrink: 0 }} title={`PR ${ms.label}`} /> : null
-            })()}
             <button onClick={(e) => handleCopyId(e, task.id)} className="apple-press flex items-center gap-1" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }} title="Copy ID">
               {copiedId === task.id ? <Check className="w-2.5 h-2.5" style={{ color: 'var(--apple-green)' }} /> : <Copy className="w-2.5 h-2.5" />}
               {task.id}
             </button>
+            {(() => {
+              const link = githubLinks[task.id]
+              if (!link?.pr_number) return null
+              const ms = MERGE_STATUS[link.pr_state]
+              if (!ms) return null
+              const PrIcon = link.pr_state === 'MERGED' ? GitMerge : GitPullRequest
+              return (
+                <span
+                  className="flex items-center gap-1"
+                  style={{
+                    padding: '1px 6px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: `color-mix(in srgb, ${ms.color} 10%, transparent)`,
+                    border: `1px solid color-mix(in srgb, ${ms.color} 25%, transparent)`,
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    color: ms.color,
+                  }}
+                  title={`PR #${link.pr_number} — ${ms.label}`}
+                >
+                  <PrIcon className="w-2.5 h-2.5" />
+                  #{link.pr_number}
+                </span>
+              )
+            })()}
             {isAgentRunning && <Loader2 className="w-3 h-3 animate-spin" style={{ color: 'var(--accent-app)' }} />}
           </div>
         </td>

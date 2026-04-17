@@ -424,33 +424,6 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
                 {linkCopied && <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--apple-green)', fontWeight: 'var(--font-medium)' }}>Copied</span>}
               </button>
               {saving && <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--accent-app)', fontWeight: 'var(--font-medium)' }} className="animate-gentle-pulse">Saving...</span>}
-              {(() => {
-                const link = githubLinks[task.id]
-                const ms = link?.pr_state ? MERGE_STATUS[link.pr_state] : null
-                if (!ms) return null
-                return (
-                  <a
-                    href={link.pr_url || link.branch_url || '#'}
-                    target="_blank" rel="noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="flex items-center gap-1.5"
-                    style={{
-                      padding: '3px 10px',
-                      borderRadius: 'var(--radius-sm)',
-                      background: `color-mix(in srgb, ${ms.color} 14%, transparent)`,
-                      border: `1px solid color-mix(in srgb, ${ms.color} 35%, transparent)`,
-                      color: ms.color,
-                      fontSize: 'var(--text-caption2)',
-                      fontWeight: 600,
-                      textDecoration: 'none',
-                    }}
-                    title={`PR #${link.pr_number}: ${link.pr_title || ''} (${ms.label})`}
-                  >
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ms.dotColor }} />
-                    {ms.label}{link.pr_number ? ` #${link.pr_number}` : ''}
-                  </a>
-                )
-              })()}
 
               {taskViewers.filter(u => u !== currentUser?.username).length > 0 && (
                 <div className="flex items-center gap-1.5 ml-1" style={{ paddingLeft: 'var(--space-2)', borderLeft: '1px solid var(--separator)' }}>
@@ -527,7 +500,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
             </div>
           </div>
           {/* GitHub branch / PR link overrides */}
-          <GitHubLinkFields task={task} onUpdateTask={onUpdateTask} />
+          <GitHubLinkFields task={task} onUpdateTask={onUpdateTask} githubLinks={githubLinks} />
         </header>
 
         {/* Content area */}
@@ -781,7 +754,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
   )
 }
 
-function GitHubLinkFields({ task, onUpdateTask }) {
+function GitHubLinkFields({ task, onUpdateTask, githubLinks = {} }) {
   const hasBranch = !!task.github_branch
   const hasPr = !!task.github_pr_url
   const hasAny = hasBranch || hasPr
@@ -837,6 +810,33 @@ function GitHubLinkFields({ task, onUpdateTask }) {
       </button>
       {expanded && (
         <div className="flex flex-col gap-2 pb-1">
+          {/* PR status line — read-only, shows merge state when a PR is linked */}
+          {(() => {
+            const link = githubLinks[task.id]
+            if (!link?.pr_number) return null
+            const ms = MERGE_STATUS[link.pr_state]
+            if (!ms) return null
+            return (
+              <a
+                href={link.pr_url || '#'}
+                target="_blank" rel="noreferrer"
+                className="flex items-center gap-2 apple-press"
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: `color-mix(in srgb, ${ms.color} 8%, transparent)`,
+                  border: `1px solid color-mix(in srgb, ${ms.color} 20%, transparent)`,
+                  textDecoration: 'none',
+                }}
+              >
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: ms.dotColor, flexShrink: 0 }} />
+                <span style={{ fontSize: 'var(--text-caption1)', fontWeight: 600, color: ms.color }}>{ms.label}</span>
+                <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  PR #{link.pr_number}{link.pr_title ? ` — ${link.pr_title}` : ''}
+                </span>
+              </a>
+            )
+          })()}
           <div>
             <div className="flex items-center justify-between mb-1">
               <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-tertiary)' }}>Branch</label>
