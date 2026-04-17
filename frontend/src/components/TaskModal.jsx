@@ -470,27 +470,27 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
 
           <h2 style={{ fontSize: 'var(--text-title3)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)', lineHeight: 'var(--leading-tight)', marginBottom: 'var(--space-3)' }}>{task.title}</h2>
 
-          {/* Metadata — grouped list style */}
+          {/* Metadata — grouped list style. All pills use consistent 4px 10px padding for uniform height. */}
           <div className="flex flex-wrap gap-1.5 items-center" style={{ marginBottom: 0 }}>
-            <div className="flex items-center gap-1.5" style={{ padding: '5px 12px', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)' }}>
+            <div className="flex items-center gap-1.5" style={{ padding: '4px 10px', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)' }}>
               <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: STATUS_COLOR[task.status] || 'var(--gray-1)' }} />
               {task.status.replace('_', ' ')}
             </div>
-            <div style={{ padding: '5px 12px', borderRadius: 'var(--radius-full)', background: `color-mix(in srgb, ${PRIORITY_COLOR[task.priority] || 'var(--apple-orange)'} 10%, transparent)`, fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: PRIORITY_COLOR[task.priority] || 'var(--apple-orange)', textTransform: 'capitalize' }}>
+            <div className="flex items-center" style={{ padding: '4px 10px', borderRadius: 'var(--radius-full)', background: `color-mix(in srgb, ${PRIORITY_COLOR[task.priority] || 'var(--apple-orange)'} 10%, transparent)`, fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: PRIORITY_COLOR[task.priority] || 'var(--apple-orange)', textTransform: 'capitalize' }}>
               {task.priority}
             </div>
-            <div className="flex items-center gap-1.5 overflow-hidden" style={{ padding: '3px 10px', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)' }}>
+            <div className="flex items-center gap-1.5 overflow-hidden" style={{ padding: '4px 10px', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)' }}>
               <Folder className="w-3.5 h-3.5 shrink-0" />
               <select value={task.project || 'Root'} onChange={handleProjectChange} disabled={showHistory} className="pill-input bg-transparent cursor-pointer outline-none border-none" style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)', padding: 0 }}>
                 {projects.map(p => { const f = p.folder || p; const n = p.name || p; const pid = p.id || null; return <option key={f} value={f}>{f === 'Root' ? 'Unassigned' : n}{pid && pid !== 'root' ? ` (${pid})` : ''}</option> })}
               </select>
             </div>
-            <div className="flex items-center gap-1.5 overflow-hidden" style={{ padding: '3px 10px', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)' }}>
+            <div className="flex items-center gap-1.5 overflow-hidden" style={{ padding: '4px 10px', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)' }}>
               <UserCircle2 className="w-3.5 h-3.5 shrink-0" />
               <input type="text" placeholder="Unassigned" value={localAssignee} onChange={(e) => { setLocalAssignee(e.target.value); debouncedUpdate('assignee', e.target.value) }} disabled={showHistory} className="pill-input bg-transparent outline-none border-none w-24" style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)', padding: 0 }} />
               {task.assignee && task.status === 'in_progress' && <span className="animate-gentle-pulse" style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--apple-green)', boxShadow: '0 0 6px var(--apple-green)' }} />}
             </div>
-            <div className="overflow-hidden" style={{ padding: '3px 10px', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)' }}>
+            <div className="flex items-center overflow-hidden" style={{ padding: '4px 10px', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)' }}>
               <select value={task.type || 'fullstack'} onChange={(e) => onUpdateTask(task.id, { type: e.target.value })} disabled={showHistory} className="pill-input bg-transparent cursor-pointer outline-none border-none" style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)', padding: 0, textTransform: 'capitalize' }}>
                 <option value="frontend">Frontend</option>
                 <option value="backend">Backend</option>
@@ -802,10 +802,9 @@ function GitHubLinkFields({ task, onUpdateTask, githubLinks = {} }) {
         onClick={() => setExpanded(e => !e)}
         className="flex items-center gap-1.5 apple-press"
         style={{
-          padding: '3px 10px',
+          padding: '4px 10px',
           borderRadius: 'var(--radius-full)',
-          background: 'color-mix(in srgb, var(--bg-secondary) 80%, var(--bg-card) 20%)',
-          border: '1px solid var(--separator)',
+          background: 'var(--fill-secondary)',
           fontSize: 'var(--text-caption1)',
           fontWeight: 'var(--font-medium)',
           color: 'var(--text-tertiary)',
