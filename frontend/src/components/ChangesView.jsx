@@ -386,6 +386,7 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                   stroke={lane.color}
                   strokeWidth="1.5"
                   strokeOpacity="0.28"
+                  strokeDasharray="4 4"
                 />
               ))
             })}
