@@ -361,25 +361,33 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
               transition: 'height 260ms ease',
             }}
           >
-            {/* Lane lines — kept as muted vertical columns behind the trail so each category
-                still has a visible home. Drawn first so the trail overlays them. */}
+            {/* Lane lines — drawn separately per section (queued vs active) so the
+                vertical line doesn't bridge across the separator. */}
             {lanes.map((lane) => {
               const x = LANE_PAD_LEFT + lane.index * LANE_WIDTH + LANE_WIDTH / 2
-              const rowsOnLane = rows.filter(r => r.visible && r.lane?.key === lane.key)
-              if (rowsOnLane.length < 2) return null
-              const first = rowsOnLane[0]
-              const last = rowsOnLane[rowsOnLane.length - 1]
-              const y1 = svgY(first)
-              const y2 = svgY(last)
-              return (
+              const segments = []
+
+              // Queued segment
+              const queuedOnLane = rows.filter(r => r.visible && r.isQueued && r.lane?.key === lane.key)
+              if (queuedOnLane.length >= 2) {
+                segments.push({ y1: svgY(queuedOnLane[0]), y2: svgY(queuedOnLane[queuedOnLane.length - 1]), key: `${lane.key}-q` })
+              }
+
+              // Active segment
+              const activeOnLane = rows.filter(r => r.visible && !r.isQueued && r.lane?.key === lane.key)
+              if (activeOnLane.length >= 2) {
+                segments.push({ y1: svgY(activeOnLane[0]), y2: svgY(activeOnLane[activeOnLane.length - 1]), key: `${lane.key}-a` })
+              }
+
+              return segments.map(s => (
                 <line
-                  key={`${lane.key}-line`}
-                  x1={x} x2={x} y1={y1} y2={y2}
+                  key={s.key}
+                  x1={x} x2={x} y1={s.y1} y2={s.y2}
                   stroke={lane.color}
                   strokeWidth="1.5"
                   strokeOpacity="0.28"
                 />
-              )
+              ))
             })}
             {/* Progression trail — connects ACTIVE (non-queued) visible rows only.
                 Queued rows haven't "happened" on the timeline yet so they get their
