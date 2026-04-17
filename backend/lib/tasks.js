@@ -107,6 +107,9 @@ const scanAllTasks = (dirPath = TASKS_DIR, tasksArray = []) => {
         reviewed_at: data.reviewed_at || null,
         done_at: data.done_at || null,
         activity_log: data.activity_log || [],
+        // Changes-view overrides — see CLAUDE.md "Branch & PR Linkage → Explicit override"
+        github_branch: data.github_branch || null,
+        github_pr_url: data.github_pr_url || null,
         project: project,
         content: content.trim(),
         filePath: filePath
