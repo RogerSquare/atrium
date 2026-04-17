@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Send, Folder, Pencil, Check, UserCircle2, Trash2, Clock, Calendar, History, RotateCcw, FileText, Copy, Link, Sparkles } from 'lucide-react'
+import { X, Send, Folder, Pencil, Check, UserCircle2, Trash2, Clock, Calendar, History, RotateCcw, FileText, Copy, Link, Sparkles, ChevronDown } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { API_URL, apiFetch } from '../config'
@@ -10,6 +10,23 @@ import ContinueButton from './ContinueButton'
 import ModalOverlay from './ModalOverlay'
 
 const VIEWER_COLORS = ['#06b6d4', '#a78bfa', '#f472b6', '#fb923c', '#34d399', '#fbbf24', '#60a5fa']
+
+const CATEGORIES = [
+  { id: 'feat',   label: 'feat',   color: 'var(--apple-blue)'   },
+  { id: 'bug',    label: 'bug',    color: 'var(--apple-red)'    },
+  { id: 'ui',     label: 'ui',     color: 'var(--apple-teal)'   },
+  { id: 'opt',    label: 'opt',    color: 'var(--apple-orange)' },
+  { id: 'comp',   label: 'comp',   color: 'var(--gray-1)'       },
+  { id: 'devops', label: 'devops', color: 'var(--apple-purple)' },
+  { id: 'mobile', label: 'mobile', color: 'var(--apple-pink)'   },
+]
+const TASK_ID_REGEX = /^(feat|bug|ui|opt|comp|devops|mobile)(-[a-z0-9]+)+-\d{3}$/
+function parseTaskIdParts(id) {
+  if (!id) return null
+  const match = id.match(/^(feat|bug|ui|opt|comp|devops|mobile)(-.+)$/)
+  if (!match) return null
+  return { category: match[1], rest: match[2] }
+}
 
 export default function TaskModal({ task, projects, onClose, onUpdateTask, onDeleteTask, currentUser, activeAgents = [], onStartAgent, onStopAgent, socket, taskViewers = [], agentsEnabled = true, canRunAgents = true, aiChatEnabled = true }) {
   const [newComment, setNewComment] = useState('')
@@ -109,6 +126,38 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
       }
     }
   }, [])
+
+  // --- Rename ---
+  const [showCategoryMenu, setShowCategoryMenu] = useState(false)
+  const [editingId, setEditingId] = useState(false)
+  const [editIdValue, setEditIdValue] = useState('')
+  const [renameError, setRenameError] = useState(null)
+
+  const handleRename = useCallback(async (newId) => {
+    if (!newId || newId === task.id) { setEditingId(false); return }
+    setRenameError(null)
+    try {
+      const res = await apiFetch(`${API_URL}/tasks/${encodeURIComponent(task.id)}/rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_id: newId, renamed_by: currentUser?.username }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setRenameError(data.error || 'Rename failed'); return }
+      // Refresh: close + reopen will pick up the new task via socket events
+      onClose()
+    } catch (e) {
+      setRenameError(e.message)
+    }
+  }, [task.id, currentUser, onClose])
+
+  const handleCategorySwap = useCallback((newCat) => {
+    const parts = parseTaskIdParts(task.id)
+    if (!parts || parts.category === newCat) { setShowCategoryMenu(false); return }
+    const newId = newCat + parts.rest
+    setShowCategoryMenu(false)
+    handleRename(newId)
+  }, [task.id, handleRename])
 
   const handleCopyId = () => {
     navigator.clipboard.writeText(task.id)
@@ -241,9 +290,131 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
         <header className="shrink-0 vibrancy-thin" style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '0.5px solid var(--separator)', background: 'color-mix(in srgb, var(--bg-card) 85%, transparent)' }}>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2 flex-wrap">
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '3px 10px', borderRadius: 'var(--radius-sm)' }}>
-                {task.id}
-              </span>
+              {/* Category dropdown + editable task id */}
+              <div className="flex items-center gap-0 relative">
+                {(() => {
+                  const parts = parseTaskIdParts(task.id)
+                  const cat = parts ? CATEGORIES.find(c => c.id === parts.category) : null
+                  return (
+                    <>
+                      {/* Category chip — click to swap */}
+                      <button
+                        onClick={() => setShowCategoryMenu(prev => !prev)}
+                        className="apple-press flex items-center gap-1"
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 'var(--text-caption2)',
+                          fontWeight: 700,
+                          color: cat ? cat.color : 'var(--text-tertiary)',
+                          background: cat ? `color-mix(in srgb, ${cat.color} 14%, transparent)` : 'var(--fill-secondary)',
+                          padding: '3px 8px',
+                          borderRadius: 'var(--radius-sm) 0 0 var(--radius-sm)',
+                          border: `1px solid ${cat ? `color-mix(in srgb, ${cat.color} 35%, transparent)` : 'var(--separator)'}`,
+                          borderRight: 'none',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.03em',
+                        }}
+                        title="Change category"
+                      >
+                        {parts?.category || '?'}
+                        <ChevronDown className="w-2.5 h-2.5" />
+                      </button>
+                      {/* Category dropdown */}
+                      {showCategoryMenu && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setShowCategoryMenu(false)} />
+                          <div
+                            role="menu"
+                            className="absolute left-0 z-50 animate-fade-in"
+                            style={{
+                              top: 'calc(100% + 4px)',
+                              minWidth: '140px',
+                              padding: '4px',
+                              borderRadius: 'var(--radius-md)',
+                              background: 'var(--bg-card)',
+                              border: '1px solid var(--separator)',
+                              boxShadow: 'var(--shadow-lg)',
+                            }}
+                          >
+                            {CATEGORIES.map(c => (
+                              <button
+                                key={c.id}
+                                role="menuitem"
+                                onClick={() => handleCategorySwap(c.id)}
+                                className="w-full flex items-center gap-2 apple-press text-left"
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: 'var(--radius-sm)',
+                                  fontSize: 'var(--text-caption1)',
+                                  fontWeight: c.id === parts?.category ? 700 : 500,
+                                  color: c.color,
+                                  background: c.id === parts?.category ? `color-mix(in srgb, ${c.color} 10%, transparent)` : 'transparent',
+                                  fontFamily: 'var(--font-mono)',
+                                  textTransform: 'uppercase',
+                                }}
+                              >
+                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: c.color, flexShrink: 0 }} />
+                                {c.label}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                      {/* Editable rest-of-id */}
+                      {editingId ? (
+                        <input
+                          autoFocus
+                          value={editIdValue}
+                          onChange={(e) => setEditIdValue(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                          onBlur={() => {
+                            const full = editIdValue
+                            if (TASK_ID_REGEX.test(full)) handleRename(full)
+                            else setEditingId(false)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') { e.target.blur() }
+                            if (e.key === 'Escape') { setEditingId(false) }
+                          }}
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 'var(--text-caption2)',
+                            fontWeight: 'var(--font-medium)',
+                            color: 'var(--text-app)',
+                            background: 'var(--fill-secondary)',
+                            padding: '3px 8px',
+                            borderRadius: '0 var(--radius-sm) var(--radius-sm) 0',
+                            border: '1px solid var(--accent-app)',
+                            outline: 'none',
+                            minWidth: '120px',
+                          }}
+                        />
+                      ) : (
+                        <button
+                          onClick={() => { setEditIdValue(task.id); setEditingId(true); setRenameError(null) }}
+                          className="apple-press"
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 'var(--text-caption2)',
+                            fontWeight: 'var(--font-medium)',
+                            color: 'var(--text-tertiary)',
+                            background: 'var(--fill-secondary)',
+                            padding: '3px 10px',
+                            borderRadius: '0 var(--radius-sm) var(--radius-sm) 0',
+                            border: '1px solid var(--separator)',
+                            borderLeft: 'none',
+                          }}
+                          title="Click to rename task id"
+                        >
+                          {parts?.rest || task.id}
+                        </button>
+                      )}
+                    </>
+                  )
+                })()}
+                {renameError && (
+                  <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--apple-red)', marginLeft: '8px' }}>{renameError}</span>
+                )}
+              </div>
               <button onClick={handleCopyId} className="apple-press p-1.5" style={{ borderRadius: 'var(--radius-xs)', color: 'var(--text-tertiary)' }} title="Copy ID">
                 {copied ? <Check className="w-3.5 h-3.5" style={{ color: 'var(--apple-green)' }} /> : <Copy className="w-3.5 h-3.5" />}
               </button>
