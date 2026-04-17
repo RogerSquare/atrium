@@ -471,7 +471,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
           <h2 style={{ fontSize: 'var(--text-title3)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)', lineHeight: 'var(--leading-tight)', marginBottom: 'var(--space-3)' }}>{task.title}</h2>
 
           {/* Metadata — grouped list style */}
-          <div className="flex flex-wrap gap-2 items-center">
+          <div className="flex flex-wrap gap-1.5 items-center" style={{ marginBottom: 0 }}>
             <div className="flex items-center gap-1.5" style={{ padding: '5px 12px', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)' }}>
               <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: STATUS_COLOR[task.status] || 'var(--gray-1)' }} />
               {task.status.replace('_', ' ')}
@@ -796,7 +796,7 @@ function GitHubLinkFields({ task, onUpdateTask, githubLinks = {} }) {
   }
 
   return (
-    <div style={{ padding: '0 var(--space-5) var(--space-3)', borderTop: '0.5px solid var(--separator)' }}>
+    <div style={{ margin: '0 var(--space-4)', padding: '0 var(--space-3) var(--space-2)', borderRadius: 'var(--radius-md)', background: 'color-mix(in srgb, var(--bg-secondary) 80%, var(--bg-card) 20%)', border: '1px solid var(--separator)' }}>
       <button
         onClick={() => setExpanded(e => !e)}
         className="w-full flex items-center gap-2 apple-press"
