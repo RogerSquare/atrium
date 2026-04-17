@@ -1024,6 +1024,106 @@ router.post('/', (req, res) => {
   }
 });
 
+// POST /api/tasks/:id/rename — change a task's id (re-categorize, fix typos).
+// Validates new_id, renames the .md file, updates the YAML id field, rebuilds the index,
+// and auto-preserves any branch link by setting github_branch if needed.
+router.post('/:id/rename', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await withLock(`task:${id}`, async () => {
+    const { new_id, renamed_by } = req.body;
+
+    // Validate the new id against the canonical regex
+    const { validateTaskId } = require('../lib/taskIdValidator');
+    const idError = validateTaskId(new_id);
+    if (idError) return res.status(400).json(idError);
+    if (new_id === id) return res.status(400).json({ error: 'new_id is the same as the current id' });
+
+    // Find the source file
+    const sourcePath = findTaskFilePath(id);
+    if (!sourcePath) return res.status(404).json({ error: 'Task not found' });
+
+    // Check the new id doesn't already exist
+    if (findTaskFilePath(new_id)) return res.status(409).json({ error: 'A task with that id already exists', existing_id: new_id });
+
+    // Check archived project
+    const sourceDir = path.dirname(sourcePath);
+    const relativePath = path.relative(TASKS_DIR, sourceDir);
+    const project = relativePath || 'Root';
+    if (project !== 'Root') {
+      const projectRegistry = require('../lib/projectRegistry');
+      const proj = projectRegistry.resolve(project);
+      if (proj && proj.archived === true) {
+        return res.status(403).json({ error: 'Project is archived; cannot rename tasks here' });
+      }
+    }
+
+    // Read the source file
+    const fileContent = fs.readFileSync(sourcePath, 'utf-8');
+    const parsed = matter(fileContent);
+    const data = parsed.data;
+    const content = parsed.content;
+
+    // Auto-preserve branch link: if the old id was used for branch substring matching
+    // and there's no explicit github_branch override yet, set one so the link isn't lost.
+    if (!data.github_branch) {
+      // Check if any local branch or PR used the old id for matching.
+      // Simple heuristic: if a branch name contains the old id, save it as the override.
+      try {
+        const { execFileSync } = require('child_process');
+        const { SETTINGS_FILE } = require('../lib/constants');
+        const settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+        const wd = settings.workingDirectory;
+        if (wd) {
+          const registry = require('../lib/projectRegistry');
+          const proj = registry.resolve(project);
+          if (proj && proj.folder !== 'Root') {
+            const repoPath = path.join(wd, proj.folder);
+            if (fs.existsSync(path.join(repoPath, '.git'))) {
+              const branchesRaw = execFileSync('git', ['for-each-ref', '--format=%(refname:short)', 'refs/heads'], { cwd: repoPath, encoding: 'utf8' });
+              const branches = branchesRaw.split('\n').filter(Boolean);
+              const match = branches.find(b => b.toLowerCase().includes(id.toLowerCase()));
+              if (match) data.github_branch = match;
+            }
+          }
+        }
+      } catch { /* non-critical — just skip auto-linking */ }
+    }
+
+    // Update the id + add activity_log entry
+    const now = new Date().toISOString();
+    const actor = renamed_by || req.user?.username || 'Unknown User';
+    data.id = new_id;
+    if (!Array.isArray(data.activity_log)) data.activity_log = [];
+    data.activity_log.push({ timestamp: now, action: `id renamed from ${id} to ${new_id} by ${actor}` });
+
+    // Write to the new filename
+    const newFilePath = safePath(sourceDir, `${sanitizeFilename(new_id)}.md`);
+    if (!newFilePath) return res.status(400).json({ error: 'Invalid new id for filename' });
+    const newFileContent = matter.stringify(content, data);
+    atomicWriteFileSync(newFilePath, newFileContent);
+
+    // Remove the old file + update the index
+    if (sourcePath !== newFilePath && fs.existsSync(sourcePath)) {
+      fs.unlinkSync(sourcePath);
+    }
+    indexDelete(id);
+    indexSet(new_id, newFilePath);
+
+    const updatedTask = { ...data, content: content.trim(), project };
+    res.json({ success: true, task: updatedTask, old_id: id });
+    const io = getIO();
+    if (io) {
+      io.emit('task_deleted', { id });
+      io.emit('task_created', withSummary(updatedTask));
+    }
+    }); // end withLock
+  } catch (error) {
+    logger.error({ err: error, taskId: id }, 'Task rename failed');
+    if (!res.headersSent) res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /api/tasks/:id/continue — create a downstream phase task pre-filled from this one
 // Source must be phase-research → creates phase-plan; phase-plan → creates phase-implement.
 router.post('/:id/continue', async (req, res) => {
