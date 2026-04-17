@@ -174,8 +174,13 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
       })
 
     // Group: queued (todo) at the top so the backlog is visible first, then active
-    // (in_progress, review, waiting_input, done) sorted by most-recently-worked-on.
-    const active = baseEnriched.filter(r => !r.isQueued).sort((a, b) => b.ts - a.ts)
+    // (in_progress, review, waiting_input, done) sorted by created_at descending
+    // so the most recently created task appears at the top.
+    const active = baseEnriched.filter(r => !r.isQueued).sort((a, b) => {
+      const aCreated = new Date(a.task.created_at || 0).getTime()
+      const bCreated = new Date(b.task.created_at || 0).getTime()
+      return bCreated - aCreated
+    })
     const queued = baseEnriched.filter(r => r.isQueued).sort((a, b) => b.ts - a.ts)
     const sorted = [...queued, ...active]
 
