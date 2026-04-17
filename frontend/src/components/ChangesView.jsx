@@ -134,7 +134,7 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
 
   useEffect(() => { fetchLinks(false) }, [fetchLinks])
 
-  const { lanes, rows, firstRowByLaneKey, allCategoryKeys, visibleCount } = useMemo(() => {
+  const { lanes, rows, firstRowByLaneKey, allCategoryKeys, visibleCount, visibleActiveCount, visibleQueuedCount } = useMemo(() => {
     const links = linksData?.by_task_id || {}
 
     // Each task becomes a row — drafts are excluded since they aren't committed work yet.
