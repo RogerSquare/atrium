@@ -98,6 +98,16 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
   const [focusedCategory, setFocusedCategory] = useState(() => {
     try { return localStorage.getItem(FOCUS_STORAGE_KEY) } catch { return null }
   })
+  const [queuedCollapsed, setQueuedCollapsed] = useState(() => {
+    try { return localStorage.getItem('taskBoardQueuedCollapsed') === 'true' } catch { return false }
+  })
+  const toggleQueuedCollapsed = useCallback(() => {
+    setQueuedCollapsed(prev => {
+      const next = !prev
+      try { localStorage.setItem('taskBoardQueuedCollapsed', String(next)) } catch {}
+      return next
+    })
+  }, [])
 
   const setFocus = useCallback((key) => {
     setFocusedCategory(key)
@@ -134,7 +144,7 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
 
   useEffect(() => { fetchLinks(false) }, [fetchLinks])
 
-  const { lanes, rows, firstRowByLaneKey, allCategoryKeys, visibleCount, visibleActiveCount, visibleQueuedCount } = useMemo(() => {
+  const { lanes, rows, firstRowByLaneKey, allCategoryKeys, visibleCount, visibleActiveCount, visibleQueuedCount, totalQueuedCount } = useMemo(() => {
     const links = linksData?.by_task_id || {}
 
     // Each task becomes a row — drafts are excluded since they aren't committed work yet.
@@ -163,22 +173,22 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
         return { task: t, link, ts, isQueued }
       })
 
-    // Group: active (non-todo) first sorted by recency, then queued (todo) sorted by recency.
-    // This puts "what's happening" at the top and "what's waiting" at the bottom.
+    // Group: queued (todo) at the top so the backlog is visible first, then active
+    // (in_progress, review, waiting_input, done) sorted by most-recently-worked-on.
     const active = baseEnriched.filter(r => !r.isQueued).sort((a, b) => b.ts - a.ts)
     const queued = baseEnriched.filter(r => r.isQueued).sort((a, b) => b.ts - a.ts)
-    const sorted = [...active, ...queued]
-    // Track where the separator goes (index of first queued row in the combined list)
-    const queuedStartIndex = active.length
+    const sorted = [...queued, ...active]
 
     const allCategoryKeys = new Set(
       sorted.map(r => categoryOf(r.task.id) || UNCATEGORIZED_LANE)
     )
 
-    // Annotate each row with its category + visibility
+    // Annotate each row with its category + visibility.
+    // Queued rows hide when the queued section is collapsed.
     const annotated = sorted.map(r => {
       const categoryKey = categoryOf(r.task.id) || UNCATEGORIZED_LANE
-      const visible = !focusedCategory || focusedCategory === categoryKey
+      const categoryMatch = !focusedCategory || focusedCategory === categoryKey
+      const visible = categoryMatch && !(r.isQueued && queuedCollapsed)
       return { ...r, categoryKey, visible }
     })
 
@@ -216,10 +226,10 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
       }
     }
 
-    // Compute the separator position in terms of visible indices.
-    // Count how many visible rows are in the Active group.
     const visibleActiveCount = builtRows.filter(r => r.visible && !r.isQueued).length
     const visibleQueuedCount = builtRows.filter(r => r.visible && r.isQueued).length
+    // Total queued ignoring collapse state — used for the header badge count
+    const totalQueuedCount = sorted.filter(r => r.isQueued && (!focusedCategory || (categoryOf(r.task.id) || UNCATEGORIZED_LANE) === focusedCategory)).length
 
     return {
       lanes: laneList.map((l, i) => ({ ...l, index: i })),
@@ -229,8 +239,9 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
       visibleCount: vIdx,
       visibleActiveCount,
       visibleQueuedCount,
+      totalQueuedCount,
     }
-  }, [tasks, linksData, focusedCategory])
+  }, [tasks, linksData, focusedCategory, queuedCollapsed])
 
   // Self-heal: if the persisted focus is for a category no task currently has, exit focus mode
   useEffect(() => {
@@ -240,13 +251,17 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
   }, [focusedCategory, allCategoryKeys, setFocus])
 
   const graphWidth = LANE_PAD_LEFT + lanes.length * LANE_WIDTH + LANE_PAD_RIGHT
-  const SEPARATOR_HEIGHT = visibleActiveCount > 0 && visibleQueuedCount > 0 ? 28 : 0
-  const totalHeight = visibleCount * ROW_STRIDE + SEPARATOR_HEIGHT
+  // Separator between queued (top) and active (bottom) sections
+  const SEPARATOR_HEIGHT = visibleActiveCount > 0 && (visibleQueuedCount > 0 || totalQueuedCount > 0) ? 28 : 0
+  // Queued header (collapsible) sits above the rows
+  const QUEUED_HEADER_HEIGHT = totalQueuedCount > 0 ? 28 : 0
+  const totalHeight = visibleCount * ROW_STRIDE + SEPARATOR_HEIGHT + QUEUED_HEADER_HEIGHT
 
-  // SVG y-position for a row: queued rows are offset by the separator height
+  // SVG y-position for a row: active rows (below the separator) are offset.
+  // Queued rows sit at the top; active rows are pushed down by the separator height.
   const svgY = (r) => {
     const baseY = r.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
-    return r.isQueued ? baseY + SEPARATOR_HEIGHT : baseY
+    return r.isQueued ? baseY : baseY + SEPARATOR_HEIGHT
   }
 
   const showRepoBanner = linksData && !linksData.repo && !error
@@ -338,8 +353,9 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
               The SVG height animates along with the collapsing rows so trail/nodes stay aligned. */}
           <svg
             width={graphWidth} height={totalHeight}
-            className="absolute top-0"
+            className="absolute"
             style={{
+              top: `${QUEUED_HEADER_HEIGHT}px`,
               left: `${LABEL_COL_WIDTH}px`,
               pointerEvents: 'none',
               transition: 'height 260ms ease',
@@ -427,12 +443,57 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
             })}
           </svg>
 
-          {/* Rows — Active group first, then a "Queued" separator, then todo rows.
+          {/* Queued header — collapsible. Shows only when there are queued tasks. */}
+          {totalQueuedCount > 0 && (
+            <button
+              onClick={toggleQueuedCollapsed}
+              className="w-full flex items-center gap-2 apple-press"
+              style={{
+                height: `${SEPARATOR_HEIGHT}px`,
+                padding: '0 16px 0 14px',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+              aria-expanded={!queuedCollapsed}
+            >
+              {queuedCollapsed
+                ? <ChevronRight className="w-3 h-3" style={{ color: 'var(--text-tertiary)' }} />
+                : <ChevronDown className="w-3 h-3" style={{ color: 'var(--text-tertiary)' }} />}
+              <span
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  color: 'var(--text-tertiary)',
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Queued
+              </span>
+              <span
+                style={{
+                  padding: '1px 6px',
+                  borderRadius: '999px',
+                  background: 'var(--fill-secondary)',
+                  color: 'var(--text-tertiary)',
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  minWidth: '20px',
+                  textAlign: 'center',
+                }}
+              >
+                {totalQueuedCount}
+              </span>
+            </button>
+          )}
+          {/* Rows — Queued (todo) first, then separator, then Active.
               All non-draft rows always render; hidden rows animate to max-height: 0. */}
           {rows.map((r, i) => {
-            // Insert separator before the first queued row (only if both groups have visible content)
-            const isFirstQueued = r.isQueued && (i === 0 || !rows[i - 1]?.isQueued)
-            const showSeparator = isFirstQueued && SEPARATOR_HEIGHT > 0
+            // Insert separator between queued and active sections.
+            // Since queued is first now, the separator renders before the first ACTIVE row.
+            const isFirstActive = !r.isQueued && (i === 0 || rows[i - 1]?.isQueued)
+            const showSeparator = isFirstActive && SEPARATOR_HEIGHT > 0
 
             const StatusIcon = STATUS_ICON[r.task.status] || Circle
             const justUpdated = recentlyUpdatedIds.includes(r.task.id)
@@ -464,7 +525,7 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                       textTransform: 'uppercase',
                     }}
                   >
-                    Queued
+                    Active
                   </span>
                   <div style={{ flex: 1, height: '0.5px', background: 'var(--separator)' }} />
                 </div>
