@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Send, Folder, Pencil, Check, UserCircle2, Trash2, Clock, Calendar, History, RotateCcw, FileText, Copy, Link, Sparkles, ChevronDown } from 'lucide-react'
+import { X, Send, Folder, Pencil, Check, UserCircle2, Trash2, Clock, Calendar, History, RotateCcw, FileText, Copy, Link, Sparkles, ChevronDown, ChevronRight, GitBranch } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { API_URL, apiFetch } from '../config'
@@ -498,6 +498,8 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
               </select>
             </div>
           </div>
+          {/* GitHub branch / PR link overrides */}
+          <GitHubLinkFields task={task} onUpdateTask={onUpdateTask} />
         </header>
 
         {/* Content area */}
@@ -748,5 +750,115 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
         )}
       </div>
     </ModalOverlay>
+  )
+}
+
+function GitHubLinkFields({ task, onUpdateTask }) {
+  const hasBranch = !!task.github_branch
+  const hasPr = !!task.github_pr_url
+  const hasAny = hasBranch || hasPr
+  const [expanded, setExpanded] = useState(hasAny)
+  const [branch, setBranch] = useState(task.github_branch || '')
+  const [prUrl, setPrUrl] = useState(task.github_pr_url || '')
+
+  useEffect(() => {
+    setBranch(task.github_branch || '')
+    setPrUrl(task.github_pr_url || '')
+    if (task.github_branch || task.github_pr_url) setExpanded(true)
+  }, [task.id, task.github_branch, task.github_pr_url])
+
+  const saveBranch = (val) => {
+    const trimmed = val.trim()
+    const newVal = trimmed || null
+    if (newVal !== (task.github_branch || null)) {
+      onUpdateTask(task.id, { github_branch: newVal })
+    }
+  }
+  const savePrUrl = (val) => {
+    const trimmed = val.trim()
+    const newVal = trimmed || null
+    if (newVal !== (task.github_pr_url || null)) {
+      onUpdateTask(task.id, { github_pr_url: newVal })
+    }
+  }
+
+  const fieldStyle = {
+    width: '100%',
+    background: 'var(--bg-card)',
+    border: '1px solid var(--separator)',
+    borderRadius: 'var(--radius-sm)',
+    padding: '6px 10px',
+    fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+    fontSize: 'var(--text-caption2)',
+    color: 'var(--text-app)',
+    outline: 'none',
+  }
+
+  return (
+    <div style={{ padding: '0 var(--space-5) var(--space-3)', borderTop: '0.5px solid var(--separator)' }}>
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center gap-2 apple-press"
+        style={{ padding: '8px 0', fontSize: 'var(--text-caption2)', fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: '0.03em', textTransform: 'uppercase' }}
+      >
+        <GitBranch className="w-3 h-3" />
+        <span>GitHub</span>
+        {!hasAny && <span style={{ fontSize: '10px', fontWeight: 500, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>auto</span>}
+        <span className="flex-1" />
+        {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+      </button>
+      {expanded && (
+        <div className="flex flex-col gap-2 pb-1">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-tertiary)' }}>Branch</label>
+              {hasBranch && (
+                <button
+                  onClick={() => { setBranch(''); saveBranch('') }}
+                  className="apple-press"
+                  style={{ padding: '1px 4px', fontSize: '9px', color: 'var(--apple-red)', borderRadius: 'var(--radius-xs)' }}
+                  title="Clear override (fall back to convention)"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </div>
+            <input
+              type="text"
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+              onBlur={() => saveBranch(branch)}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur() }}
+              placeholder="auto (convention match)"
+              style={fieldStyle}
+            />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-tertiary)' }}>PR URL</label>
+              {hasPr && (
+                <button
+                  onClick={() => { setPrUrl(''); savePrUrl('') }}
+                  className="apple-press"
+                  style={{ padding: '1px 4px', fontSize: '9px', color: 'var(--apple-red)', borderRadius: 'var(--radius-xs)' }}
+                  title="Clear PR URL"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </div>
+            <input
+              type="text"
+              value={prUrl}
+              onChange={(e) => setPrUrl(e.target.value)}
+              onBlur={() => savePrUrl(prUrl)}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur() }}
+              placeholder="https://github.com/.../pull/N"
+              style={fieldStyle}
+            />
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
