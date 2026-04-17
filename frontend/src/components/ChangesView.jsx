@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useMemo, useCallback } from 'react'
+import React, { memo, useState, useEffect, useMemo, useCallback } from 'react'
 import { Circle, Loader2, Eye, CheckCircle2, GitBranch, GitPullRequest, ExternalLink, RefreshCw, X, Check, AlertCircle, Clock, GitPullRequestDraft, AlertTriangle, XCircle, ChevronDown, ChevronRight } from 'lucide-react'
 import { API_BASE, apiFetch } from '../config'
 import { STATUS_COLOR } from '../constants'
@@ -140,21 +140,43 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
     // Each task becomes a row — drafts are excluded since they aren't committed work yet.
     // ALL non-draft tasks are kept in the row list so that hidden rows can animate their
     // collapse via CSS instead of unmounting instantly. Visibility is decided per-row below.
+
+    // Best-available "last touched" timestamp: branch_date (git) > last activity_log entry
+    // > updated_at > created_at. Gives the most faithful "when was this last worked on".
+    const lastTouchedTs = (t, link) => {
+      if (link?.branch_date) return new Date(link.branch_date).getTime() || 0
+      if (t.activity_log?.length) {
+        const last = t.activity_log[t.activity_log.length - 1]
+        if (last?.timestamp) return new Date(last.timestamp).getTime() || 0
+      }
+      if (t.updated_at) return new Date(t.updated_at).getTime() || 0
+      if (t.created_at) return new Date(t.created_at).getTime() || 0
+      return 0
+    }
+
     const baseEnriched = tasks
       .filter(t => t.status !== 'draft')
       .map(t => {
         const link = links[t.id] || null
-        const ts = link?.branch_date || t.updated_at || t.created_at || 0
-        return { task: t, link, ts: new Date(ts).getTime() || 0 }
+        const ts = lastTouchedTs(t, link)
+        const isQueued = t.status === 'todo'
+        return { task: t, link, ts, isQueued }
       })
-      .sort((a, b) => b.ts - a.ts)
+
+    // Group: active (non-todo) first sorted by recency, then queued (todo) sorted by recency.
+    // This puts "what's happening" at the top and "what's waiting" at the bottom.
+    const active = baseEnriched.filter(r => !r.isQueued).sort((a, b) => b.ts - a.ts)
+    const queued = baseEnriched.filter(r => r.isQueued).sort((a, b) => b.ts - a.ts)
+    const sorted = [...active, ...queued]
+    // Track where the separator goes (index of first queued row in the combined list)
+    const queuedStartIndex = active.length
 
     const allCategoryKeys = new Set(
-      baseEnriched.map(r => categoryOf(r.task.id) || UNCATEGORIZED_LANE)
+      sorted.map(r => categoryOf(r.task.id) || UNCATEGORIZED_LANE)
     )
 
     // Annotate each row with its category + visibility
-    const annotated = baseEnriched.map(r => {
+    const annotated = sorted.map(r => {
       const categoryKey = categoryOf(r.task.id) || UNCATEGORIZED_LANE
       const visible = !focusedCategory || focusedCategory === categoryKey
       return { ...r, categoryKey, visible }
@@ -194,12 +216,19 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
       }
     }
 
+    // Compute the separator position in terms of visible indices.
+    // Count how many visible rows are in the Active group.
+    const visibleActiveCount = builtRows.filter(r => r.visible && !r.isQueued).length
+    const visibleQueuedCount = builtRows.filter(r => r.visible && r.isQueued).length
+
     return {
       lanes: laneList.map((l, i) => ({ ...l, index: i })),
       rows: builtRows,
       firstRowByLaneKey,
       allCategoryKeys,
       visibleCount: vIdx,
+      visibleActiveCount,
+      visibleQueuedCount,
     }
   }, [tasks, linksData, focusedCategory])
 
@@ -211,7 +240,14 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
   }, [focusedCategory, allCategoryKeys, setFocus])
 
   const graphWidth = LANE_PAD_LEFT + lanes.length * LANE_WIDTH + LANE_PAD_RIGHT
-  const totalHeight = visibleCount * ROW_STRIDE
+  const SEPARATOR_HEIGHT = visibleActiveCount > 0 && visibleQueuedCount > 0 ? 28 : 0
+  const totalHeight = visibleCount * ROW_STRIDE + SEPARATOR_HEIGHT
+
+  // SVG y-position for a row: queued rows are offset by the separator height
+  const svgY = (r) => {
+    const baseY = r.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
+    return r.isQueued ? baseY + SEPARATOR_HEIGHT : baseY
+  }
 
   const showRepoBanner = linksData && !linksData.repo && !error
   const repoUrl = linksData?.repo_url
@@ -317,8 +353,8 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
               if (rowsOnLane.length < 2) return null
               const first = rowsOnLane[0]
               const last = rowsOnLane[rowsOnLane.length - 1]
-              const y1 = first.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
-              const y2 = last.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
+              const y1 = svgY(first)
+              const y2 = svgY(last)
               return (
                 <line
                   key={`${lane.key}-line`}
@@ -329,17 +365,17 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                 />
               )
             })}
-            {/* Progression trail — one connected path visiting every VISIBLE node top-to-bottom.
-                Each segment takes the arriving row's category color. Cross-lane hops draw a
-                symmetric S with two rounded quarter-turns at the row midline. */}
+            {/* Progression trail — connects ACTIVE (non-queued) visible rows only.
+                Queued rows haven't "happened" on the timeline yet so they get their
+                own nodes on the lane but no trail connection to the active section. */}
             {(() => {
-              const visibleRows = rows.filter(r => r.visible && r.lane)
+              const visibleRows = rows.filter(r => r.visible && r.lane && !r.isQueued)
               return visibleRows.slice(1).map((curr, i) => {
               const prev = visibleRows[i]
               const prevX = LANE_PAD_LEFT + prev.lane.index * LANE_WIDTH + LANE_WIDTH / 2
-              const prevY = prev.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
+              const prevY = svgY(prev)
               const currX = LANE_PAD_LEFT + curr.lane.index * LANE_WIDTH + LANE_WIDTH / 2
-              const currY = curr.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
+              const currY = svgY(curr)
               const color = curr.lane.color
               const sameLane = prevX === currX
               let d
@@ -379,7 +415,7 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
             {rows.map((r) => {
               if (!r.visible || !r.lane) return null
               const x = LANE_PAD_LEFT + r.lane.index * LANE_WIDTH + LANE_WIDTH / 2
-              const y = r.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
+              const y = svgY(r)
               return (
                 <circle
                   key={r.task.id}
@@ -391,10 +427,13 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
             })}
           </svg>
 
-          {/* Rows — each row is a single horizontal band tinted by its lane color.
-              All non-draft rows always render; hidden rows animate to max-height: 0 and
-              fade out so the fold-away is visible instead of an instant DOM removal. */}
+          {/* Rows — Active group first, then a "Queued" separator, then todo rows.
+              All non-draft rows always render; hidden rows animate to max-height: 0. */}
           {rows.map((r, i) => {
+            // Insert separator before the first queued row (only if both groups have visible content)
+            const isFirstQueued = r.isQueued && (i === 0 || !rows[i - 1]?.isQueued)
+            const showSeparator = isFirstQueued && SEPARATOR_HEIGHT > 0
+
             const StatusIcon = STATUS_ICON[r.task.status] || Circle
             const justUpdated = recentlyUpdatedIds.includes(r.task.id)
             const prStyle = r.link?.pr_state ? PR_STATE_STYLE[r.link.pr_state] : null
@@ -406,15 +445,35 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
             const laneTint = `color-mix(in srgb, ${tintColor} ${justUpdated ? 22 : 10}%, transparent)`
             const isLastVisible = r.visible && r.visibleIndex === visibleCount - 1
             return (
+              <React.Fragment key={r.task.id}>
+              {showSeparator && (
+                <div
+                  className="flex items-center gap-2"
+                  style={{
+                    height: `${SEPARATOR_HEIGHT}px`,
+                    padding: '0 16px 0 14px',
+                  }}
+                >
+                  <div style={{ flex: 1, height: '0.5px', background: 'var(--separator)' }} />
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      color: 'var(--text-tertiary)',
+                      letterSpacing: '0.05em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Queued
+                  </span>
+                  <div style={{ flex: 1, height: '0.5px', background: 'var(--separator)' }} />
+                </div>
+              )}
               <div
-                key={r.task.id}
                 onClick={() => r.visible && onSelectTask(r.task)}
                 className="flex items-stretch relative"
                 style={{
                   cursor: r.visible ? 'pointer' : 'default',
-                  // Explicit height (not max-height) so visible rows are always exactly
-                  // ROW_HEIGHT tall — this keeps the DOM row grid in lockstep with the
-                  // SVG trail which assumes `visibleIndex * ROW_STRIDE` positions.
                   height: r.visible ? `${ROW_HEIGHT}px` : '0px',
                   opacity: r.visible ? 1 : 0,
                   marginBottom: r.visible && !isLastVisible ? `${ROW_GAP}px` : '0px',
@@ -615,6 +674,7 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                   })()}
                 </div>
               </div>
+              </React.Fragment>
             )
           })}
           {rows.length === 0 && (
