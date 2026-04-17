@@ -173,9 +173,17 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
         return { task: t, link, ts, isQueued }
       })
 
-    // Group: queued (todo) at the top so the backlog is visible first, then active
-    // (in_progress, review, waiting_input, done) sorted by most-recently-worked-on.
-    const active = baseEnriched.filter(r => !r.isQueued).sort((a, b) => b.ts - a.ts)
+    // Group: queued (todo) at the top, then active below.
+    // Active sorts by created_at descending (most recently created at top) — NOT by
+    // lastTouchedTs, because tasks linked to `main` have a branch_date from main's
+    // latest merge commit which is always the newest date in the repo and would
+    // incorrectly float them to the top.
+    // Queued keeps lastTouchedTs sort (recency of activity matters for the backlog).
+    const active = baseEnriched.filter(r => !r.isQueued).sort((a, b) => {
+      const aCreated = new Date(a.task.created_at || 0).getTime()
+      const bCreated = new Date(b.task.created_at || 0).getTime()
+      return bCreated - aCreated
+    })
     const queued = baseEnriched.filter(r => r.isQueued).sort((a, b) => b.ts - a.ts)
     const sorted = [...queued, ...active]
 
