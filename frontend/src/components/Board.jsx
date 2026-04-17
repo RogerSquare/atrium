@@ -34,7 +34,7 @@ function isTaskStale(task) {
   return daysSince >= threshold
 }
 
-function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAgent, onStopAgent, taskViewers = {}, currentUser, selectable, selectedIds = [], onToggleSelect, onShiftSelect, onToggleSelectColumn, recentlyUpdatedIds = [], onToggleBulkSelect }) {
+function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAgent, onStopAgent, taskViewers = {}, currentUser, selectable, selectedIds = [], onToggleSelect, onShiftSelect, onToggleSelectColumn, recentlyUpdatedIds = [], onToggleBulkSelect, githubLinks = {} }) {
   const priorityOrder = { high: 0, medium: 1, low: 2 }
   const isMobile = useIsMobile()
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem('taskBoardCompact') === 'true')
@@ -161,6 +161,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
       justUpdated={recentlyUpdatedIds.includes(task.id)}
       compact={compactMode}
       isStale={staleIds.has(task.id)}
+      githubLinks={githubLinks}
     />
   )
 

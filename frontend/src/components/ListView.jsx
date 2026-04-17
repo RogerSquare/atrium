@@ -1,7 +1,7 @@
 import { memo, useState, useCallback, useMemo, useRef, Fragment } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ArrowUp, ArrowDown, Copy, Check, Loader2, UserCircle2, Circle, AlertCircle, CheckCircle2, Eye, Clock, ChevronRight, ChevronDown, ChevronsUpDown, Layers } from 'lucide-react'
-import { STATUS_OPTIONS, PRIORITY_COLOR, STATUS_COLOR, TYPE_STYLE, VIEWER_COLORS } from '../constants'
+import { STATUS_OPTIONS, PRIORITY_COLOR, STATUS_COLOR, TYPE_STYLE, VIEWER_COLORS, MERGE_STATUS } from '../constants'
 
 const PRIORITY_CYCLE = ['low', 'medium', 'high']
 
@@ -46,7 +46,7 @@ function getLastUpdated(task) {
   return task.created_at
 }
 
-function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskViewers = {}, currentUser, selectable, selectedIds = [], onToggleSelect, recentlyUpdatedIds = [] }) {
+function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskViewers = {}, currentUser, selectable, selectedIds = [], onToggleSelect, recentlyUpdatedIds = [], githubLinks = {} }) {
   const [sortKey, setSortKey] = useState(() => localStorage.getItem('taskBoardListSort') || 'priority')
   const [sortDir, setSortDir] = useState(() => localStorage.getItem('taskBoardListDir') || 'asc')
   const [groupBy, setGroupBy] = useState(() => localStorage.getItem('taskBoardListGroup') || 'none')
@@ -148,6 +148,11 @@ function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
         {/* ID */}
         <td style={{ padding: '8px 12px' }}>
           <div className="flex items-center gap-1.5">
+            {(() => {
+              const link = githubLinks[task.id]
+              const ms = link?.pr_state ? MERGE_STATUS[link.pr_state] : null
+              return ms ? <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ms.dotColor, flexShrink: 0 }} title={`PR ${ms.label}`} /> : null
+            })()}
             <button onClick={(e) => handleCopyId(e, task.id)} className="apple-press flex items-center gap-1" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }} title="Copy ID">
               {copiedId === task.id ? <Check className="w-2.5 h-2.5" style={{ color: 'var(--apple-green)' }} /> : <Copy className="w-2.5 h-2.5" />}
               {task.id}

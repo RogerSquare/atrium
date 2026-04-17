@@ -3,6 +3,7 @@ import { X, Send, Folder, Pencil, Check, UserCircle2, Trash2, Clock, Calendar, H
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { API_URL, apiFetch } from '../config'
+import { MERGE_STATUS } from '../constants'
 import AgentLogPanel from './AgentLogPanel'
 import AIChatPanel from './AIChatPanel'
 import ApprovalPanel from './ApprovalPanel'
@@ -28,7 +29,7 @@ function parseTaskIdParts(id) {
   return { category: match[1], rest: match[2] }
 }
 
-export default function TaskModal({ task, projects, onClose, onUpdateTask, onDeleteTask, currentUser, activeAgents = [], onStartAgent, onStopAgent, socket, taskViewers = [], agentsEnabled = true, canRunAgents = true, aiChatEnabled = true }) {
+export default function TaskModal({ task, projects, onClose, onUpdateTask, onDeleteTask, currentUser, activeAgents = [], onStartAgent, onStopAgent, socket, taskViewers = [], agentsEnabled = true, canRunAgents = true, aiChatEnabled = true, githubLinks = {} }) {
   const [newComment, setNewComment] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState(task.content || '')
@@ -423,6 +424,33 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
                 {linkCopied && <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--apple-green)', fontWeight: 'var(--font-medium)' }}>Copied</span>}
               </button>
               {saving && <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--accent-app)', fontWeight: 'var(--font-medium)' }} className="animate-gentle-pulse">Saving...</span>}
+              {(() => {
+                const link = githubLinks[task.id]
+                const ms = link?.pr_state ? MERGE_STATUS[link.pr_state] : null
+                if (!ms) return null
+                return (
+                  <a
+                    href={link.pr_url || link.branch_url || '#'}
+                    target="_blank" rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center gap-1.5"
+                    style={{
+                      padding: '3px 10px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: `color-mix(in srgb, ${ms.color} 14%, transparent)`,
+                      border: `1px solid color-mix(in srgb, ${ms.color} 35%, transparent)`,
+                      color: ms.color,
+                      fontSize: 'var(--text-caption2)',
+                      fontWeight: 600,
+                      textDecoration: 'none',
+                    }}
+                    title={`PR #${link.pr_number}: ${link.pr_title || ''} (${ms.label})`}
+                  >
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ms.dotColor }} />
+                    {ms.label}{link.pr_number ? ` #${link.pr_number}` : ''}
+                  </a>
+                )
+              })()}
 
               {taskViewers.filter(u => u !== currentUser?.username).length > 0 && (
                 <div className="flex items-center gap-1.5 ml-1" style={{ paddingLeft: 'var(--space-2)', borderLeft: '1px solid var(--separator)' }}>

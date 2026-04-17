@@ -38,3 +38,10 @@ export const TYPE_STYLE = {
 }
 
 export const VIEWER_COLORS = ['#06b6d4', '#a78bfa', '#f472b6', '#fb923c', '#34d399', '#fbbf24', '#60a5fa']
+
+// GitHub PR merge-status — shared across TaskCard, ListView, TaskModal, ChangesView
+export const MERGE_STATUS = {
+  OPEN:   { color: 'var(--apple-green)',  label: 'Open',   dotColor: 'var(--apple-green)'  },
+  MERGED: { color: 'var(--apple-purple)', label: 'Merged', dotColor: 'var(--apple-purple)' },
+  CLOSED: { color: 'var(--apple-red)',    label: 'Closed', dotColor: 'var(--apple-red)'    },
+}

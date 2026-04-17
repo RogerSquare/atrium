@@ -5,6 +5,7 @@ export default function useTasks(user, socketRef) {
   const [tasks, setTasks] = useState([])
   const [projects, setProjects] = useState([{ id: 'root', name: 'Root', folder: 'Root' }])
   const [archivedProjects, setArchivedProjects] = useState([])
+  const [githubLinks, setGithubLinks] = useState({})  // by_task_id map from /api/github/links
   const [recentlyUpdatedIds, setRecentlyUpdatedIds] = useState([])
   const flashTimersRef = useRef({})
   const [activeProject, setActiveProject] = useState(localStorage.getItem('opusBoardActiveProject') || 'All')
@@ -79,6 +80,32 @@ export default function useTasks(user, socketRef) {
       return () => clearInterval(interval)
     }
   }, [user, fetchData])
+
+  // Fetch GitHub links for the active project — shared across all views (Board, List, TaskModal, Changes).
+  // Runs on project change + after data refresh. 5-min backend cache; manual refresh via refreshGithubLinks(true).
+  const fetchGithubLinks = useCallback(async (refresh = false) => {
+    if (!user) return
+    // Find the project id for the active project
+    const proj = activeProject !== 'All'
+      ? projects.find(p => (p.folder || p) === activeProject)
+      : null
+    if (!proj || !proj.id || proj.id === 'root') {
+      setGithubLinks({})
+      return
+    }
+    try {
+      const url = `${API_URL}/github/links?project=${encodeURIComponent(proj.id)}${refresh ? '&refresh=1' : ''}`
+      const res = await apiFetch(url)
+      if (res.ok) {
+        const data = await res.json()
+        setGithubLinks(data.by_task_id || {})
+      }
+    } catch { /* non-critical */ }
+  }, [user, activeProject, projects])
+
+  useEffect(() => {
+    fetchGithubLinks(false)
+  }, [fetchGithubLinks])
 
   // Handle browser back/forward for task deep-links
   useEffect(() => {
@@ -420,6 +447,8 @@ export default function useTasks(user, socketRef) {
     archivedProjects,
     archiveProject,
     unarchiveProject,
+    githubLinks,
+    fetchGithubLinks,
     fetchData,
     recentlyUpdatedIds,
   }
