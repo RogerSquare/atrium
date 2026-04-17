@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useMemo, useCallback } from 'react'
+import React, { memo, useState, useEffect, useMemo, useCallback } from 'react'
 import { Circle, Loader2, Eye, CheckCircle2, GitBranch, GitPullRequest, ExternalLink, RefreshCw, X, Check, AlertCircle, Clock, GitPullRequestDraft, AlertTriangle, XCircle, ChevronDown, ChevronRight } from 'lucide-react'
 import { API_BASE, apiFetch } from '../config'
 import { STATUS_COLOR } from '../constants'
@@ -98,6 +98,16 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
   const [focusedCategory, setFocusedCategory] = useState(() => {
     try { return localStorage.getItem(FOCUS_STORAGE_KEY) } catch { return null }
   })
+  const [queuedCollapsed, setQueuedCollapsed] = useState(() => {
+    try { return localStorage.getItem('taskBoardQueuedCollapsed') === 'true' } catch { return false }
+  })
+  const toggleQueuedCollapsed = useCallback(() => {
+    setQueuedCollapsed(prev => {
+      const next = !prev
+      try { localStorage.setItem('taskBoardQueuedCollapsed', String(next)) } catch {}
+      return next
+    })
+  }, [])
 
   const setFocus = useCallback((key) => {
     setFocusedCategory(key)
@@ -134,29 +144,51 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
 
   useEffect(() => { fetchLinks(false) }, [fetchLinks])
 
-  const { lanes, rows, firstRowByLaneKey, allCategoryKeys, visibleCount } = useMemo(() => {
+  const { lanes, rows, firstRowByLaneKey, allCategoryKeys, visibleCount, visibleActiveCount, visibleQueuedCount, totalQueuedCount } = useMemo(() => {
     const links = linksData?.by_task_id || {}
 
     // Each task becomes a row — drafts are excluded since they aren't committed work yet.
     // ALL non-draft tasks are kept in the row list so that hidden rows can animate their
     // collapse via CSS instead of unmounting instantly. Visibility is decided per-row below.
+
+    // Best-available "last touched" timestamp: branch_date (git) > last activity_log entry
+    // > updated_at > created_at. Gives the most faithful "when was this last worked on".
+    const lastTouchedTs = (t, link) => {
+      if (link?.branch_date) return new Date(link.branch_date).getTime() || 0
+      if (t.activity_log?.length) {
+        const last = t.activity_log[t.activity_log.length - 1]
+        if (last?.timestamp) return new Date(last.timestamp).getTime() || 0
+      }
+      if (t.updated_at) return new Date(t.updated_at).getTime() || 0
+      if (t.created_at) return new Date(t.created_at).getTime() || 0
+      return 0
+    }
+
     const baseEnriched = tasks
       .filter(t => t.status !== 'draft')
       .map(t => {
         const link = links[t.id] || null
-        const ts = link?.branch_date || t.updated_at || t.created_at || 0
-        return { task: t, link, ts: new Date(ts).getTime() || 0 }
+        const ts = lastTouchedTs(t, link)
+        const isQueued = t.status === 'todo'
+        return { task: t, link, ts, isQueued }
       })
-      .sort((a, b) => b.ts - a.ts)
+
+    // Group: queued (todo) at the top so the backlog is visible first, then active
+    // (in_progress, review, waiting_input, done) sorted by most-recently-worked-on.
+    const active = baseEnriched.filter(r => !r.isQueued).sort((a, b) => b.ts - a.ts)
+    const queued = baseEnriched.filter(r => r.isQueued).sort((a, b) => b.ts - a.ts)
+    const sorted = [...queued, ...active]
 
     const allCategoryKeys = new Set(
-      baseEnriched.map(r => categoryOf(r.task.id) || UNCATEGORIZED_LANE)
+      sorted.map(r => categoryOf(r.task.id) || UNCATEGORIZED_LANE)
     )
 
-    // Annotate each row with its category + visibility
-    const annotated = baseEnriched.map(r => {
+    // Annotate each row with its category + visibility.
+    // Queued rows hide when the queued section is collapsed.
+    const annotated = sorted.map(r => {
       const categoryKey = categoryOf(r.task.id) || UNCATEGORIZED_LANE
-      const visible = !focusedCategory || focusedCategory === categoryKey
+      const categoryMatch = !focusedCategory || focusedCategory === categoryKey
+      const visible = categoryMatch && !(r.isQueued && queuedCollapsed)
       return { ...r, categoryKey, visible }
     })
 
@@ -194,14 +226,22 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
       }
     }
 
+    const visibleActiveCount = builtRows.filter(r => r.visible && !r.isQueued).length
+    const visibleQueuedCount = builtRows.filter(r => r.visible && r.isQueued).length
+    // Total queued ignoring collapse state — used for the header badge count
+    const totalQueuedCount = sorted.filter(r => r.isQueued && (!focusedCategory || (categoryOf(r.task.id) || UNCATEGORIZED_LANE) === focusedCategory)).length
+
     return {
       lanes: laneList.map((l, i) => ({ ...l, index: i })),
       rows: builtRows,
       firstRowByLaneKey,
       allCategoryKeys,
       visibleCount: vIdx,
+      visibleActiveCount,
+      visibleQueuedCount,
+      totalQueuedCount,
     }
-  }, [tasks, linksData, focusedCategory])
+  }, [tasks, linksData, focusedCategory, queuedCollapsed])
 
   // Self-heal: if the persisted focus is for a category no task currently has, exit focus mode
   useEffect(() => {
@@ -211,7 +251,18 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
   }, [focusedCategory, allCategoryKeys, setFocus])
 
   const graphWidth = LANE_PAD_LEFT + lanes.length * LANE_WIDTH + LANE_PAD_RIGHT
-  const totalHeight = visibleCount * ROW_STRIDE
+  // Separator between queued (top) and active (bottom) sections
+  const SEPARATOR_HEIGHT = visibleActiveCount > 0 && (visibleQueuedCount > 0 || totalQueuedCount > 0) ? 28 : 0
+  // Queued header (collapsible) sits above the rows
+  const QUEUED_HEADER_HEIGHT = totalQueuedCount > 0 ? 28 : 0
+  const totalHeight = visibleCount * ROW_STRIDE + SEPARATOR_HEIGHT + QUEUED_HEADER_HEIGHT
+
+  // SVG y-position for a row: active rows (below the separator) are offset.
+  // Queued rows sit at the top; active rows are pushed down by the separator height.
+  const svgY = (r) => {
+    const baseY = r.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
+    return r.isQueued ? baseY : baseY + SEPARATOR_HEIGHT
+  }
 
   const showRepoBanner = linksData && !linksData.repo && !error
   const repoUrl = linksData?.repo_url
@@ -302,44 +353,54 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
               The SVG height animates along with the collapsing rows so trail/nodes stay aligned. */}
           <svg
             width={graphWidth} height={totalHeight}
-            className="absolute top-0"
+            className="absolute"
             style={{
+              top: `${QUEUED_HEADER_HEIGHT}px`,
               left: `${LABEL_COL_WIDTH}px`,
               pointerEvents: 'none',
               transition: 'height 260ms ease',
             }}
           >
-            {/* Lane lines — kept as muted vertical columns behind the trail so each category
-                still has a visible home. Drawn first so the trail overlays them. */}
+            {/* Lane lines — drawn separately per section (queued vs active) so the
+                vertical line doesn't bridge across the separator. */}
             {lanes.map((lane) => {
               const x = LANE_PAD_LEFT + lane.index * LANE_WIDTH + LANE_WIDTH / 2
-              const rowsOnLane = rows.filter(r => r.visible && r.lane?.key === lane.key)
-              if (rowsOnLane.length < 2) return null
-              const first = rowsOnLane[0]
-              const last = rowsOnLane[rowsOnLane.length - 1]
-              const y1 = first.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
-              const y2 = last.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
-              return (
+              const segments = []
+
+              // Queued segment
+              const queuedOnLane = rows.filter(r => r.visible && r.isQueued && r.lane?.key === lane.key)
+              if (queuedOnLane.length >= 2) {
+                segments.push({ y1: svgY(queuedOnLane[0]), y2: svgY(queuedOnLane[queuedOnLane.length - 1]), key: `${lane.key}-q` })
+              }
+
+              // Active segment
+              const activeOnLane = rows.filter(r => r.visible && !r.isQueued && r.lane?.key === lane.key)
+              if (activeOnLane.length >= 2) {
+                segments.push({ y1: svgY(activeOnLane[0]), y2: svgY(activeOnLane[activeOnLane.length - 1]), key: `${lane.key}-a` })
+              }
+
+              return segments.map(s => (
                 <line
-                  key={`${lane.key}-line`}
-                  x1={x} x2={x} y1={y1} y2={y2}
+                  key={s.key}
+                  x1={x} x2={x} y1={s.y1} y2={s.y2}
                   stroke={lane.color}
                   strokeWidth="1.5"
                   strokeOpacity="0.28"
+                  strokeDasharray="4 4"
                 />
-              )
+              ))
             })}
-            {/* Progression trail — one connected path visiting every VISIBLE node top-to-bottom.
-                Each segment takes the arriving row's category color. Cross-lane hops draw a
-                symmetric S with two rounded quarter-turns at the row midline. */}
+            {/* Progression trail — connects ACTIVE (non-queued) visible rows only.
+                Queued rows haven't "happened" on the timeline yet so they get their
+                own nodes on the lane but no trail connection to the active section. */}
             {(() => {
-              const visibleRows = rows.filter(r => r.visible && r.lane)
+              const visibleRows = rows.filter(r => r.visible && r.lane && !r.isQueued)
               return visibleRows.slice(1).map((curr, i) => {
               const prev = visibleRows[i]
               const prevX = LANE_PAD_LEFT + prev.lane.index * LANE_WIDTH + LANE_WIDTH / 2
-              const prevY = prev.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
+              const prevY = svgY(prev)
               const currX = LANE_PAD_LEFT + curr.lane.index * LANE_WIDTH + LANE_WIDTH / 2
-              const currY = curr.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
+              const currY = svgY(curr)
               const color = curr.lane.color
               const sameLane = prevX === currX
               let d
@@ -379,7 +440,7 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
             {rows.map((r) => {
               if (!r.visible || !r.lane) return null
               const x = LANE_PAD_LEFT + r.lane.index * LANE_WIDTH + LANE_WIDTH / 2
-              const y = r.visibleIndex * ROW_STRIDE + ROW_HEIGHT / 2
+              const y = svgY(r)
               return (
                 <circle
                   key={r.task.id}
@@ -391,10 +452,58 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
             })}
           </svg>
 
-          {/* Rows — each row is a single horizontal band tinted by its lane color.
-              All non-draft rows always render; hidden rows animate to max-height: 0 and
-              fade out so the fold-away is visible instead of an instant DOM removal. */}
+          {/* Queued header — collapsible. Shows only when there are queued tasks. */}
+          {totalQueuedCount > 0 && (
+            <button
+              onClick={toggleQueuedCollapsed}
+              className="w-full flex items-center gap-2 apple-press"
+              style={{
+                height: `${SEPARATOR_HEIGHT}px`,
+                padding: '0 16px 0 14px',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+              aria-expanded={!queuedCollapsed}
+            >
+              {queuedCollapsed
+                ? <ChevronRight className="w-3 h-3" style={{ color: 'var(--text-tertiary)' }} />
+                : <ChevronDown className="w-3 h-3" style={{ color: 'var(--text-tertiary)' }} />}
+              <span
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  color: 'var(--text-tertiary)',
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Queued
+              </span>
+              <span
+                style={{
+                  padding: '1px 6px',
+                  borderRadius: '999px',
+                  background: 'var(--fill-secondary)',
+                  color: 'var(--text-tertiary)',
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  minWidth: '20px',
+                  textAlign: 'center',
+                }}
+              >
+                {totalQueuedCount}
+              </span>
+            </button>
+          )}
+          {/* Rows — Queued (todo) first, then separator, then Active.
+              All non-draft rows always render; hidden rows animate to max-height: 0. */}
           {rows.map((r, i) => {
+            // Insert separator between queued and active sections.
+            // Since queued is first now, the separator renders before the first ACTIVE row.
+            const isFirstActive = !r.isQueued && (i === 0 || rows[i - 1]?.isQueued)
+            const showSeparator = isFirstActive && SEPARATOR_HEIGHT > 0
+
             const StatusIcon = STATUS_ICON[r.task.status] || Circle
             const justUpdated = recentlyUpdatedIds.includes(r.task.id)
             const prStyle = r.link?.pr_state ? PR_STATE_STYLE[r.link.pr_state] : null
@@ -406,15 +515,35 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
             const laneTint = `color-mix(in srgb, ${tintColor} ${justUpdated ? 22 : 10}%, transparent)`
             const isLastVisible = r.visible && r.visibleIndex === visibleCount - 1
             return (
+              <React.Fragment key={r.task.id}>
+              {showSeparator && (
+                <div
+                  className="flex items-center gap-2"
+                  style={{
+                    height: `${SEPARATOR_HEIGHT}px`,
+                    padding: '0 16px 0 14px',
+                  }}
+                >
+                  <div style={{ flex: 1, height: '0.5px', background: 'var(--separator)' }} />
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      color: 'var(--text-tertiary)',
+                      letterSpacing: '0.05em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Active
+                  </span>
+                  <div style={{ flex: 1, height: '0.5px', background: 'var(--separator)' }} />
+                </div>
+              )}
               <div
-                key={r.task.id}
                 onClick={() => r.visible && onSelectTask(r.task)}
                 className="flex items-stretch relative"
                 style={{
                   cursor: r.visible ? 'pointer' : 'default',
-                  // Explicit height (not max-height) so visible rows are always exactly
-                  // ROW_HEIGHT tall — this keeps the DOM row grid in lockstep with the
-                  // SVG trail which assumes `visibleIndex * ROW_STRIDE` positions.
                   height: r.visible ? `${ROW_HEIGHT}px` : '0px',
                   opacity: r.visible ? 1 : 0,
                   marginBottom: r.visible && !isLastVisible ? `${ROW_GAP}px` : '0px',
@@ -615,6 +744,7 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                   })()}
                 </div>
               </div>
+              </React.Fragment>
             )
           })}
           {rows.length === 0 && (
