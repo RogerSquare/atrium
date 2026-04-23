@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, memo } from 'react'
-import { ChevronDown, ChevronRight, ChevronLeft, Folder, Plus, Trash2, UserCircle2, Clock, SlidersHorizontal, X, BarChart3, Activity, Play, Square, Settings as SettingsIcon, MessageCircle, Eye, LogOut, PanelLeftClose, PanelLeftOpen, AlertCircle, Palette, MoreHorizontal, Archive } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronLeft, Folder, Plus, Trash2, UserCircle2, Clock, SlidersHorizontal, X, BarChart3, Activity, Play, Square, Settings as SettingsIcon, MessageCircle, Eye, LogOut, PanelLeftClose, PanelLeftOpen, AlertCircle, Palette, MoreHorizontal, Archive, HelpCircle } from 'lucide-react'
 import { API_BASE, apiFetch } from '../config'
 
 const FILTER_TYPES = ['all', 'frontend', 'backend', 'fullstack', 'devops']
@@ -34,7 +34,7 @@ function Sidebar({
   // Dashboard
   services, onServiceAction,
   // User & actions
-  user, onLogout, onOpenSettings, onOpenChat, onOpenPreview, onOpenDesignStudio,
+  user, onLogout, onOpenSettings, onOpenChat, onOpenPreview, onOpenDesignStudio, onOpenHelp,
   chatUnread, showPreview,
 }) {
   const [sectionsCollapsed, setSectionsCollapsed] = useState(() => mobile ? { filters: true, dashboard: true } : {})
@@ -106,6 +106,11 @@ function Sidebar({
           <button onClick={onOpenSettings} className="apple-press" style={{ padding: '8px', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }} title="Settings">
             <SettingsIcon className="w-[18px] h-[18px]" />
           </button>
+          {onOpenHelp && (
+            <button onClick={onOpenHelp} className="apple-press" style={{ padding: '8px', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }} title="Help & Usage">
+              <HelpCircle className="w-[18px] h-[18px]" />
+            </button>
+          )}
           <div className="w-7 h-7 rounded-full flex items-center justify-center text-white mt-1 cursor-pointer" style={{ fontSize: '11px', fontWeight: 'var(--font-bold)', background: 'var(--accent-app)' }} title={user?.username} onClick={onLogout}>
             {user?.username?.charAt(0).toUpperCase()}
           </div>
@@ -366,6 +371,11 @@ function Sidebar({
           <button onClick={onOpenSettings} className="w-full flex items-center gap-2.5 text-left apple-press" style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)' }}>
             <SettingsIcon className="w-4 h-4 shrink-0" /> Settings
           </button>
+          {onOpenHelp && (
+            <button onClick={onOpenHelp} className="w-full flex items-center gap-2.5 text-left apple-press" style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)' }}>
+              <HelpCircle className="w-4 h-4 shrink-0" /> Help &amp; Usage
+            </button>
+          )}
         </div>
         <div style={{ height: '0.5px', background: 'var(--separator)', margin: '8px 0' }} />
         <div className="flex items-center gap-2.5" style={{ padding: '6px 10px' }}>

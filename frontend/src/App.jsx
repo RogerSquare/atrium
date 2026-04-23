@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import { LogOut, Search, MessageCircle, X, Eye, Plus, Columns3, List, GitCommitHorizontal, Menu, Copy, Check } from 'lucide-react'
+import { LogOut, Search, MessageCircle, X, Eye, Plus, Columns3, List, GitCommitHorizontal, Menu, Copy, Check, HelpCircle } from 'lucide-react'
 import Board from './components/Board'
 import ListView from './components/ListView'
 import ChangesView from './components/ChangesView'
@@ -17,6 +17,7 @@ import ChatPanel from './components/ChatPanel'
 import ChatNotification from './components/ChatNotification'
 import PreviewPanel from './components/PreviewPanel'
 import DesignStudio from './components/DesignStudio'
+import HelpModal from './components/HelpModal'
 import UndoToast from './components/UndoToast'
 import ErrorToast from './components/ErrorToast'
 import BulkActionBar from './components/BulkActionBar'
@@ -82,6 +83,7 @@ function AppContent() {
   const [showMobileSearch, setShowMobileSearch] = useState(false)
   const [showKitchenSink, setShowKitchenSink] = useState(false)
   const [showDesignStudio, setShowDesignStudio] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
 
   // Kitchen sink shortcut: Ctrl+Shift+K (dev only)
   useEffect(() => {
@@ -196,6 +198,7 @@ function AppContent() {
     onOpenChat: handleToggleChat,
     onOpenPreview: handleTogglePreview,
     onOpenDesignStudio: () => { fetchPreviewServices(); setShowDesignStudio(true) },
+    onOpenHelp: () => setShowHelp(true),
     chatUnread, showPreview,
   }
 
@@ -224,6 +227,7 @@ function AppContent() {
               onOpenSettings={() => { setShowSettings(true); setShowMobileDrawer(false) }}
               onOpenChat={() => { handleToggleChat(); setShowMobileDrawer(false) }}
               onOpenPreview={() => { handleTogglePreview(); setShowMobileDrawer(false) }}
+              onOpenHelp={() => { setShowHelp(true); setShowMobileDrawer(false) }}
             />
           </div>
         </div>
@@ -297,6 +301,16 @@ function AppContent() {
             <ViewSwitcher activeView={activeView} onChangeView={handleChangeView} />
           </div>
 
+          <button
+            onClick={() => setShowHelp(true)}
+            aria-label="Help"
+            title="Help & Usage"
+            className="apple-press hidden sm:flex items-center justify-center shrink-0"
+            style={{ width: '34px', height: '34px', borderRadius: 'var(--radius-md)', color: 'var(--text-muted)', background: 'var(--fill-secondary)' }}
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
+
           <button onClick={() => setShowCreateTaskModal(true)} className="apple-press text-white whitespace-nowrap hidden sm:flex items-center gap-1.5" style={{ padding: '7px 16px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', background: 'var(--accent-app)', boxShadow: 'var(--shadow-sm)' }}>
             <Plus className="w-4 h-4" /> New Task
           </button>
@@ -354,6 +368,7 @@ function AppContent() {
           />
         )}
         {showSettings && <Settings theme={theme} onSetTheme={setTheme} onClose={() => setShowSettings(false)} currentUser={user} onUserUpdate={updateUser} onOpenPreview={() => { fetchPreviewServices(); setShowPreview(true) }} />}
+        {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
         {showPreview && <PreviewPanel services={previewServices} onClose={() => setShowPreview(false)} socket={socketRef.current} activeProject={activeProject} />}
         {showDesignStudio && <DesignStudio services={previewServices} onClose={() => setShowDesignStudio(false)} activeProject={activeProject} user={user} socket={socketRef.current} />}
         {showChat && <ChatPanel user={user} socket={socketRef.current} messages={chatMessages} onlineUsers={chatOnlineUsers} typingUsers={chatTypingUsers} minimized={chatMinimized} onMinimize={setChatMinimized} soundEnabled={chatSoundEnabled} onToggleSound={() => setChatSoundEnabled(prev => !prev)} onClose={() => setShowChat(false)} onUnreadChange={setChatUnread} aiChatEnabled={aiChatEnabled} />}
