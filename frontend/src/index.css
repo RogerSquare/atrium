@@ -125,6 +125,9 @@
   --shadow-md: 0 4px 12px rgba(0,0,0,0.35);
   --shadow-lg: 0 12px 40px rgba(0,0,0,0.45);
   --shadow-xl: 0 20px 60px rgba(0,0,0,0.5);
+  /* Minimalist lane (v2): single shadow for true overlays + hairline border token */
+  --shadow-popover: 0 12px 32px rgba(0,0,0,0.4);
+  --border-hairline: 1px solid var(--separator);
 }
 
 /* ============================================================
@@ -153,6 +156,9 @@
   --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
   --shadow-lg: 0 12px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06);
   --shadow-xl: 0 20px 60px rgba(0,0,0,0.16), 0 8px 20px rgba(0,0,0,0.08);
+  /* Minimalist lane (v2): single shadow for true overlays + hairline border token */
+  --shadow-popover: 0 12px 32px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06);
+  --border-hairline: 1px solid var(--separator);
 }
 
 /* ============================================================
@@ -181,6 +187,9 @@
   --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
   --shadow-lg: 0 12px 40px rgba(0,0,0,0.6);
   --shadow-xl: 0 20px 60px rgba(0,0,0,0.7);
+  /* Minimalist lane (v2): single shadow for true overlays + hairline border token */
+  --shadow-popover: 0 12px 32px rgba(0,0,0,0.6);
+  --border-hairline: 1px solid var(--separator);
 }
 
 /* ============================================================
@@ -209,6 +218,9 @@
   --shadow-md: 0 4px 12px rgba(100,70,30,0.08), 0 2px 4px rgba(100,70,30,0.04);
   --shadow-lg: 0 12px 40px rgba(100,70,30,0.12), 0 4px 12px rgba(100,70,30,0.06);
   --shadow-xl: 0 20px 60px rgba(100,70,30,0.16), 0 8px 20px rgba(100,70,30,0.08);
+  /* Minimalist lane (v2): single shadow for true overlays + hairline border token */
+  --shadow-popover: 0 12px 32px rgba(100,70,30,0.12), 0 4px 12px rgba(100,70,30,0.06);
+  --border-hairline: 1px solid var(--separator);
 }
 
 
