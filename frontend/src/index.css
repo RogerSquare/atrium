@@ -301,8 +301,18 @@ body.modal-open {
   border-radius: var(--radius-sm);
 }
 
-input:focus, textarea:focus, select:focus {
+/* Form controls: suppress mouse-focus outline but preserve keyboard focus-visible ring. */
+input:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible),
+select:focus:not(:focus-visible) {
   outline: none;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent-app) 50%, transparent);
+  outline-offset: 2px;
 }
 
 /* ============================================================

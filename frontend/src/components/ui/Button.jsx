@@ -52,7 +52,7 @@ const Button = forwardRef(({ variant = 'ghost', size = 'md', pill = true, loadin
         color: v.color,
         background: v.background,
         opacity: isDisabled ? 0.5 : 1,
-        cursor: isDisabled ? 'default' : 'pointer',
+        cursor: isDisabled ? 'not-allowed' : 'pointer',
         border: 'none',
         transition: `all var(--duration-fast) var(--ease-default)`,
         ...style,
