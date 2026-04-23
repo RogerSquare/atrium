@@ -347,6 +347,24 @@ Non-trivial work should be split into three sequential phases via the `phase-res
 - Phases are chained via `depends_on` (runtime pointer) and optionally `parent_task` (metadata).
 - If a task has no `phase-*` tag, it is a regular single-phase task and these rules do not apply.
 
+## Test-Driven Development (opt-in via `tdd` tag)
+
+For tasks tagged `tdd`, `phase-implement` follows red-green-refactor (inspired by Matt Pocock's tdd skill — github.com/mattpocock/skills/tree/main/tdd). Opt-in because docs, config, memory, and visual UI tweaks have no meaningful test surface.
+
+**The loop:**
+1. **Test list** from the plan → confirm with the human (via `atrium_create_approval`) if priority isn't obvious.
+2. **Tracer bullet**: write ONE test for ONE behavior, verify it FAILS (red), write minimal code to pass (green), commit.
+3. **Incremental loop**: repeat red → green per behavior, one at a time. Never refactor while red.
+4. **Refactor at green**: extract duplication / deepen modules only once tests pass. Rerun tests after each refactor step.
+
+**Anti-pattern — DO NOT DO**: "horizontal slicing" (all tests up front, then all code). It produces tests of imagined behavior that pass when real behavior breaks.
+
+**Per-cycle checklist**: test names behavior not implementation · uses public interface only · survives internal refactor · production code is minimal · the test was RED before GREEN.
+
+**Escape hatches**: no testable surface (note in comment, proceed) · user waives TDD explicitly · codebase untestable in the relevant area (STOP, `atrium_create_approval`, do not write bad tests against a bad seam).
+
+TDD does NOT override existing phase rules, branch/PR/review rules, or the closing checklist. The full detailed spec lives in the Atrium skill at `~/.claude/skills/atrium/skill.md` under "Test-Driven Development".
+
 ## Format of the Text Files
 Each task is a `.md` file with extended YAML frontmatter.
 
