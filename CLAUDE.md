@@ -192,11 +192,14 @@ Before moving a task to `review`, you MUST complete the following checks:
 - [ ] If you added a new API endpoint, verify it works with a curl test
 - [ ] If you modified existing functionality, verify it still works as before
 
-### 2. Branch & PR (for tasks that ship code)
-- [ ] Work is on a branch whose name contains the task id (e.g. `feat-auth-001`)
+### 2. Branch & PR (ENFORCED on review transition)
+**The backend now returns 400 on `PUT /api/tasks/:id` when transitioning to `review` without linkage. See `backend/lib/branchValidator.js`.**
+
+- [ ] Work is on a branch whose name contains the task id as a **case-insensitive substring** (e.g. `feat/feat-auth-001` for task `feat-auth-001`) — this satisfies the validator
 - [ ] Branch is pushed to `origin`
 - [ ] PR is open, title follows conventional-commit style, body references the task id
-- [ ] Task `### Comments` block includes a bullet: `- **PR:** <url>` so the link is discoverable even when the Changes-view cache is stale
+- [ ] `github_branch` and/or `github_pr_url` are set on the task — **required**. Either field alone satisfies the validator; `github_pr_url` is the strongest signal.
+- [ ] For **non-code tasks** (docs-only, pure-research, plan-only, config tweaks with no PR), add the `no-code` tag to opt out of the validator before moving to review.
 - [ ] After pushing the final commit, hit `GET /api/github/links?project=<id>&refresh=1` (or the Refresh button in the Changes view) so the badge reflects current state
 
 ### 3. Security (for backend/API changes)

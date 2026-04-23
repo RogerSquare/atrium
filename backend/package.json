@@ -9,7 +9,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "audit:tasks": "node scripts/audit-tasks.js"
+    "audit:tasks": "node scripts/audit-tasks.js",
+    "audit:linkage": "node scripts/audit-review-linkage.js"
   },
   "keywords": [],
   "author": "",

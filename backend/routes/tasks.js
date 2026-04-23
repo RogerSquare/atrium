@@ -8,6 +8,7 @@ const { getAllTasks, findTaskFilePath, indexSet, indexDelete, atomicWriteFileSyn
 const { withLock } = require('../lib/lock');
 const { getIO } = require('../lib/io');
 const taskWaiters = require('../lib/taskWaiters');
+const { validateReviewLinkage } = require('../lib/branchValidator');
 const { sanitizeFilename, safePath } = require('../lib/sanitize');
 const { logger } = require('../lib/logger');
 
@@ -785,6 +786,13 @@ router.put('/:id', async (req, res) => {
       done_at: currentData.done_at || null,
       activity_log: currentData.activity_log || []
     };
+
+    // Enforce Changes-view linkage on review transitions (opt-review-branch-validation-001).
+    // Pure function, returns null or an error object. Early-return on failure.
+    const linkageError = validateReviewLinkage(newData, currentData.status);
+    if (linkageError) {
+      return res.status(400).json(linkageError);
+    }
 
     const now = new Date().toISOString();
     const actor = updated_by || newData.assignee || 'Agent';
