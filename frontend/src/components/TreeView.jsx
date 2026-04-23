@@ -97,7 +97,7 @@ function TreeNode({ task, children: childTasks, childrenMap, depth, onSelectTask
 
         {task.assignee && (
           <div className="flex items-center gap-1 shrink-0" style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-muted)' }}>
-            <div className="w-4 h-4 rounded-full flex items-center justify-center text-white" style={{ fontSize: '8px', fontWeight: 'var(--font-bold)', background: 'var(--gray-2)' }}>{task.assignee.charAt(0).toUpperCase()}</div>
+            <div className="w-4 h-4 rounded-full flex items-center justify-center text-white" style={{ fontSize: '8px', fontWeight: 'var(--font-semibold)', background: 'var(--gray-2)' }}>{task.assignee.charAt(0).toUpperCase()}</div>
             {task.assignee}
           </div>
         )}
@@ -105,7 +105,7 @@ function TreeNode({ task, children: childTasks, childrenMap, depth, onSelectTask
         {viewers.length > 0 && (
           <div className="flex -space-x-1 shrink-0">
             {viewers.slice(0, 2).map((v, i) => (
-              <div key={v} className="w-4 h-4 rounded-full flex items-center justify-center text-white" style={{ fontSize: '7px', fontWeight: 'var(--font-bold)', backgroundColor: VIEWER_COLORS[i % 3], border: '2px solid var(--bg-card)' }} title={v}>{v[0]?.toUpperCase()}</div>
+              <div key={v} className="w-4 h-4 rounded-full flex items-center justify-center text-white" style={{ fontSize: '7px', fontWeight: 'var(--font-semibold)', backgroundColor: VIEWER_COLORS[i % 3], border: '2px solid var(--bg-card)' }} title={v}>{v[0]?.toUpperCase()}</div>
             ))}
           </div>
         )}

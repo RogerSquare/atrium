@@ -51,7 +51,7 @@ export default function Login({ onLogin }) {
         {/* Logo + Title */}
         <div className="text-center" style={{ marginBottom: 'var(--space-8)' }}>
           <img src="/favicon.svg" alt="Atrium" className="mx-auto" style={{ width: '56px', height: '56px', marginBottom: 'var(--space-4)', filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.2))' }} />
-          <h1 style={{ fontSize: 'var(--text-title1)', fontWeight: 'var(--font-bold)', color: 'var(--text-app)', letterSpacing: 'var(--tracking-tight)' }}>Atrium</h1>
+          <h1 style={{ fontSize: 'var(--text-title1)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)', letterSpacing: 'var(--tracking-tight)' }}>Atrium</h1>
           <p style={{ fontSize: 'var(--text-subhead)', color: 'var(--text-muted)', marginTop: 'var(--space-1)' }}>
             {isRegistering ? 'Create your account' : 'Sign in to continue'}
           </p>

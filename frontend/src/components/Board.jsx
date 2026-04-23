@@ -245,7 +245,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                     minWidth: '18px',
                     height: '18px',
                     fontSize: 'var(--text-caption2)',
-                    fontWeight: 'var(--font-bold)',
+                    fontWeight: 'var(--font-semibold)',
                     borderRadius: 'var(--radius-full)',
                     display: 'flex',
                     alignItems: 'center',
@@ -387,7 +387,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                           {/* Column label + count inside each lane */}
                           <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-2)', padding: '0 var(--space-2)' }}>
                             <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)' }}>{col.title}</span>
-                            <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '0 var(--space-2)', borderRadius: 'var(--radius-full)', minWidth: '20px', textAlign: 'center' }}>{colTasks.length}</span>
+                            <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '0 var(--space-2)', borderRadius: 'var(--radius-full)', minWidth: '20px', textAlign: 'center' }}>{colTasks.length}</span>
                           </div>
                           {renderDroppable(col, colTasks, `${col.id}__${laneName}`)}
                         </div>
@@ -437,7 +437,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                     )}
                     <span style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: col.isSafety ? 'var(--apple-red)' : 'var(--text-muted)', letterSpacing: 'var(--tracking-wide)' }}>{col.title}</span>
                   </div>
-                  <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-full)', minWidth: '24px', textAlign: 'center' }}>
+                  <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-full)', minWidth: '24px', textAlign: 'center' }}>
                     {colTasks.length}
                   </span>
                 </div>

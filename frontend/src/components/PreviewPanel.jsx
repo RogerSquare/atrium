@@ -261,13 +261,13 @@ export default function PreviewPanel({ services, onClose, socket, activeProject 
         {/* Header with project tabs */}
         <header className="flex items-center gap-3 px-4 py-2" style={{ borderBottom: '0.5px solid var(--separator)' }}>
           <Monitor className="w-4 h-4 shrink-0" style={{ color: 'var(--accent-app)' }} />
-          <span style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-bold)', color: 'var(--text-app)' }}>Preview</span>
+          <span style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>Preview</span>
 
           {/* Project-grouped service tabs */}
           <div className="flex items-center gap-1 flex-1 overflow-x-auto">
             {Object.entries(servicesByGroup).map(([group, groupServices]) => (
               <div key={group} className="flex items-center gap-0.5">
-                <span style={{ fontSize: '9px', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginRight: '2px', marginLeft: '8px' }}>{group}</span>
+                <span style={{ fontSize: '9px', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginRight: '2px', marginLeft: '8px' }}>{group}</span>
                 {groupServices.map(s => {
                   const isActive = s.id === leftService?.id || s.id === rightService?.id
                   const isRunning = s.status === 'running'

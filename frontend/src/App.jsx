@@ -396,7 +396,7 @@ function AppContent() {
             <button key={label} onClick={onClick} className="flex flex-col items-center gap-0.5 px-3 py-1 apple-press relative" style={{ minWidth: '50px' }}>
               <Icon className="w-[22px] h-[22px]" style={{ color: active ? 'var(--accent-app)' : 'var(--gray-1)' }} />
               <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: active ? 'var(--accent-app)' : 'var(--gray-1)' }}>{label}</span>
-              {badge > 0 && <span className="absolute top-0 right-1 min-w-[17px] h-[17px] flex items-center justify-center px-1 text-white" style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', borderRadius: 'var(--radius-full)', background: 'var(--apple-red)' }}>{badge}</span>}
+              {badge > 0 && <span className="absolute top-0 right-1 min-w-[17px] h-[17px] flex items-center justify-center px-1 text-white" style={{ fontSize: '10px', fontWeight: 'var(--font-semibold)', borderRadius: 'var(--radius-full)', background: 'var(--apple-red)' }}>{badge}</span>}
             </button>
           ))}
         </nav>

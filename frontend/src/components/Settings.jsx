@@ -398,13 +398,13 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
           </button>
           <div className="flex-1 flex items-center justify-center gap-1.5">
             {ActiveIcon && <ActiveIcon className="w-3.5 h-3.5 text-app-accent" />}
-            <span className="text-sm font-bold text-app-text">{activeTabObj?.label || 'Settings'}</span>
+            <span className="text-sm font-semibold text-app-text">{activeTabObj?.label || 'Settings'}</span>
           </div>
           <div className="flex items-center gap-1.5">
             {message && <span className={`text-[10px] font-medium ${message.includes('saved') || message.includes('Saved') || message.includes('changed') || message.includes('cleared') || message.includes('Deleted') ? 'text-green-400' : 'text-red-400'}`}>{message}</span>}
             {hasUnsavedChanges ? (
               <button onClick={handleSave} disabled={saving || loading}
-                className="bg-app-accent text-white px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1.5 disabled:opacity-30 shadow-md shadow-app-accent/20">
+                className="bg-app-accent text-white px-3 py-1.5 rounded-lg font-semibold text-xs flex items-center gap-1.5 disabled:opacity-30 shadow-md shadow-app-accent/20">
                 <Save className="w-3.5 h-3.5" /> {saving ? '...' : 'Save'}
               </button>
             ) : (
@@ -429,7 +429,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
               onClick={(e) => e.stopPropagation()}
             >
               <div className="px-5 py-4 border-b border-app-border flex items-center justify-between">
-                <h3 className="text-sm font-bold text-app-text">Settings</h3>
+                <h3 className="text-sm font-semibold text-app-text">Settings</h3>
                 <button onClick={() => setShowMobileMenu(false)} className="p-1.5 text-app-text-muted hover:text-app-text rounded-lg transition-colors">
                   <X className="w-4 h-4" />
                 </button>
@@ -517,17 +517,17 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                 {activeTab === 'project' && isAdmin && (
                   <div className="space-y-6">
                     <div>
-                      <h3 className="text-sm font-bold text-app-text mb-1">Working Directory</h3>
+                      <h3 className="text-sm font-semibold text-app-text mb-1">Working Directory</h3>
                       <p className="text-[11px] text-app-text-muted mb-3">Base path where agents and services operate.</p>
                       <input type="text" value={workingDirectory} onChange={(e) => setWorkingDirectory(e.target.value)}
                         className="w-full bg-app-bg border border-app-border rounded-lg px-4 py-2.5 text-sm text-app-text focus:outline-none focus-visible:ring-2 focus-visible:ring-app-accent transition-all" placeholder="C:\Path\To\Projects" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-app-text mb-1">Default Task Settings</h3>
+                      <h3 className="text-sm font-semibold text-app-text mb-1">Default Task Settings</h3>
                       <p className="text-[11px] text-app-text-muted mb-3">Defaults applied when creating new tasks.</p>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-[10px] uppercase font-bold text-app-text-muted mb-1.5">Default Priority</label>
+                          <label className="block text-[10px] uppercase font-semibold text-app-text-muted mb-1.5">Default Priority</label>
                           <select value={defaultPriority} onChange={(e) => setDefaultPriority(e.target.value)}
                             className="w-full bg-app-bg border border-app-border rounded-lg px-3 py-2 text-sm text-app-text focus:outline-none focus-visible:ring-2 focus-visible:ring-app-accent cursor-pointer">
                             <option value="low">Low</option>
@@ -536,7 +536,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                           </select>
                         </div>
                         <div>
-                          <label className="block text-[10px] uppercase font-bold text-app-text-muted mb-1.5">Default Type</label>
+                          <label className="block text-[10px] uppercase font-semibold text-app-text-muted mb-1.5">Default Type</label>
                           <select value={defaultType} onChange={(e) => setDefaultType(e.target.value)}
                             className="w-full bg-app-bg border border-app-border rounded-lg px-3 py-2 text-sm text-app-text focus:outline-none focus-visible:ring-2 focus-visible:ring-app-accent cursor-pointer">
                             <option value="frontend">Frontend</option>
@@ -555,7 +555,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <div>
-                        <h3 className="text-sm font-bold text-app-text">Service Registry</h3>
+                        <h3 className="text-sm font-semibold text-app-text">Service Registry</h3>
                         <p className="text-[11px] text-app-text-muted">
                           {services.length > 0 ? `${services.filter(s => s.status === 'running').length} of ${services.length} running` : 'Manage background services.'}
                         </p>
@@ -563,8 +563,8 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                       <div className="flex gap-1">
                         {services.length > 1 && (
                           <>
-                            <button onClick={() => { services.forEach(s => { if (s.status !== 'running') handleServiceAction(s.id, 'start') }) }} className="px-2 py-1 text-[9px] font-bold uppercase text-green-400 hover:bg-green-500/10 rounded-lg transition-colors" title="Start All">Start All</button>
-                            <button onClick={() => { if (window.confirm('Stop all services?')) services.forEach(s => { if (s.status === 'running') handleServiceAction(s.id, 'stop') }) }} className="px-2 py-1 text-[9px] font-bold uppercase text-red-400 hover:bg-red-400/10 rounded-lg transition-colors" title="Stop All">Stop All</button>
+                            <button onClick={() => { services.forEach(s => { if (s.status !== 'running') handleServiceAction(s.id, 'start') }) }} className="px-2 py-1 text-[9px] font-semibold uppercase text-green-400 hover:bg-green-500/10 rounded-lg transition-colors" title="Start All">Start All</button>
+                            <button onClick={() => { if (window.confirm('Stop all services?')) services.forEach(s => { if (s.status === 'running') handleServiceAction(s.id, 'stop') }) }} className="px-2 py-1 text-[9px] font-semibold uppercase text-red-400 hover:bg-red-400/10 rounded-lg transition-colors" title="Stop All">Stop All</button>
                             <div className="w-px h-5 bg-app-border mx-0.5" />
                           </>
                         )}
@@ -584,7 +584,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                         </div>
                         <div className="flex gap-2">
                           <input required placeholder="Working Dir" value={newService.cwd} onChange={(e) => setNewService({...newService, cwd: e.target.value})} className="flex-1 bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
-                          <button type="submit" className="bg-app-accent hover:bg-app-accent-hover text-white px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all shadow-md">Register</button>
+                          <button type="submit" className="bg-app-accent hover:bg-app-accent-hover text-white px-4 py-1.5 rounded-lg text-[10px] font-semibold uppercase transition-all shadow-md">Register</button>
                         </div>
                       </form>
                     )}
@@ -593,7 +593,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                         <div key={groupName}>
                           <div className="flex justify-between items-center mb-2 px-1">
                             <span className="text-[10px] uppercase font-black text-app-text-muted tracking-[0.15em]">
-                              {groupName} <span className="text-app-text-muted/50 normal-case tracking-normal font-bold">({groupServices.filter(s => s.status === 'running').length}/{groupServices.length})</span>
+                              {groupName} <span className="text-app-text-muted/50 normal-case tracking-normal font-semibold">({groupServices.filter(s => s.status === 'running').length}/{groupServices.length})</span>
                             </span>
                             <div className="flex gap-1">
                               <button onClick={() => handleGroupAction(groupName, 'start')} className="p-1 text-app-text-muted hover:text-green-500 transition-colors" title="Start group"><Play className="w-3 h-3 fill-current" /></button>
@@ -616,7 +616,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                                     </div>
                                     <input value={editServiceData.cwd} onChange={(e) => setEditServiceData({...editServiceData, cwd: e.target.value})} placeholder="Working Dir" className="w-full bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
                                     <div>
-                                      <label className="block text-[9px] uppercase font-bold text-app-text-muted mb-1">Depends On</label>
+                                      <label className="block text-[9px] uppercase font-semibold text-app-text-muted mb-1">Depends On</label>
                                       <div className="flex flex-wrap gap-1.5">
                                         {services.filter(other => other.id !== s.id).map(other => {
                                           const selected = (editServiceData.depends_on || []).includes(other.id)
@@ -649,8 +649,8 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                                       </label>
                                     </div>
                                     <div className="flex gap-2 justify-end">
-                                      <button onClick={() => setEditingService(null)} className="px-3 py-1 text-[10px] font-bold text-app-text-muted hover:text-app-text rounded-lg hover:bg-app-border transition-colors">Cancel</button>
-                                      <button onClick={() => handleSaveService(s.id)} className="px-3 py-1 text-[10px] font-bold text-white bg-app-accent hover:bg-app-accent-hover rounded-lg transition-colors">Save</button>
+                                      <button onClick={() => setEditingService(null)} className="px-3 py-1 text-[10px] font-semibold text-app-text-muted hover:text-app-text rounded-lg hover:bg-app-border transition-colors">Cancel</button>
+                                      <button onClick={() => handleSaveService(s.id)} className="px-3 py-1 text-[10px] font-semibold text-white bg-app-accent hover:bg-app-accent-hover rounded-lg transition-colors">Save</button>
                                     </div>
                                   </div>
                                 ) : (
@@ -658,9 +658,9 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                                   <div>
                                     <div className="flex items-center justify-between p-2.5">
                                       <div className="flex items-center gap-3">
-                                        <div className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 ${s.status === 'running' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/10 text-red-400'}`}>{s.status}</div>
+                                        <div className={`px-2 py-0.5 rounded text-[9px] font-semibold uppercase shrink-0 ${s.status === 'running' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/10 text-red-400'}`}>{s.status}</div>
                                         <div>
-                                          <span className="text-xs font-bold text-app-text">{s.name}</span>
+                                          <span className="text-xs font-semibold text-app-text">{s.name}</span>
                                           <span className="text-[10px] text-app-text-muted ml-2">:{s.port}</span>
                                           {s.pid && <span className="text-[9px] text-app-text-muted/50 ml-2">PID {s.pid}</span>}
                                           {s.depends_on && s.depends_on.length > 0 && (
@@ -708,8 +708,8 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                                     {expandedLogs === s.id && (
                                       <div className="border-t border-app-border">
                                         <div className="flex items-center justify-between px-3 py-1.5 bg-app-card/30">
-                                          <span className="text-[9px] uppercase font-bold text-app-text-muted tracking-wider">Output Log</span>
-                                          <button onClick={() => handleClearServiceLogs(s.id)} className="text-[9px] font-bold text-app-text-muted hover:text-red-400 transition-colors">Clear</button>
+                                          <span className="text-[9px] uppercase font-semibold text-app-text-muted tracking-wider">Output Log</span>
+                                          <button onClick={() => handleClearServiceLogs(s.id)} className="text-[9px] font-semibold text-app-text-muted hover:text-red-400 transition-colors">Clear</button>
                                         </div>
                                         <div className="h-[150px] overflow-y-auto custom-scrollbar bg-[#1a1a2e] p-2">
                                           {serviceLogs.length === 0 ? (
@@ -736,19 +736,19 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                 {activeTab === 'profile' && (
                   <div className="space-y-6">
                     <div>
-                      <h3 className="text-sm font-bold text-app-text mb-3">Account</h3>
+                      <h3 className="text-sm font-semibold text-app-text mb-3">Account</h3>
                       <div className="bg-app-bg border border-app-border rounded-xl p-4 flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-app-accent/15 flex items-center justify-center text-lg font-bold text-app-accent">
+                        <div className="w-12 h-12 rounded-full bg-app-accent/15 flex items-center justify-center text-lg font-semibold text-app-accent">
                           {currentUser?.username?.charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <p className="text-sm font-bold text-app-text">{currentUser?.username}</p>
-                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${currentUser?.role === 'admin' ? 'bg-amber-500/15 text-amber-400' : 'bg-app-border text-app-text-muted'}`}>{currentUser?.role || 'member'}</span>
+                          <p className="text-sm font-semibold text-app-text">{currentUser?.username}</p>
+                          <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded ${currentUser?.role === 'admin' ? 'bg-amber-500/15 text-amber-400' : 'bg-app-border text-app-text-muted'}`}>{currentUser?.role || 'member'}</span>
                         </div>
                       </div>
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-app-text mb-1">Change Password</h3>
+                      <h3 className="text-sm font-semibold text-app-text mb-1">Change Password</h3>
                       <p className="text-[11px] text-app-text-muted mb-3">Enter your current password and choose a new one.</p>
                       <form autoComplete="off" onSubmit={(e) => { e.preventDefault(); handleChangePassword() }} className="space-y-3 max-w-sm">
                         <input type="password" autoComplete="current-password" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)}
@@ -758,7 +758,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                         <input type="password" autoComplete="new-password" placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
                           className="w-full bg-app-bg border border-app-border rounded-lg px-4 py-2 text-sm text-app-text focus:outline-none focus-visible:ring-2 focus-visible:ring-app-accent" />
                         <div className="flex items-center gap-3">
-                          <button type="submit" className="bg-app-accent hover:bg-app-accent-hover text-white px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-md flex items-center gap-1.5">
+                          <button type="submit" className="bg-app-accent hover:bg-app-accent-hover text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all shadow-md flex items-center gap-1.5">
                             <Key className="w-3.5 h-3.5" /> Change Password
                           </button>
                           {passwordMessage && <span className={`text-xs font-medium ${passwordMessage.includes('changed') ? 'text-green-400' : 'text-red-400'}`}>{passwordMessage}</span>}
@@ -772,7 +772,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                 {activeTab === 'admin' && isAdmin && (
                   <div className="space-y-6">
                     <div>
-                      <h3 className="text-sm font-bold text-app-text mb-1">AI Features</h3>
+                      <h3 className="text-sm font-semibold text-app-text mb-1">AI Features</h3>
                       <p className="text-[11px] text-app-text-muted mb-3">Control AI access system-wide.</p>
                       <div className="space-y-2">
                         <div className="flex items-center justify-between bg-app-bg border border-app-border p-4 rounded-xl">
@@ -796,17 +796,17 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                       </div>
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-app-text mb-1">User Permissions</h3>
+                      <h3 className="text-sm font-semibold text-app-text mb-1">User Permissions</h3>
                       <p className="text-[11px] text-app-text-muted mb-3">Manage roles and agent access.</p>
                       <div className="bg-app-bg border border-app-border rounded-xl overflow-hidden">
                         <div className="divide-y divide-app-border/50">
                           {users.map(u => (
                             <div key={u.username} className="flex items-center justify-between px-4 py-3 group">
                               <div className="flex items-center gap-3">
-                                <div className="w-7 h-7 rounded-full bg-app-accent/15 flex items-center justify-center text-[11px] font-bold text-app-accent">{u.username.charAt(0).toUpperCase()}</div>
+                                <div className="w-7 h-7 rounded-full bg-app-accent/15 flex items-center justify-center text-[11px] font-semibold text-app-accent">{u.username.charAt(0).toUpperCase()}</div>
                                 <div>
                                   <span className="text-sm font-medium text-app-text">{u.username}</span>
-                                  <span className={`ml-2 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${u.role === 'admin' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20' : 'bg-app-border text-app-text-muted'}`}>{u.role}</span>
+                                  <span className={`ml-2 text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded ${u.role === 'admin' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20' : 'bg-app-border text-app-text-muted'}`}>{u.role}</span>
                                   {u.last_login && <span className="ml-2 text-[9px] text-app-text-muted">Last: {new Date(u.last_login).toLocaleDateString()}</span>}
                                 </div>
                               </div>
@@ -825,7 +825,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                                 </div>
                                 {u.username !== currentUser?.username && (
                                   <>
-                                    <button onClick={() => handleToggleUserRole(u.username, u.role)} className="text-[10px] font-bold text-app-text-muted hover:text-app-accent px-2 py-1 rounded hover:bg-app-accent/10 transition-colors">
+                                    <button onClick={() => handleToggleUserRole(u.username, u.role)} className="text-[10px] font-semibold text-app-text-muted hover:text-app-accent px-2 py-1 rounded hover:bg-app-accent/10 transition-colors">
                                       {u.role === 'admin' ? 'Demote' : 'Make Admin'}
                                     </button>
                                     <button onClick={() => handleDeleteUser(u.username)} className="p-1 text-app-text-muted hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all" title="Delete user">
@@ -842,7 +842,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
 
                     {/* Agent Tokens — for Claude Code MCP integration */}
                     <div>
-                      <h3 className="text-sm font-bold text-app-text mb-1">Agent Tokens</h3>
+                      <h3 className="text-sm font-semibold text-app-text mb-1">Agent Tokens</h3>
                       <p className="text-[11px] text-app-text-muted mb-3">Long-lived tokens for Claude Code's MCP server. Tokens are shown once; if lost, revoke and generate a new one.</p>
 
                       <div className="flex gap-2 mb-3">
@@ -854,7 +854,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                           onKeyDown={e => { if (e.key === 'Enter') handleGenerateAgentToken() }}
                           className="flex-1 bg-app-bg border border-app-border px-3 py-2 rounded-lg text-sm text-app-text outline-none focus:border-app-accent"
                         />
-                        <button onClick={handleGenerateAgentToken} className="flex items-center gap-1.5 bg-app-accent hover:opacity-90 text-white px-4 py-2 rounded-lg text-xs font-bold transition-opacity">
+                        <button onClick={handleGenerateAgentToken} className="flex items-center gap-1.5 bg-app-accent hover:opacity-90 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-opacity">
                           <Key className="w-3.5 h-3.5" />
                           Generate
                         </button>
@@ -869,13 +869,13 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                                 <div className="flex flex-col">
                                   <div className="flex items-center gap-2">
                                     <span className="text-sm font-medium text-app-text">{t.name}</span>
-                                    {t.revoked && <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/20">Revoked</span>}
+                                    {t.revoked && <span className="text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/20">Revoked</span>}
                                   </div>
                                   <span className="text-[10px] text-app-text-muted font-mono">{t.jti}</span>
                                   <span className="text-[10px] text-app-text-muted">Issued by {t.issued_by} · {t.issued_at ? new Date(t.issued_at).toLocaleString() : '?'}</span>
                                 </div>
                                 {!t.revoked && (
-                                  <button onClick={() => handleRevokeAgentToken(t.jti)} className="text-[10px] font-bold text-app-text-muted hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 transition-colors">
+                                  <button onClick={() => handleRevokeAgentToken(t.jti)} className="text-[10px] font-semibold text-app-text-muted hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 transition-colors">
                                     Revoke
                                   </button>
                                 )}
@@ -892,27 +892,27 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                 {activeTab === 'data' && isAdmin && (
                   <div className="space-y-6">
                     <div>
-                      <h3 className="text-sm font-bold text-app-text mb-1">Export</h3>
+                      <h3 className="text-sm font-semibold text-app-text mb-1">Export</h3>
                       <p className="text-[11px] text-app-text-muted mb-3">Download all task data as JSON.</p>
-                      <button onClick={handleExport} className="flex items-center gap-2 bg-app-bg border border-app-border hover:border-app-text-muted px-4 py-2.5 rounded-lg text-xs font-bold text-app-text transition-colors">
+                      <button onClick={handleExport} className="flex items-center gap-2 bg-app-bg border border-app-border hover:border-app-text-muted px-4 py-2.5 rounded-lg text-xs font-semibold text-app-text transition-colors">
                         <Download className="w-4 h-4" /> Export Tasks (JSON)
                       </button>
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-app-text mb-1">Cleanup</h3>
+                      <h3 className="text-sm font-semibold text-app-text mb-1">Cleanup</h3>
                       <p className="text-[11px] text-app-text-muted mb-3">Free up storage by removing old data.</p>
                       <div className="space-y-2">
-                        <button onClick={handleClearChat} className="flex items-center gap-2 bg-app-bg border border-app-border hover:border-red-400/30 px-4 py-2.5 rounded-lg text-xs font-bold text-app-text-muted hover:text-red-400 transition-colors">
+                        <button onClick={handleClearChat} className="flex items-center gap-2 bg-app-bg border border-app-border hover:border-red-400/30 px-4 py-2.5 rounded-lg text-xs font-semibold text-app-text-muted hover:text-red-400 transition-colors">
                           <Trash2 className="w-3.5 h-3.5" /> Clear Chat History
                         </button>
-                        <button onClick={handlePurgeHistory} className="flex items-center gap-2 bg-app-bg border border-app-border hover:border-red-400/30 px-4 py-2.5 rounded-lg text-xs font-bold text-app-text-muted hover:text-red-400 transition-colors">
+                        <button onClick={handlePurgeHistory} className="flex items-center gap-2 bg-app-bg border border-app-border hover:border-red-400/30 px-4 py-2.5 rounded-lg text-xs font-semibold text-app-text-muted hover:text-red-400 transition-colors">
                           <Trash2 className="w-3.5 h-3.5" /> Purge History Backups (30+ days)
                         </button>
                       </div>
                     </div>
                     {statusInfo && (
                       <div>
-                        <h3 className="text-sm font-bold text-app-text mb-3">Storage Usage</h3>
+                        <h3 className="text-sm font-semibold text-app-text mb-3">Storage Usage</h3>
                         <div className="grid grid-cols-2 gap-3">
                           {[
                             { label: 'Tasks', value: formatBytes(statusInfo.storage.tasks) },
@@ -921,8 +921,8 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                             { label: 'Users', value: formatBytes(statusInfo.storage.users) },
                           ].map(item => (
                             <div key={item.label} className="bg-app-bg border border-app-border rounded-lg px-3 py-2">
-                              <p className="text-[10px] uppercase font-bold text-app-text-muted">{item.label}</p>
-                              <p className="text-sm font-bold text-app-text">{item.value}</p>
+                              <p className="text-[10px] uppercase font-semibold text-app-text-muted">{item.label}</p>
+                              <p className="text-sm font-semibold text-app-text">{item.value}</p>
                             </div>
                           ))}
                         </div>
@@ -935,7 +935,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                 {activeTab === 'about' && (
                   <div className="space-y-6">
                     <div>
-                      <h3 className="text-sm font-bold text-app-text mb-3">Atrium</h3>
+                      <h3 className="text-sm font-semibold text-app-text mb-3">Atrium</h3>
                       <p className="text-[11px] text-app-text-muted leading-relaxed">AI and Human Collaborative Kanban — a task board designed for teams working alongside AI agents.</p>
                     </div>
                     {statusInfo && (
@@ -951,8 +951,8 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                             { label: 'History Backups', value: statusInfo.counts.history_backups },
                           ].map(item => (
                             <div key={item.label} className="bg-app-bg border border-app-border rounded-lg px-3 py-2">
-                              <p className="text-[10px] uppercase font-bold text-app-text-muted">{item.label}</p>
-                              <p className="text-sm font-bold text-app-text">{item.value}</p>
+                              <p className="text-[10px] uppercase font-semibold text-app-text-muted">{item.label}</p>
+                              <p className="text-sm font-semibold text-app-text">{item.value}</p>
                             </div>
                           ))}
                         </div>
@@ -971,26 +971,26 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
       {generatedToken && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={() => setGeneratedToken(null)}>
           <div className="bg-app-card border border-app-accent/30 rounded-xl p-6 max-w-xl w-full" onClick={e => e.stopPropagation()}>
-            <h3 className="text-base font-bold text-app-text mb-1">Agent token — shown once</h3>
+            <h3 className="text-base font-semibold text-app-text mb-1">Agent token — shown once</h3>
             <p className="text-[11px] text-app-text-muted mb-4">Copy this now. Atrium does not store the token itself, only its metadata. If lost, revoke and generate a new one.</p>
             <div className="bg-app-bg border border-app-border rounded-lg p-3 mb-3">
-              <div className="text-[10px] uppercase font-bold text-app-text-muted mb-1">Token</div>
+              <div className="text-[10px] uppercase font-semibold text-app-text-muted mb-1">Token</div>
               <div className="font-mono text-[11px] text-app-text break-all select-all">{generatedToken.token}</div>
             </div>
             <div className="bg-app-bg border border-app-border rounded-lg p-3 mb-4">
-              <div className="text-[10px] uppercase font-bold text-app-text-muted mb-1">Install command (run once on your PC)</div>
+              <div className="text-[10px] uppercase font-semibold text-app-text-muted mb-1">Install command (run once on your PC)</div>
               <div className="font-mono text-[11px] text-app-text break-all select-all">{generatedToken.installCmd}</div>
             </div>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => copyTokenToClipboard(generatedToken.token)} className="flex items-center gap-1.5 bg-app-bg border border-app-border hover:border-app-text-muted px-3 py-1.5 rounded-lg text-xs font-bold text-app-text transition-colors">
+              <button onClick={() => copyTokenToClipboard(generatedToken.token)} className="flex items-center gap-1.5 bg-app-bg border border-app-border hover:border-app-text-muted px-3 py-1.5 rounded-lg text-xs font-semibold text-app-text transition-colors">
                 {tokenCopied ? <Check className="w-3 h-3" /> : <Key className="w-3 h-3" />}
                 {tokenCopied ? 'Copied' : 'Copy token'}
               </button>
-              <button onClick={() => copyTokenToClipboard(generatedToken.installCmd)} className="flex items-center gap-1.5 bg-app-bg border border-app-border hover:border-app-text-muted px-3 py-1.5 rounded-lg text-xs font-bold text-app-text transition-colors">
+              <button onClick={() => copyTokenToClipboard(generatedToken.installCmd)} className="flex items-center gap-1.5 bg-app-bg border border-app-border hover:border-app-text-muted px-3 py-1.5 rounded-lg text-xs font-semibold text-app-text transition-colors">
                 <Terminal className="w-3 h-3" />
                 Copy command
               </button>
-              <button onClick={() => setGeneratedToken(null)} className="bg-app-accent hover:opacity-90 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-opacity">
+              <button onClick={() => setGeneratedToken(null)} className="bg-app-accent hover:opacity-90 text-white px-4 py-1.5 rounded-lg text-xs font-semibold transition-opacity">
                 Done
               </button>
             </div>

@@ -35,7 +35,7 @@ export default class ErrorBoundary extends Component {
               </div>
             </div>
 
-            <h1 className="text-xl font-bold mb-2">Something went wrong</h1>
+            <h1 className="text-xl font-semibold mb-2">Something went wrong</h1>
             <p className="text-app-text-muted text-sm mb-6">
               An unexpected error occurred while rendering this page. Your data is safe.
             </p>

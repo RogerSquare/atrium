@@ -130,7 +130,7 @@ export default function ChatMessage({ message, currentUser, onReact }) {
                 }}
               >
                 <span>{emoji}</span>
-                <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)' }}>{users.length}</span>
+                <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)' }}>{users.length}</span>
               </button>
             )
           })}
