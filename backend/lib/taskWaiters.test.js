@@ -80,6 +80,42 @@ test('register + abort signal fires → rejects with aborted; waiter removed', a
   assert.strictEqual(notifyResult, null, 'aborted waiter must be removed from map');
 });
 
+// Cycle 5: notify with no waiters registered → returns null, does not throw.
+test('notify with no waiters returns null, no throw', () => {
+  const { notify } = requireFresh();
+  const result = notify({ id: 't-6', status: 'todo' });
+  assert.strictEqual(result, null);
+});
+
+// Cycle 6: filter.assignee matching is flexible — unassigned task matches any assignee filter.
+test('filter.assignee matches exact OR unassigned task', async () => {
+  const { register, notify } = requireFresh();
+
+  // Exact match
+  const waiterExact = register({ status: 'todo', assignee: 'agent:bob' });
+  setImmediate(() => notify({ id: 't-bob', status: 'todo', assignee: 'agent:bob' }));
+  const exactTask = await waiterExact;
+  assert.strictEqual(exactTask.id, 't-bob');
+
+  // Unassigned task matches any assignee filter
+  const waiterLoose = register({ status: 'todo', assignee: 'agent:alice' });
+  setImmediate(() => notify({ id: 't-unassigned', status: 'todo' })); // no assignee
+  const looseTask = await waiterLoose;
+  assert.strictEqual(looseTask.id, 't-unassigned');
+
+  // A task assigned to a DIFFERENT agent should NOT match
+  const waiterNoMatch = register({ status: 'todo', assignee: 'agent:alice' });
+  const raced = await Promise.race([
+    waiterNoMatch.then(() => 'resolved'),
+    (async () => {
+      notify({ id: 't-bob2', status: 'todo', assignee: 'agent:bob' });
+      await new Promise(r => setTimeout(r, 30));
+      return 'sleep-won';
+    })(),
+  ]);
+  assert.strictEqual(raced, 'sleep-won', 'mismatched assignee must not resolve');
+});
+
 // Helper: re-require the module with a fresh in-memory waiter map.
 // Node caches requires, but the module's top-level `new Map()` is fresh per require
 // only if we decache. Use delete require.cache.

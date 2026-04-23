@@ -29,6 +29,10 @@ function register(filter, signal) {
 
 function matches(task, filter) {
   if (filter.status && task.status !== filter.status) return false;
+  // Assignee filter: matches if task's assignee is the same OR task is unassigned
+  // (so any watching agent can claim an unassigned task).
+  if (filter.assignee && task.assignee && task.assignee !== filter.assignee) return false;
+  if (filter.project && task.project !== filter.project) return false;
   return true;
 }
 
