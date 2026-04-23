@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { HelpCircle, CheckCircle2, Clock } from 'lucide-react'
 import { apiFetch } from '../config'
+import { Button } from './ui'
 
 export default function ApprovalPanel({ task, socket, onTaskChanged }) {
   const [approvals, setApprovals] = useState([])
@@ -81,17 +82,23 @@ export default function ApprovalPanel({ task, socket, onTaskChanged }) {
             <div style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-muted)', marginBottom: 'var(--space-2)', fontFamily: 'var(--font-mono)' }}>{a.context.files.join(' · ')}</div>
           )}
           <div className="flex flex-wrap gap-2" style={{ marginTop: 'var(--space-2)' }}>
-            {a.options.map(opt => (
-              <button
-                key={opt}
-                onClick={() => respond(a.id, opt)}
-                disabled={submitting === a.id}
-                className="apple-press"
-                style={{ padding: '6px 14px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', background: 'var(--fill-secondary)', color: 'var(--text-app)', border: '0.5px solid var(--separator)', cursor: 'pointer', opacity: submitting === a.id ? 0.5 : 1 }}
-              >
-                {opt}
-              </button>
-            ))}
+            {a.options.map((opt, idx) => {
+              const lower = String(opt).toLowerCase()
+              const isCancel = lower === 'cancel' || lower === 'abort' || lower === 'reject' || lower === 'deny'
+              const variant = isCancel ? 'danger' : idx === 0 ? 'primary' : 'ghost'
+              return (
+                <Button
+                  key={opt}
+                  variant={variant}
+                  onClick={() => respond(a.id, opt)}
+                  disabled={submitting === a.id}
+                  loading={submitting === a.id}
+                  pill={false}
+                >
+                  {opt}
+                </Button>
+              )
+            })}
           </div>
           <div style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
             requested by {a.created_by} · {new Date(a.created_at).toLocaleString()}

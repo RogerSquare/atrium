@@ -3,6 +3,7 @@ import { X, Send, Users, Minus, Volume2, VolumeX, MessageCircle, Sparkles, Image
 import ChatMessage from './ChatMessage'
 import AIChatPanel from './AIChatPanel'
 import GifPicker from './GifPicker'
+import { Button, IconButton, ButtonGroup } from './ui'
 
 export default function ChatPanel({ user, socket, messages, onlineUsers, typingUsers, minimized, onMinimize, soundEnabled, onToggleSound, onClose, onUnreadChange, onUpdateMessage, aiChatEnabled }) {
   const [input, setInput] = useState('')
@@ -54,7 +55,7 @@ export default function ChatPanel({ user, socket, messages, onlineUsers, typingU
       <div
         className="fixed bottom-4 right-4 z-50 cursor-pointer apple-press apple-hover hidden sm:block"
         onClick={() => onMinimize(false)}
-        style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)', padding: '10px 16px' }}
+        style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)', padding: 'var(--space-2) var(--space-4)' }}
       >
         <div className="flex items-center gap-2">
           <span className="animate-gentle-pulse" style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--apple-green)' }} />
@@ -72,60 +73,63 @@ export default function ChatPanel({ user, socket, messages, onlineUsers, typingU
       ref={el => { if (el && window.innerWidth >= 640) el.style.borderRadius = 'var(--radius-xl)' }}
     >
       {/* Header */}
-      <div className="shrink-0 vibrancy-thin flex items-center justify-between" style={{ padding: '10px 12px', borderBottom: '0.5px solid var(--separator)', background: 'color-mix(in srgb, var(--bg-card) 85%, transparent)' }}>
+      <div className="shrink-0 vibrancy-thin flex items-center justify-between" style={{ padding: 'var(--space-2) var(--space-3)', borderBottom: '0.5px solid var(--separator)', background: 'color-mix(in srgb, var(--bg-card) 85%, transparent)' }}>
         {/* Tabs — segmented control (touch-friendly) */}
-        <div className="flex items-center gap-0.5" style={{ padding: '3px', borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)' }}>
-          <button
+        <ButtonGroup>
+          <Button
+            variant={activeTab === 'team' ? 'primary' : 'ghost'}
+            size="sm"
             onClick={() => setActiveTab('team')}
-            className="apple-segment apple-press flex items-center gap-1.5"
-            style={{
-              padding: '8px 16px', borderRadius: 'var(--radius-sm)', minHeight: '36px',
-              fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)',
-              color: activeTab === 'team' ? 'var(--text-app)' : 'var(--text-muted)',
-              background: activeTab === 'team' ? 'var(--bg-card)' : 'transparent',
-              boxShadow: activeTab === 'team' ? 'var(--shadow-sm)' : 'none',
-            }}
           >
             <MessageCircle className="w-4 h-4" /> Team
             {activeTab !== 'team' && onlineUsers.length > 0 && (
               <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>({onlineUsers.length})</span>
             )}
-          </button>
+          </Button>
           {aiChatEnabled && (
-            <button
+            <Button
+              variant={activeTab === 'ai' ? 'primary' : 'ghost'}
+              size="sm"
               onClick={() => setActiveTab('ai')}
-              className="apple-segment apple-press flex items-center gap-1.5"
-              style={{
-                padding: '8px 16px', borderRadius: 'var(--radius-sm)', minHeight: '36px',
-                fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)',
-                color: activeTab === 'ai' ? 'var(--text-app)' : 'var(--text-muted)',
-                background: activeTab === 'ai' ? 'var(--bg-card)' : 'transparent',
-                boxShadow: activeTab === 'ai' ? 'var(--shadow-sm)' : 'none',
-              }}
             >
               <Sparkles className="w-4 h-4" /> AI
-            </button>
+            </Button>
           )}
-        </div>
+        </ButtonGroup>
 
         {/* Controls (44px touch targets) */}
         <div className="flex items-center gap-1">
           {activeTab === 'team' && (
             <>
-              <button onClick={() => setShowUsers(!showUsers)} className="apple-press" style={{ padding: '10px', borderRadius: 'var(--radius-sm)', color: showUsers ? 'var(--accent-app)' : 'var(--text-muted)', transition: `all var(--duration-fast)` }} title="Online users">
+              <IconButton
+                onClick={() => setShowUsers(!showUsers)}
+                color={showUsers ? 'var(--accent-app)' : 'var(--text-muted)'}
+                title="Online users"
+                aria-label="Online users"
+              >
                 <Users className="w-5 h-5" />
-              </button>
-              <button onClick={onToggleSound} className="apple-press" style={{ padding: '10px', borderRadius: 'var(--radius-sm)', color: soundEnabled ? 'var(--text-muted)' : 'var(--apple-red)', transition: `all var(--duration-fast)` }} title={soundEnabled ? 'Mute' : 'Unmute'}>
+              </IconButton>
+              <IconButton
+                onClick={onToggleSound}
+                color={soundEnabled ? 'var(--text-muted)' : 'var(--apple-red)'}
+                title={soundEnabled ? 'Mute' : 'Unmute'}
+                aria-label={soundEnabled ? 'Mute' : 'Unmute'}
+              >
                 {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-              </button>
+              </IconButton>
             </>
           )}
-          <button onClick={() => onMinimize(true)} className="hidden sm:block apple-press" style={{ padding: '10px', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }} title="Minimize">
+          <IconButton
+            onClick={() => onMinimize(true)}
+            className="hidden sm:flex"
+            title="Minimize"
+            aria-label="Minimize"
+          >
             <Minus className="w-5 h-5" />
-          </button>
-          <button onClick={onClose} className="apple-press" style={{ padding: '10px', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }} title="Close">
+          </IconButton>
+          <IconButton onClick={onClose} title="Close" aria-label="Close">
             <X className="w-5 h-5" />
-          </button>
+          </IconButton>
         </div>
       </div>
 
@@ -133,10 +137,10 @@ export default function ChatPanel({ user, socket, messages, onlineUsers, typingU
       {activeTab === 'team' && (
         <div className="flex-1 flex flex-col overflow-hidden">
           {showUsers && (
-            <div style={{ padding: '8px 16px', borderBottom: '0.5px solid var(--separator)', background: 'var(--fill-secondary)' }}>
-              <p style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>Online</p>
+            <div style={{ padding: 'var(--space-2) var(--space-4)', borderBottom: '0.5px solid var(--separator)', background: 'var(--fill-secondary)' }}>
+              <p style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-1)' }}>Online</p>
               {onlineUsers.map((u, i) => (
-                <div key={i} className="flex items-center gap-2" style={{ padding: '3px 0' }}>
+                <div key={i} className="flex items-center gap-2" style={{ padding: 'var(--space-1) 0' }}>
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--apple-green)' }} />
                   <span style={{ fontSize: 'var(--text-caption1)', color: 'var(--text-app)' }}>{u.username}</span>
                 </div>
@@ -144,9 +148,9 @@ export default function ChatPanel({ user, socket, messages, onlineUsers, typingU
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto custom-scrollbar" style={{ padding: '12px 16px' }}>
+          <div className="flex-1 overflow-y-auto custom-scrollbar" style={{ padding: 'var(--space-3) var(--space-4)' }}>
             {messages.length === 0 && (
-              <div className="text-center" style={{ marginTop: '32px', fontSize: 'var(--text-subhead)', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No messages yet. Say hello!</div>
+              <div className="text-center" style={{ marginTop: 'var(--space-8)', fontSize: 'var(--text-subhead)', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No messages yet. Say hello!</div>
             )}
             {messages.map((msg) => (
               <ChatMessage key={msg.id} message={msg} currentUser={user.username} onReact={handleReact} />
@@ -155,14 +159,14 @@ export default function ChatPanel({ user, socket, messages, onlineUsers, typingU
           </div>
 
           {typingDisplay && (
-            <div style={{ padding: '0 16px 4px' }}>
+            <div style={{ padding: '0 var(--space-4) var(--space-1)' }}>
               <span style={{ fontSize: 'var(--text-caption1)', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>{typingDisplay}</span>
             </div>
           )}
 
-          <div className="relative chat-input-safe" style={{ padding: '8px 12px 12px', borderTop: '0.5px solid var(--separator)' }}>
+          <div className="relative chat-input-safe" style={{ padding: 'var(--space-2) var(--space-3) var(--space-3)', borderTop: '0.5px solid var(--separator)' }}>
             {showGifPicker && <GifPicker onSelect={handleSendGif} onClose={() => setShowGifPicker(false)} />}
-            <div className="flex items-center gap-1" style={{ background: 'var(--fill-secondary)', borderRadius: 'var(--radius-full)', padding: '4px 4px 4px 16px' }}>
+            <div className="flex items-center gap-1" style={{ background: 'var(--fill-secondary)', borderRadius: 'var(--radius-full)', padding: 'var(--space-1) var(--space-1) var(--space-1) var(--space-4)' }}>
               <input
                 type="text"
                 value={input}
@@ -170,15 +174,27 @@ export default function ChatPanel({ user, socket, messages, onlineUsers, typingU
                 onKeyDown={handleKeyDown}
                 placeholder="Type a message..."
                 className="flex-1 bg-transparent focus:outline-none"
-                style={{ fontSize: 'var(--text-subhead)', color: 'var(--text-app)', padding: '6px 0' }}
+                style={{ fontSize: 'var(--text-subhead)', color: 'var(--text-app)', padding: 'var(--space-2) 0' }}
               />
-              <button onClick={() => setShowGifPicker(!showGifPicker)} className="apple-press" style={{ padding: '10px', borderRadius: '50%', color: showGifPicker ? 'var(--accent-app)' : 'var(--text-tertiary)', transition: `color var(--duration-fast)` }} title="GIF">
+              <IconButton
+                onClick={() => setShowGifPicker(!showGifPicker)}
+                color={showGifPicker ? 'var(--accent-app)' : 'var(--text-tertiary)'}
+                style={{ borderRadius: '50%' }}
+                title="GIF"
+                aria-label="GIF"
+              >
                 <ImageIcon className="w-5 h-5" />
-              </button>
+              </IconButton>
               {input.trim() && (
-                <button onClick={handleSend} className="apple-press flex items-center justify-center text-white" style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--accent-app)', transition: `all var(--duration-fast)`, flexShrink: 0 }}>
+                <IconButton
+                  onClick={handleSend}
+                  className="text-white"
+                  style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--accent-app)', color: 'white' }}
+                  title="Send"
+                  aria-label="Send message"
+                >
                   <Send className="w-[18px] h-[18px]" />
-                </button>
+                </IconButton>
               )}
             </div>
           </div>
