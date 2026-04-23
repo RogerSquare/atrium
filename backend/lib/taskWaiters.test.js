@@ -31,6 +31,35 @@ test('register + notify with non-matching task does not resolve', async () => {
   assert.strictEqual(raced, 'sleep-won', 'waiter should not have resolved for non-matching task');
 });
 
+// Cycle 3: two registrations + one matching notify — only first waiter resolves.
+test('two registrations, one notify — first-call-wins; second remains parked', async () => {
+  const { register, notify } = requireFresh();
+  const waiterA = register({ status: 'todo' });
+  const waiterB = register({ status: 'todo' });
+  const result = await Promise.race([
+    waiterA.then((t) => ({ who: 'A', task: t })),
+    waiterB.then((t) => ({ who: 'B', task: t })),
+    (async () => {
+      setImmediate(() => notify({ id: 't-3', status: 'todo' }));
+      await new Promise(r => setTimeout(r, 30));
+      return null;
+    })(),
+  ]);
+  assert.strictEqual(result.who, 'A', 'first-registered waiter should win');
+  assert.strictEqual(result.task.id, 't-3');
+  // waiterB should still be pending — send another notify to confirm
+  const secondResult = await Promise.race([
+    waiterB.then((t) => ({ who: 'B-second', task: t })),
+    (async () => {
+      setImmediate(() => notify({ id: 't-4', status: 'todo' }));
+      await new Promise(r => setTimeout(r, 30));
+      return null;
+    })(),
+  ]);
+  assert.strictEqual(secondResult.who, 'B-second');
+  assert.strictEqual(secondResult.task.id, 't-4');
+});
+
 // Helper: re-require the module with a fresh in-memory waiter map.
 // Node caches requires, but the module's top-level `new Map()` is fresh per require
 // only if we decache. Use delete require.cache.
