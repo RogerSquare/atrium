@@ -245,7 +245,7 @@ function Sidebar({
                         borderRadius: 'var(--radius-md)',
                         background: 'var(--bg-card)',
                         border: '1px solid var(--separator)',
-                        boxShadow: 'var(--shadow-lg)',
+                        boxShadow: 'var(--shadow-popover)',
                       }}
                     >
                       <Button
@@ -316,7 +316,7 @@ function Sidebar({
               padding: 'var(--space-2)',
               fontSize: 'var(--text-caption1)',
               color: filterStale ? 'var(--apple-orange)' : undefined,
-              background: filterStale ? 'color-mix(in srgb, var(--apple-orange) 10%, transparent)' : undefined,
+              background: filterStale ? 'var(--fill-secondary)' : undefined,
             }}
           >
             <AlertCircle className="w-4 h-4 shrink-0" />
