@@ -1,0 +1,29 @@
+// TDD tests for backend/lib/branchValidator.js
+// Written cycle-by-cycle (see git log on feat/opt-review-branch-validation-001-implement).
+// Third smoke test of the Atrium TDD skill after slugify + taskWaiters.
+
+const test = require('node:test');
+const assert = require('node:assert');
+
+function requireFresh() {
+  const p = require.resolve('./branchValidator');
+  delete require.cache[p];
+  return require('./branchValidator');
+}
+
+// Cycle 1: transitioning to review with no branch and no pr_url returns Case 1 error.
+test('review + no linkage fields → Case 1 error', () => {
+  const { validateReviewLinkage } = requireFresh();
+  const task = {
+    id: 'feat-x-001',
+    status: 'review',
+    github_branch: null,
+    github_pr_url: null,
+    tags: [],
+  };
+  const result = validateReviewLinkage(task, 'todo');
+  assert.ok(result, 'should return an error object');
+  assert.match(result.error, /required.*review/i);
+  assert.ok(result.detail.includes('feat-x-001'), 'detail should mention task id');
+  assert.deepStrictEqual(result.received, { github_branch: null, github_pr_url: null });
+});
