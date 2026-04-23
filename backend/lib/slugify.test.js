@@ -17,3 +17,7 @@ test('trims leading and trailing whitespace/hyphens', () => {
 test('collapses consecutive hyphens and spaces', () => {
   assert.equal(slugify('multi---hyphen   spaces'), 'multi-hyphen-spaces');
 });
+
+test('is idempotent on already-kebab input and preserves digits', () => {
+  assert.equal(slugify('Already-kebab-case-123'), 'already-kebab-case-123');
+});
