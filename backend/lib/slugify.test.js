@@ -9,3 +9,7 @@ test('lowercases and replaces spaces with hyphens', () => {
 test('strips non-alphanumeric characters', () => {
   assert.equal(slugify('Feature: Add Login!'), 'feature-add-login');
 });
+
+test('trims leading and trailing whitespace/hyphens', () => {
+  assert.equal(slugify('   leading and trailing   '), 'leading-and-trailing');
+});
