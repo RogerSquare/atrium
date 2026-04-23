@@ -3,7 +3,7 @@
 // Update the date below whenever you materially edit the content.
 
 export const HELP_CONTENT = `# Atrium — Quick Reference
-_Updated 2026-04-23_
+_Updated 2026-04-23 (v2)_
 
 Atrium is a task board for collaborating with AI agents. Tasks are stored as markdown files on disk; the web UI is a live view on top. Most everyday work falls into two flows: **managing tasks in the web UI** (here) or **running an agent from the terminal** (Claude Code prompts, below).
 
@@ -136,6 +136,14 @@ Useful at the end of a work session to see what's ready to merge.
 
 \`\`\`text
 Use the atrium skill. List tasks in review status and show their github_pr_url fields.
+\`\`\`
+
+### Worker loop — pick up tasks as you promote them
+
+Long-polls via \`atrium_wait_for_next_todo\`. Say "watch" once, then compose tasks in the UI and promote them to \`todo\`; the agent picks them up automatically. Server holds each call for up to ~5min; timeouts just re-call.
+
+\`\`\`text
+Use the atrium skill. Watch for new todo tasks assigned to me (or unassigned) and work on them as they arrive. Use atrium_wait_for_next_todo in a loop with timeout_seconds=270. Emit a "Picked up <id>: <title>" line before each task.
 \`\`\`
 
 ---
