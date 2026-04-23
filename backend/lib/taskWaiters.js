@@ -4,10 +4,26 @@
 
 const waiters = new Map();
 
-function register(filter) {
-  return new Promise((resolve) => {
+/**
+ * Register a waiter. Returns a promise that resolves with the first task
+ * matching `filter`, or rejects with Error('aborted') if `signal` fires.
+ *
+ * @param {{ status?: string, assignee?: string, project?: string }} filter
+ * @param {AbortSignal} [signal]  Optional abort signal for timeout / disconnect.
+ */
+function register(filter, signal) {
+  return new Promise((resolve, reject) => {
     const id = Symbol('waiter');
-    waiters.set(id, { filter, resolve });
+    const entry = { filter, resolve, reject, signal };
+    waiters.set(id, entry);
+    if (signal) {
+      const onAbort = () => {
+        waiters.delete(id);
+        reject(new Error('aborted'));
+      };
+      if (signal.aborted) return onAbort();
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
   });
 }
 

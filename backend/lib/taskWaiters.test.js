@@ -60,6 +60,26 @@ test('two registrations, one notify — first-call-wins; second remains parked',
   assert.strictEqual(secondResult.task.id, 't-4');
 });
 
+// Cycle 4: abort signal fires → waiter rejects with 'aborted' and is removed.
+test('register + abort signal fires → rejects with aborted; waiter removed', async () => {
+  const { register, notify } = requireFresh();
+  const controller = new AbortController();
+  const waiterPromise = register({ status: 'todo' }, controller.signal);
+  // Fire abort on next tick.
+  setImmediate(() => controller.abort());
+  let rejected = false;
+  try {
+    await waiterPromise;
+  } catch (err) {
+    rejected = true;
+    assert.strictEqual(err.message, 'aborted');
+  }
+  assert.ok(rejected, 'waiter should reject on abort');
+  // Confirm waiter is gone — a subsequent notify should return null (no waiters).
+  const notifyResult = notify({ id: 't-5', status: 'todo' });
+  assert.strictEqual(notifyResult, null, 'aborted waiter must be removed from map');
+});
+
 // Helper: re-require the module with a fresh in-memory waiter map.
 // Node caches requires, but the module's top-level `new Map()` is fresh per require
 // only if we decache. Use delete require.cache.
