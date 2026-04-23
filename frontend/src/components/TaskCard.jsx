@@ -66,10 +66,12 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
           padding: 'var(--space-2) var(--space-3)',
           borderRadius: 'var(--radius-md)',
           background: 'var(--bg-card)',
+          border: 'var(--border-hairline)',
           borderLeft: `3px solid ${priorityColor}`,
-          boxShadow: isDragging ? 'var(--shadow-xl)' : selected ? `0 0 0 2px color-mix(in srgb, var(--accent-app) 40%, transparent)` : 'var(--shadow-sm)',
+          outline: selected || isDragging ? '2px solid var(--accent-app)' : 'none',
+          outlineOffset: '-2px',
           transform: isDragging ? 'scale(1.02)' : 'none',
-          transition: `box-shadow var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-spring)`,
+          transition: `outline-color var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-spring)`,
           opacity: justUpdated ? 0.8 : 1,
         }}
         title={`${task.id} — ${task.title}\nPriority: ${task.priority} | Type: ${task.type || 'fullstack'}`}
@@ -112,10 +114,16 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
         background: 'var(--bg-card)',
         borderRadius: 'var(--radius-lg)',
         padding: 'var(--space-4)',
+        border: 'var(--border-hairline)',
         borderLeft: `3px solid ${priorityColor}`,
-        boxShadow: isDragging ? 'var(--shadow-xl)' : selected ? `0 0 0 2px color-mix(in srgb, var(--accent-app) 40%, transparent), var(--shadow-md)` : justUpdated ? `0 0 0 1px color-mix(in srgb, var(--accent-app) 30%, transparent), var(--shadow-md)` : 'var(--shadow-sm)',
+        outline: selected || isDragging
+          ? '2px solid var(--accent-app)'
+          : justUpdated
+            ? '1px solid color-mix(in srgb, var(--accent-app) 50%, transparent)'
+            : 'none',
+        outlineOffset: '-2px',
         transform: isDragging ? 'scale(1.02)' : 'none',
-        transition: `box-shadow var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-spring)`,
+        transition: `outline-color var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-spring)`,
       }}
     >
       {/* Header: ID + Type + Actions */}
@@ -232,7 +240,7 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
           </Badge>
         )}
         {isStale && (
-          <Badge color="var(--apple-orange)" bg="color-mix(in srgb, var(--apple-orange) 10%, transparent)" className="flex items-center gap-1" style={{ padding: 'var(--space-1) var(--space-2)' }}>
+          <Badge color="var(--apple-orange)" bg="var(--fill-secondary)" className="flex items-center gap-1" style={{ padding: 'var(--space-1) var(--space-2)' }}>
             <Clock className="w-3 h-3" />Stale
           </Badge>
         )}
