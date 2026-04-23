@@ -21,3 +21,7 @@ test('collapses consecutive hyphens and spaces', () => {
 test('is idempotent on already-kebab input and preserves digits', () => {
   assert.equal(slugify('Already-kebab-case-123'), 'already-kebab-case-123');
 });
+
+test('returns empty string for empty input without crashing', () => {
+  assert.equal(slugify(''), '');
+});
