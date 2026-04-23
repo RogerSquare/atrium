@@ -7,6 +7,7 @@ const { TASKS_DIR, HISTORY_DIR, TRASH_DIR } = require('../lib/constants');
 const { getAllTasks, findTaskFilePath, indexSet, indexDelete, atomicWriteFileSync, trimActivityLog, getFullActivityLog, generateSummary } = require('../lib/tasks');
 const { withLock } = require('../lib/lock');
 const { getIO } = require('../lib/io');
+const taskWaiters = require('../lib/taskWaiters');
 const { sanitizeFilename, safePath } = require('../lib/sanitize');
 const { logger } = require('../lib/logger');
 
@@ -94,6 +95,7 @@ router.post('/from-template/:templateId', (req, res) => {
     res.status(201).json({ success: true, task: createdTask });
     const io = getIO();
     if (io) io.emit('task_created', withSummary(createdTask));
+    taskWaiters.notify(createdTask);
   } catch (error) {
     logger.error({ err: error }, 'Request failed');
     res.status(500).json({ error: 'Internal server error' });
@@ -362,6 +364,7 @@ router.put('/batch', async (req, res) => {
           const relativePath = path.relative(TASKS_DIR, path.dirname(filePath));
           const updatedTask = { ...newData, content: currentContent.trim(), project: relativePath || 'Root' };
           if (io) io.emit('task_updated', withSummary(updatedTask));
+          taskWaiters.notify(updatedTask);
           updated++;
         });
       } catch (err) {
@@ -532,6 +535,85 @@ router.delete('/trash/purge', (req, res) => {
  *       404:
  *         description: Task not found
  */
+// GET /api/tasks/wait-for-next-todo — long-poll for the next task promoted to `todo`.
+// Returns { task, claimed: true } when a matching task appears (task is atomically claimed:
+// status -> in_progress, assignee -> caller). Returns { task: null, timeout: true } if the
+// server-side timeout elapses. Client should re-call to keep watching.
+//
+// Timeout cap: default 270s per request, hard-capped by ATRIUM_WAIT_MAX_SECONDS env var
+// (default 300s). See backend/docs/mcp-long-poll-empirical.md for rationale.
+//
+// This route MUST be registered before '/:id' so the literal path wins.
+const WAIT_MAX_SECONDS = parseInt(process.env.ATRIUM_WAIT_MAX_SECONDS || '300', 10);
+
+router.get('/wait-for-next-todo', async (req, res) => {
+  const requestedTimeout = parseInt(req.query.timeout_seconds || '270', 10);
+  const timeoutMs = Math.min(Math.max(requestedTimeout, 1), WAIT_MAX_SECONDS) * 1000;
+  const filter = {
+    status: 'todo',
+    assignee: req.query.assignee || (req.user && req.user.username),
+    project: req.query.project,
+  };
+
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+  const onClose = () => { clearTimeout(timeoutHandle); controller.abort(); };
+  req.on('close', onClose);
+
+  try {
+    const task = await taskWaiters.register(filter, controller.signal);
+    clearTimeout(timeoutHandle);
+    req.removeListener('close', onClose);
+    // Atomic claim: re-read + update task under withLock. If status has changed from todo
+    // (race with another waiter or human), return the task as-is and let the client decide.
+    const claimed = await claimTaskForWait(task.id, filter.assignee).catch(err => ({ error: err.message, task }));
+    if (claimed && claimed.error) {
+      return res.json({ task: claimed.task, claimed: false, note: `claim-failed: ${claimed.error}` });
+    }
+    return res.json({ task: claimed, claimed: true });
+  } catch (err) {
+    clearTimeout(timeoutHandle);
+    req.removeListener('close', onClose);
+    if (err.message === 'aborted') {
+      return res.json({ task: null, timeout: true });
+    }
+    logger.error({ err }, 'wait-for-next-todo failed');
+    if (!res.headersSent) res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+// Helper: atomically claim a task for an agent. Reads the task under withLock,
+// verifies status is still `todo`, updates status -> in_progress + assignee + timestamps,
+// writes atomically, returns the updated task. Throws if the task has moved on.
+async function claimTaskForWait(id, assignee) {
+  const filePath = findTaskFilePath(id);
+  if (!filePath) throw new Error(`task not found: ${id}`);
+  return await withLock(filePath, () => {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const parsed = matter(raw);
+    if (parsed.data.status !== 'todo') {
+      throw new Error(`race: task ${id} no longer in todo (status=${parsed.data.status})`);
+    }
+    const now = new Date().toISOString();
+    parsed.data.status = 'in_progress';
+    parsed.data.assignee = assignee;
+    parsed.data.started_at = parsed.data.started_at || now;
+    parsed.data.activity_log = (parsed.data.activity_log || []).concat([
+      { timestamp: now, action: `Status changed to IN PROGRESS by ${assignee}` },
+      { timestamp: now, action: `assignee changed to ${assignee} (auto-claim by wait-for-next-todo)` },
+    ]);
+    trimActivityLog(parsed.data);
+    const updatedContent = matter.stringify(parsed.content, parsed.data);
+    atomicWriteFileSync(filePath, updatedContent);
+    const relativePath = path.relative(TASKS_DIR, path.dirname(filePath));
+    const updatedTask = { ...parsed.data, content: parsed.content, project: relativePath || 'Root' };
+    const io = getIO();
+    if (io) io.emit('task_updated', withSummary(updatedTask));
+    taskWaiters.notify(updatedTask);
+    return updatedTask;
+  });
+}
+
 router.get('/:id', (req, res) => {
   const { id } = req.params;
   try {
@@ -864,6 +946,7 @@ router.put('/:id', async (req, res) => {
     res.json({ success: true, task: updatedTask });
     const io = getIO();
     if (io) io.emit('task_updated', withSummary(updatedTask));
+    taskWaiters.notify(updatedTask);
     }); // end withLock
   } catch (error) {
     logger.error({ err: error, taskId: id }, 'Task update failed');
@@ -1018,6 +1101,7 @@ router.post('/', (req, res) => {
     res.status(201).json({ success: true, task: createdTask });
     const io = getIO();
     if (io) io.emit('task_created', withSummary(createdTask));
+    taskWaiters.notify(createdTask);
   } catch (error) {
     logger.error({ err: error }, 'Request failed');
     res.status(500).json({ error: 'Internal server error' });
