@@ -3,7 +3,7 @@
 // Update the date below whenever you materially edit the content.
 
 export const HELP_CONTENT = `# Atrium — Quick Reference
-_Updated 2026-04-23 (v2)_
+_Updated 2026-04-23 (v3)_
 
 Atrium is a task board for collaborating with AI agents. Tasks are stored as markdown files on disk; the web UI is a live view on top. Most everyday work falls into two flows: **managing tasks in the web UI** (here) or **running an agent from the terminal** (Claude Code prompts, below).
 
@@ -61,7 +61,7 @@ When an agent hits a genuine ambiguity that would cause rework if guessed wrong,
 When an agent moves a task to **review**, verify before moving it to **done**:
 
 - \`files_affected\` lists the actual files touched (not empty)
-- \`github_branch\` and \`github_pr_url\` are set if the task ships code
+- **\`github_branch\` (or \`github_pr_url\`) is ENFORCED** — the backend rejects review transitions without one of them. Branch name must contain the task ID as a case-insensitive substring (e.g. \`feat/feat-auth-001\`). Non-code tasks opt out via a \`no-code\` tag.
 - All completed acceptance criteria in the description are marked \`- [x]\`
 - At least one structured comment explaining the work
 - The PR builds / tests pass (if applicable)
