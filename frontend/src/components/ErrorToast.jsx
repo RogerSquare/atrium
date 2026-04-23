@@ -18,7 +18,7 @@ export default function ErrorToast({ message, onDismiss }) {
           padding: '10px 16px',
           borderRadius: 'var(--radius-full)',
           background: 'color-mix(in srgb, var(--apple-red) 15%, var(--bg-card) 85%)',
-          boxShadow: 'var(--shadow-lg)',
+          boxShadow: 'var(--shadow-popover)',
           border: '1px solid color-mix(in srgb, var(--apple-red) 30%, transparent)',
         }}
       >

@@ -34,7 +34,7 @@ export default function ProjectDescription({ projectName }) {
   if (!projectName || projectName === 'All' || projectName === 'Root') return null
 
   return (
-    <div className="h-full animate-fade-in" style={{ background: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+    <div className="h-full animate-fade-in" style={{ background: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', border: 'var(--border-hairline)', overflow: 'hidden' }}>
       <header className="flex justify-between items-center" style={{ padding: '12px 16px', borderBottom: '0.5px solid var(--separator)' }}>
         <div className="flex items-center gap-2">
           <div style={{ padding: '6px', borderRadius: 'var(--radius-sm)', background: 'color-mix(in srgb, var(--accent-app) 12%, transparent)' }}>

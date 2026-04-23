@@ -16,7 +16,7 @@ export default function BulkActionBar({ selectedIds, totalVisible, onSelectAll, 
         marginBottom: 'var(--space-4)',
         borderRadius: 'var(--radius-lg)',
         background: 'color-mix(in srgb, var(--bg-card) 85%, transparent)',
-        boxShadow: 'var(--shadow-md)',
+        border: 'var(--border-hairline)',
       }}
     >
       <div className="flex items-center gap-3 flex-wrap">

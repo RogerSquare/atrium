@@ -256,7 +256,7 @@ function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
       </div>
 
       {/* Table */}
-      <div ref={tableContainerRef} className={`overflow-x-auto custom-scrollbar flex-1 ${shouldVirtualize ? 'overflow-y-auto' : ''}`} style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-sm)', minHeight: 0 }}>
+      <div ref={tableContainerRef} className={`overflow-x-auto custom-scrollbar flex-1 ${shouldVirtualize ? 'overflow-y-auto' : ''}`} style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-secondary)', border: 'var(--border-hairline)', minHeight: 0 }}>
       <table className="w-full min-w-[900px] border-collapse">
         <thead>
           <tr style={{ borderBottom: '0.5px solid var(--separator)' }}>

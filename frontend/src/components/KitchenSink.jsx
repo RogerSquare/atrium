@@ -121,7 +121,7 @@ export default function KitchenSink({ onClose, currentTheme, onSetTheme }) {
           <Row label="Special">
             <Badge preset="accent">12</Badge>
             <Badge preset="muted">unassigned</Badge>
-            <Badge color="var(--apple-orange)" bg="color-mix(in srgb, var(--apple-orange) 10%, transparent)" className="flex items-center gap-1" style={{ padding: '3px 8px' }}>
+            <Badge color="var(--apple-orange)" bg="var(--fill-secondary)" className="flex items-center gap-1" style={{ padding: '3px 8px' }}>
               <Clock className="w-3 h-3" />Stale
             </Badge>
             <Badge color="var(--accent-app)" bg="color-mix(in srgb, var(--accent-app) 10%, transparent)" className="flex items-center gap-1" style={{ padding: '3px 8px' }}>

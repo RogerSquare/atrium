@@ -51,7 +51,7 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
     <ModalOverlay onClose={onClose}>
       <div
         className="w-full h-full sm:h-auto sm:max-w-2xl flex flex-col overflow-hidden"
-        style={{ background: 'var(--bg-card)', borderRadius: '0', boxShadow: 'var(--shadow-xl)' }}
+        style={{ background: 'var(--bg-card)', borderRadius: '0', boxShadow: 'var(--shadow-popover)' }}
         ref={el => { if (el && window.innerWidth >= 640) el.style.borderRadius = 'var(--radius-xl)' }}
       >
         {/* Header */}
@@ -189,7 +189,7 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
             onClick={(e) => handleSubmit(e, 'todo')}
             disabled={!canSubmit}
             pill={false}
-            style={{ boxShadow: 'var(--shadow-sm)', opacity: canSubmit ? 1 : 0.5 }}
+            style={{ opacity: canSubmit ? 1 : 0.5 }}
           >
             Create Task
           </Button>

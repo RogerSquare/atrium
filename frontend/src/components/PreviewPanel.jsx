@@ -256,7 +256,7 @@ export default function PreviewPanel({ services, onClose, socket, activeProject 
         ref={containerRef}
         onClick={(e) => e.stopPropagation()}
         className="flex flex-col overflow-hidden animate-slide-in"
-        style={{ width: '92vw', height: '88vh', maxWidth: '1600px', background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)' }}
+        style={{ width: '92vw', height: '88vh', maxWidth: '1600px', background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-popover)' }}
       >
         {/* Header with project tabs */}
         <header className="flex items-center gap-3 px-4 py-2" style={{ borderBottom: '0.5px solid var(--separator)' }}>

@@ -18,7 +18,7 @@ function Toast({ message, onDismiss, onOpenChat }) {
         padding: '12px 16px',
         borderRadius: 'var(--radius-lg)',
         background: 'var(--bg-card)',
-        boxShadow: 'var(--shadow-lg)',
+        boxShadow: 'var(--shadow-popover)',
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
         transition: `all var(--duration-fast) var(--ease-default)`,

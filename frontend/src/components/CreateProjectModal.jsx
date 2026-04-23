@@ -16,7 +16,7 @@ export default function CreateProjectModal({ onClose, onCreateProject }) {
     <ModalOverlay onClose={onClose}>
       <div
         className="w-full h-full sm:h-auto sm:max-w-md flex flex-col overflow-hidden"
-        style={{ background: 'var(--bg-card)', borderRadius: '0', boxShadow: 'var(--shadow-xl)' }}
+        style={{ background: 'var(--bg-card)', borderRadius: '0', boxShadow: 'var(--shadow-popover)' }}
         ref={el => { if (el && window.innerWidth >= 640) el.style.borderRadius = 'var(--radius-xl)' }}
       >
         <header className="shrink-0 flex justify-between items-center" style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '0.5px solid var(--separator)' }}>

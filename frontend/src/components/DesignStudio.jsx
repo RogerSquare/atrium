@@ -1024,7 +1024,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
       <div
         onClick={(e) => e.stopPropagation()}
         className="flex overflow-hidden animate-slide-in"
-        style={{ width: '95vw', height: '90vh', maxWidth: '1800px', background: 'var(--bg-app)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)' }}
+        style={{ width: '95vw', height: '90vh', maxWidth: '1800px', background: 'var(--bg-app)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-popover)' }}
       >
         {/* Left: Design Chat */}
         <div className="flex flex-col" style={{ width: '420px', minWidth: '360px', borderRight: '0.5px solid var(--separator)' }}>
@@ -1069,7 +1069,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
                 <FolderOpen className="w-4 h-4" />
               </IconButton>
               {showSessionMenu && (
-                <div className="absolute right-0 top-full mt-1 z-30" style={{ background: 'var(--bg-card)', border: '1px solid var(--separator)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', minWidth: '200px', maxHeight: '250px', overflow: 'auto' }}>
+                <div className="absolute right-0 top-full mt-1 z-30" style={{ background: 'var(--bg-card)', border: '1px solid var(--separator)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)', minWidth: '200px', maxHeight: '250px', overflow: 'auto' }}>
                   {savedSessions.length === 0 ? (
                     <div style={{ padding: '12px 16px', fontSize: '11px', color: 'var(--text-tertiary)' }}>No saved designs</div>
                   ) : savedSessions.map(s => (
@@ -1528,7 +1528,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
           {/* Input area */}
           {/* Implementation panel — shows when reviewing component changes */}
           {mode === 'implement' && implementPlan.length > 0 && implementIndex < implementPlan.length && (
-            <div className="px-4 py-3" style={{ borderTop: '0.5px solid var(--separator)', background: 'color-mix(in srgb, var(--apple-purple) 5%, var(--bg-secondary))' }}>
+            <div className="px-4 py-3" style={{ borderTop: '0.5px solid var(--separator)', background: 'var(--fill-secondary)' }}>
               <div className="flex items-center justify-between mb-2">
                 <span style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: 'var(--apple-purple)', textTransform: 'uppercase' }}>
                   Component {implementIndex + 1}/{implementPlan.length}
@@ -1583,7 +1583,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
               <div>
                 {prototypeId && (
                   <div className="flex items-center gap-2 mb-2">
-                    <Badge color="var(--apple-purple)" bg="color-mix(in srgb, var(--apple-purple) 15%, transparent)" style={{ padding: '3px 8px' }}>Prototype active</Badge>
+                    <Badge color="var(--apple-purple)" bg="var(--fill-secondary)" style={{ padding: '3px 8px' }}>Prototype active</Badge>
                     <Button variant="ghost" size="sm" onClick={() => { setMode('refine'); setPrototypeId(null) }} style={{ fontSize: '10px' }}>Back to Live</Button>
                     <div className="flex-1" />
                     <Button variant="secondary" size="sm" onClick={handleStartImplementation} loading={protoLoading}>
@@ -1736,11 +1736,11 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
                   </>
                 )}
                 {styleInjection && (
-                  <Badge color="var(--apple-teal)" bg="color-mix(in srgb, var(--apple-teal) 15%, transparent)" style={{ padding: '3px 8px' }}>styles live</Badge>
+                  <Badge color="var(--apple-teal)" bg="var(--fill-secondary)" style={{ padding: '3px 8px' }}>styles live</Badge>
                 )}
                 {fileChanges.length > 0 && (
                   <>
-                    <Badge color="var(--apple-purple)" bg="color-mix(in srgb, var(--apple-purple) 15%, transparent)" style={{ padding: '3px 8px' }}>{fileChanges.length} file edits</Badge>
+                    <Badge color="var(--apple-purple)" bg="var(--fill-secondary)" style={{ padding: '3px 8px' }}>{fileChanges.length} file edits</Badge>
                     <Button variant="secondary" size="sm" onClick={handleApplyFiles}>
                       <Check className="w-3.5 h-3.5" /> Apply Files
                     </Button>
@@ -1756,7 +1756,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
                     <Download className="w-3.5 h-3.5" />
                   </IconButton>
                   {showExportMenu && (
-                    <div className="absolute right-0 top-full mt-1 z-30" style={{ background: 'var(--bg-card)', border: '1px solid var(--separator)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', minWidth: '160px' }}>
+                    <div className="absolute right-0 top-full mt-1 z-30" style={{ background: 'var(--bg-card)', border: '1px solid var(--separator)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)', minWidth: '160px' }}>
                       <button onClick={handleCopyCss} className="w-full text-left apple-press flex items-center gap-2 px-3 py-2" style={{ fontSize: '11px', color: 'var(--text-app)', borderBottom: '0.5px solid var(--separator)' }}>
                         {copied ? <ClipboardCheck className="w-3.5 h-3.5" style={{ color: 'var(--apple-green)' }} /> : <Copy className="w-3.5 h-3.5" />}
                         {copied ? 'Copied!' : 'Copy CSS to clipboard'}

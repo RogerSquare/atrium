@@ -58,7 +58,7 @@ export default function Login({ onLogin }) {
         </div>
 
         {/* Card */}
-        <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-lg)', padding: 'var(--space-8)' }}>
+        <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius-xl)', border: 'var(--border-hairline)', padding: 'var(--space-8)' }}>
           <form onSubmit={handleSubmit}>
             <div style={{ marginBottom: 'var(--space-5)' }}>
               <label style={{ display: 'block', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>Username</label>
@@ -115,7 +115,6 @@ export default function Login({ onLogin }) {
                 fontWeight: 'var(--font-semibold)',
                 color: 'white',
                 background: 'var(--accent-app)',
-                boxShadow: 'var(--shadow-sm)',
                 border: 'none',
                 cursor: loading ? 'wait' : 'pointer',
                 opacity: loading ? 0.6 : 1,

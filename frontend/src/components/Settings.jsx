@@ -998,9 +998,9 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
         </div>
       )}
 
-      <div className="overflow-hidden flex flex-col" style={{ width: '960px', height: '620px', background: 'var(--bg-card)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-xl)' }} onClick={(e) => e.stopPropagation()}>
+      <div className="overflow-hidden flex flex-col" style={{ width: '960px', height: '620px', background: 'var(--bg-card)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-popover)' }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <header className="shrink-0 vibrancy-thin flex justify-between items-center" style={{ padding: '12px 20px', borderBottom: '0.5px solid var(--separator)', background: 'color-mix(in srgb, var(--bg-card) 85%, transparent)' }}>
+        <header className="shrink-0 flex justify-between items-center" style={{ padding: '12px 20px', borderBottom: 'var(--border-hairline)', background: 'var(--bg-card)' }}>
           <h2 style={{ fontSize: 'var(--text-title3)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>Settings</h2>
           <div className="flex items-center gap-2">
             {message && <span style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: message.includes('saved') || message.includes('Saved') || message.includes('changed') || message.includes('cleared') || message.includes('Deleted') ? 'var(--apple-green)' : 'var(--apple-red)' }}>{message}</span>}
