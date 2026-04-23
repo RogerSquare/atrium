@@ -1,12 +1,28 @@
 # Atrium Frontend — Ubiquitous Language (Visual Design)
 
-_Updated 2026-04-23_
+_Updated 2026-04-23 (v2 — adds aesthetic-lane vocabulary)_
 
 **Purpose**: Give you vocabulary to put a *name* on what feels off in the UI. When you see something that bugs you but can't articulate why, skim this file — odds are the word is here. This file covers the *visual language* of the UI (design system, composition, polish). It's a sibling to the root `UBIQUITOUS_LANGUAGE.md`, which covers the task-board *domain*.
 
-Anchored to what Atrium actually has: Tailwind v4 with `@theme` tokens, Apple HIG-inspired type + color + spacing scales in `src/index.css`, primitives in `src/components/ui/` (Button, Badge, Card, Select, IconButton), and feature components (TaskCard, Sidebar, Board, etc.) that consume them.
+Anchored to what Atrium actually has: Tailwind v4 with `@theme` tokens, Apple HIG-inspired type + color + spacing scales in `src/index.css`, primitives in `src/components/ui/` (Button, Badge, Card, Select, IconButton, Input, Checkbox, Avatar, ButtonGroup), and feature components (TaskCard, Sidebar, Board, etc.) that consume them.
+
+Two axes to separate when talking about visual issues: **which aesthetic lane** (the overall philosophy) and **how well the lane is executed** (drift, rhythm, polish within it). Earlier phases of refinement worked *within* the Apple-HIG lane; a redesign might *switch lanes* entirely.
 
 ---
+
+## Aesthetic lane
+
+The overall visual philosophy chosen for the product. Lanes differ in their answer to "how much visual weight should chrome have?" — there is no single correct answer, but mixing lanes within one product reads as incoherent.
+
+| Term | Definition | Aliases to avoid |
+|---|---|---|
+| **Aesthetic lane** | The overall visual philosophy — governs all layering decisions below (color, elevation, border weight, decoration density) | Look-and-feel, theme |
+| **Maximalist lane** | Chrome is tactile — shadows, color-mix fills, pill shapes, gradients, vibrancy. Atrium's current lane (Apple HIG-flavored) | Rich, decorated |
+| **Minimalist lane** | Chrome is restrained — hairline borders, flat rectangles, monochrome palette, sparse color. GitHub's board/issue UIs live here | Flat, plain |
+| **Data-first** | Layout optimized for scanning many rows of content (dense lists, small chrome) | Dense |
+| **Chrome-first** | Layout optimized for showcasing a few elements (breathing room, prominent chrome) | Hero-ed |
+| **Restraint** | Deliberate reduction of visual elements, color, or decoration — a *discipline*, not an absence | Minimalism (too broad) |
+| **Subtractive design** | A design pass that removes elements rather than adding them | Stripping |
 
 ## Visual hierarchy
 
@@ -57,6 +73,9 @@ How text is shaped.
 | **Contrast (ratio)** | Luminance ratio between foreground and background — WCAG AA requires 4.5:1 for body text, 3:1 for large text | Visibility |
 | **Accent** | The single hue that marks interactive / active state (Atrium: Apple blue) | Highlight |
 | **Surface** | A background layer — Atrium has `bg`, `bg-secondary`, `bg-tertiary`, `bg-card` | Fill (too vague) |
+| **Monochrome palette** | Grayscale + one accent (minimalist lane default); contrasts with Atrium's current multi-hue Apple palette | Black-and-white |
+| **Decorative color** | Color applied for warmth/variety without a functional role — the first thing to cut in subtractive design | Theming |
+| **Functional color** | Color that encodes state (red = error, green = success, blue = interactive) — preserved even in restraint | Semantic color |
 
 ## Elevation & depth
 
@@ -66,6 +85,22 @@ How text is shaped.
 | **Shadow** | The visual treatment that conveys elevation | Drop-shadow |
 | **Layer** | A horizontal plane in the z-stack (base, card, modal, tooltip, toast) | Z-level |
 | **Backdrop** | The dimmed/blurred layer behind a modal that visually demotes the content beneath | Overlay |
+| **Flatness** | The opposite of elevation — rectangles with no shadow; structure defined by borders instead | — |
+| **Chrome** | The visual surround around content — toolbars, borders, frames, tabs. "Heavy chrome" = prominent surround; "light chrome" = hairlines | — |
+| **Hairline border** | A 0.5px or 1px border used to separate regions without adding visual weight (minimalist lane's substitute for shadow) | Divider, line |
+| **Border weight** | Thickness of a border: hairline (0.5px), thin (1px), medium (2px), thick (3px+). Defines chrome presence | — |
+| **Vibrancy** | Translucent background with backdrop blur — a maximalist effect (Atrium currently uses this on modal headers) | Glass, frosted |
+
+## Shape & decoration
+
+| Term | Definition | Aliases to avoid |
+|---|---|---|
+| **Pill** | Rounded-full shape (radius: 9999px) — tactile, maximalist. Atrium currently uses pills for badges, filter buttons, assignee chips | Rounded |
+| **Rounded rectangle** | Moderate radius (~4–8px) — minimalist lane's default shape for chips, buttons, cards | — |
+| **Sharp rectangle** | Zero or near-zero radius — most restrained; used for dense data rows | Square |
+| **Decoration density** | Count of visual flourishes per element (dots, gradients, fills, borders). High = maximalist; low = minimalist | Chrome density |
+| **Variance** | How visually distinct two items in a set appear — high variance (pill vs rectangle in same row) reads as inconsistent | Variety |
+| **Uniformity** | Low variance — sibling elements look *the same* (same shape, same chrome, same density) | Consistency (too vague) |
 
 ## Component taxonomy
 
@@ -147,11 +182,21 @@ What separates "works" from "feels crafted."
 > **You**: "It's missing polish."
 > **Me**: "Most common gap is missing **states** (focus, empty, loading, error), not missing animation. I'd audit states before touching micro-interactions."
 
+> **You**: "I want it cleaner — more uniform, like GitHub."
+> **Me**: "That's a **redesign**, not a **refinement** — switching from the **maximalist lane** (Atrium's current pills + shadows + vibrancy) to the **minimalist lane** (hairline borders, flat rectangles, monochrome). Different scope, different plan, different risk. Want me to spec that as its own task?"
+
+> **You**: "Are shadows just out?"
+> **Me**: "In the minimalist lane, yes — **flatness** plus **hairline borders** replaces **elevation** as the way to convey layers. **Functional color** (red for error, green for success) stays; **decorative color** goes."
+
 ## Flagged ambiguities
 
 - **"Card"** is overloaded in this repo: `src/components/ui/Card.jsx` is a **Primitive**; `src/components/TaskCard.jsx` is a **Feature component**. When you say "the card," say which tier you mean or say "**task card**" vs "the card primitive."
-- **"Refinement"** is what you reached for in natural language; it actually decomposes into **Rhythm**, **Drift**, **States**, and **Polish**. Prefer the specific term — "fix token drift in TaskCard" is actionable; "make the UI more refined" is not.
-- **"Padding"** and **"Spacing"** are used interchangeably but shouldn't be. **Padding** is inside a box; **spacing** is between boxes. Mixing them in conversation hides whether you mean a layout issue or a component issue.
+- **"Refinement"** vs **"Redesign"** is the most load-bearing distinction in this file. **Refinement** stays inside the current **aesthetic lane** and fixes drift/rhythm/polish (what PRs #27–#32 did). **Redesign** switches lanes — different shadows, different shapes, different palette. Name which one before starting work.
+- **"Clean"** is the most overloaded word used for UI. Decompose into: (a) **uniformity** (low variance between siblings), (b) **flatness** (no shadows), (c) **restraint** (less decorative color), (d) **data-first** (dense, small chrome). Pick one.
+- **"Uniform"** vs **"Consistent"**: **Consistency** = using the same tokens everywhere (what refinement gave us). **Uniformity** = sibling elements looking visibly identical (fewer pill-vs-rectangle contrasts, fewer one-off fills). They are orthogonal — a consistent UI can still feel non-uniform.
+- **"GitHub-like"** as a reference means: **minimalist lane** + **hairline borders** + **monochrome palette** + **data-first density** + **rounded rectangles, not pills**. Always unpack before using.
+- **"Refined"** is used in both lanes but means different things. Maximalist refined = Apple's craft (precise easing, optical alignment); minimalist refined = GitHub/Linear's discipline (no wasted pixel, consistent hairlines). Pick the lane first.
+- **"Padding"** and **"Spacing"** are used interchangeably but shouldn't be. **Padding** is inside a box; **spacing** is between boxes. Mixing them hides whether you mean a layout issue or a component issue.
 - **"Apple-style"** is used as shorthand for the token system but Apple HIG is a full philosophy (**optical alignment**, **rhythm**, **restraint in color**, **precise easing**). "Using the Apple tokens" ≠ "looks Apple-like."
 - **"Sidebar"** means both the left nav in `Sidebar.jsx` and occasionally the right task detail panel in `TaskModal`. Prefer "**left nav**" and "**task detail panel**."
 - **"Modal"** is used for any overlay; technically an overlay without a **backdrop** is a popover, not a modal.
