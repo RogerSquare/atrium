@@ -21,6 +21,20 @@ test('review + branch without task id → Case 2 error', () => {
   assert.deepStrictEqual(result.received, { github_branch: 'feat/unrelated' });
 });
 
+// Cycle 3: valid branch containing task id → null (passes).
+test('review + branch with task id → null', () => {
+  const { validateReviewLinkage } = requireFresh();
+  const task = { id: 'feat-x-001', status: 'review', github_branch: 'feat/feat-x-001', github_pr_url: null, tags: [] };
+  assert.strictEqual(validateReviewLinkage(task, 'todo'), null);
+});
+
+// Cycle 4: grandfather — task already in review, subsequent edit → null (no validation).
+test('previousStatus=review → null (grandfathered)', () => {
+  const { validateReviewLinkage } = requireFresh();
+  const task = { id: 'feat-x-001', status: 'review', github_branch: null, github_pr_url: null, tags: [] };
+  assert.strictEqual(validateReviewLinkage(task, 'review'), null);
+});
+
 function requireFresh() {
   const p = require.resolve('./branchValidator');
   delete require.cache[p];

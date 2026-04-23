@@ -6,6 +6,11 @@
 module.exports = { validateReviewLinkage };
 
 function validateReviewLinkage(task, previousStatus) {
+  // Grandfather: validation runs only on fresh transitions INTO review.
+  // Existing review/done tasks are grandfathered (~99% of the board lacks linkage fields).
+  if (previousStatus === 'review' || previousStatus === 'done') return null;
+  if (task.status !== 'review') return null;
+
   const branch = typeof task.github_branch === 'string' && task.github_branch.trim() ? task.github_branch : null;
   const prUrl = typeof task.github_pr_url === 'string' && task.github_pr_url.trim() ? task.github_pr_url : null;
   if (!branch && !prUrl) {
