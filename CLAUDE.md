@@ -347,6 +347,10 @@ Non-trivial work should be split into three sequential phases via the `phase-res
 - Phases are chained via `depends_on` (runtime pointer) and optionally `parent_task` (metadata).
 - If a task has no `phase-*` tag, it is a regular single-phase task and these rules do not apply.
 
+## Worker-loop mode (atrium_wait_for_next_todo)
+
+The MCP tool `atrium_wait_for_next_todo` long-polls for tasks promoted to `todo` and atomically claims them (status → `in_progress`, assignee → caller). Use this when the user asks you to "watch" for tasks or "pick them up as they arrive". Loop: call tool → emit `Picked up <id>: <title>` → execute → call tool again. Server caps each call at ~5min (env `ATRIUM_WAIT_MAX_SECONDS`, default 300s); timeouts return `{ task: null, timeout: true }` — just re-call. Full spec in the Atrium skill at `~/.claude/skills/atrium/skill.md`.
+
 ## Test-Driven Development (opt-in via `tdd` tag)
 
 For tasks tagged `tdd`, `phase-implement` follows red-green-refactor (inspired by Matt Pocock's tdd skill — github.com/mattpocock/skills/tree/main/tdd). Opt-in because docs, config, memory, and visual UI tweaks have no meaningful test surface.
