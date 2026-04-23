@@ -57,7 +57,7 @@ export default function ProjectProgress({ tasks, services = [], activeProject, o
           <BarChart3 className="w-4 h-4" style={{ color: 'var(--accent-app)' }} />
         </div>
         <span style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)' }}>Progress</span>
-        <span className="ml-auto" style={{ fontSize: 'var(--text-footnote)', fontWeight: 'var(--font-bold)', color: 'var(--text-app)' }}>{donePercent}%</span>
+        <span className="ml-auto" style={{ fontSize: 'var(--text-footnote)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>{donePercent}%</span>
       </header>
 
       <div style={{ padding: '16px' }}>

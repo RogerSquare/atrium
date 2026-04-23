@@ -307,7 +307,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
                         style={{
                           fontFamily: 'var(--font-mono)',
                           fontSize: 'var(--text-caption2)',
-                          fontWeight: 700,
+                          fontWeight: 600,
                           color: cat ? cat.color : 'var(--text-tertiary)',
                           background: cat ? `color-mix(in srgb, ${cat.color} 14%, transparent)` : 'var(--fill-secondary)',
                           padding: 'var(--space-1) var(--space-2)',
@@ -468,7 +468,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
                         title={name}
                         color="white"
                         background={VIEWER_COLORS[i % VIEWER_COLORS.length]}
-                        style={{ border: '2px solid var(--bg-card)', fontWeight: 'var(--font-bold)' }}
+                        style={{ border: '2px solid var(--bg-card)', fontWeight: 'var(--font-semibold)' }}
                       />
                     ))}
                   </div>

@@ -167,7 +167,7 @@ function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
             {viewers.length > 0 && (
               <div className="flex -space-x-1.5 shrink-0">
                 {viewers.slice(0, 3).map((v, i) => (
-                  <div key={v} className="w-5 h-5 rounded-full flex items-center justify-center text-white" style={{ fontSize: '8px', fontWeight: 'var(--font-bold)', backgroundColor: VIEWER_COLORS[i % VIEWER_COLORS.length], border: '2px solid var(--bg-card)' }} title={v}>{v[0]?.toUpperCase()}</div>
+                  <div key={v} className="w-5 h-5 rounded-full flex items-center justify-center text-white" style={{ fontSize: '8px', fontWeight: 'var(--font-semibold)', backgroundColor: VIEWER_COLORS[i % VIEWER_COLORS.length], border: '2px solid var(--bg-card)' }} title={v}>{v[0]?.toUpperCase()}</div>
                 ))}
               </div>
             )}
@@ -193,7 +193,7 @@ function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
             <button onClick={() => setEditingCell({ taskId: task.id, field: 'assignee' })} className="flex items-center gap-1.5" style={{ fontSize: 'var(--text-caption1)', color: task.assignee ? 'var(--text-muted)' : 'var(--text-tertiary)', transition: `color var(--duration-fast)` }}>
               {task.assignee ? (
                 <>
-                  <div className="w-4 h-4 rounded-full flex items-center justify-center text-white shrink-0" style={{ fontSize: '8px', fontWeight: 'var(--font-bold)', background: 'var(--gray-2)' }}>{task.assignee.charAt(0).toUpperCase()}</div>
+                  <div className="w-4 h-4 rounded-full flex items-center justify-center text-white shrink-0" style={{ fontSize: '8px', fontWeight: 'var(--font-semibold)', background: 'var(--gray-2)' }}>{task.assignee.charAt(0).toUpperCase()}</div>
                   <span className="truncate max-w-[80px]">{task.assignee}</span>
                 </>
               ) : '—'}

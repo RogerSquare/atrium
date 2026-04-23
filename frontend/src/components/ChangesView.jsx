@@ -480,7 +480,7 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
               <span
                 style={{
                   fontSize: '10px',
-                  fontWeight: 700,
+                  fontWeight: 600,
                   color: 'var(--text-tertiary)',
                   letterSpacing: '0.05em',
                   textTransform: 'uppercase',
@@ -495,7 +495,7 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                   background: 'var(--fill-secondary)',
                   color: 'var(--text-tertiary)',
                   fontSize: '10px',
-                  fontWeight: 700,
+                  fontWeight: 600,
                   minWidth: '20px',
                   textAlign: 'center',
                 }}
@@ -536,7 +536,7 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                   <span
                     style={{
                       fontSize: '10px',
-                      fontWeight: 700,
+                      fontWeight: 600,
                       color: 'var(--text-tertiary)',
                       letterSpacing: '0.05em',
                       textTransform: 'uppercase',
@@ -803,7 +803,7 @@ function UnlinkedSection({ detached }) {
             background: 'var(--fill-secondary)',
             color: 'var(--text-tertiary)',
             fontSize: '10px',
-            fontWeight: 700,
+            fontWeight: 600,
             minWidth: '20px',
             textAlign: 'center',
           }}
@@ -811,7 +811,7 @@ function UnlinkedSection({ detached }) {
           {sorted.length}
         </span>
         <span className="flex-1" />
-        <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-muted)', textTransform: 'none', fontWeight: 400 }}>
+        <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-muted)', textTransform: 'none', fontWeight: 500 }}>
           {expanded ? 'Hide' : 'Show'}
         </span>
       </button>
