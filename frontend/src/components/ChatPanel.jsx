@@ -55,7 +55,7 @@ export default function ChatPanel({ user, socket, messages, onlineUsers, typingU
       <div
         className="fixed bottom-4 right-4 z-50 cursor-pointer apple-press apple-hover hidden sm:block"
         onClick={() => onMinimize(false)}
-        style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-popover)', padding: 'var(--space-2) var(--space-4)' }}
+        style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)', padding: 'var(--space-2) var(--space-4)' }}
       >
         <div className="flex items-center gap-2">
           <span className="animate-gentle-pulse" style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--apple-green)' }} />
@@ -70,7 +70,7 @@ export default function ChatPanel({ user, socket, messages, onlineUsers, typingU
     <div
       className="fixed inset-0 sm:inset-auto sm:bottom-4 sm:right-4 z-50 w-full h-full sm:w-[380px] sm:h-[540px] flex flex-col overflow-hidden"
       style={{ background: 'var(--bg-card)', borderRadius: '0', boxShadow: 'var(--shadow-popover)' }}
-      ref={el => { if (el && window.innerWidth >= 640) el.style.borderRadius = 'var(--radius-xl)' }}
+      ref={el => { if (el && window.innerWidth >= 640) el.style.borderRadius = 'var(--radius-md)' }}
     >
       {/* Header */}
       <div className="shrink-0 flex items-center justify-between" style={{ padding: 'var(--space-2) var(--space-3)', borderBottom: 'var(--border-hairline)', background: 'var(--bg-card)' }}>

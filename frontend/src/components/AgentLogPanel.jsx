@@ -24,7 +24,7 @@ export default function AgentLogPanel({ task, socket, agentRunning, onStartAgent
   const handleStart = async () => { setConfirmStart(false); setLogs([]); setCompleted(false); setExitCode(null); await onStartAgent(task.id) }
 
   return (
-    <div className="overflow-hidden" style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-secondary)' }}>
+    <div className="overflow-hidden" style={{ borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)' }}>
       {/* Controls bar */}
       <div className="flex items-center justify-between" style={{ padding: '10px 14px' }}>
         <div className="flex items-center gap-2">
@@ -41,7 +41,7 @@ export default function AgentLogPanel({ task, socket, agentRunning, onStartAgent
         </div>
         <div className="flex items-center gap-1.5">
           {logs.length > 0 && !agentRunning && (
-            <button onClick={() => setLogs([])} className="apple-press" style={{ padding: '5px', borderRadius: 'var(--radius-xs)', color: 'var(--text-tertiary)' }} title="Clear logs">
+            <button onClick={() => setLogs([])} className="apple-press" style={{ padding: '5px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)' }} title="Clear logs">
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           )}

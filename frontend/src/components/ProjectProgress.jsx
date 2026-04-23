@@ -51,7 +51,7 @@ export default function ProjectProgress({ tasks, services = [], activeProject, o
   const donePercent = Math.round((counts.done / total) * 100)
 
   return (
-    <div className="h-full overflow-hidden" style={{ background: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', border: 'var(--border-hairline)' }}>
+    <div className="h-full overflow-hidden" style={{ background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: 'var(--border-hairline)' }}>
       <header className="flex items-center gap-2" style={{ padding: '12px 16px', borderBottom: '0.5px solid var(--separator)' }}>
         <div style={{ padding: '6px', borderRadius: 'var(--radius-sm)', background: 'color-mix(in srgb, var(--accent-app) 12%, transparent)' }}>
           <BarChart3 className="w-4 h-4" style={{ color: 'var(--accent-app)' }} />
@@ -121,7 +121,7 @@ export default function ProjectProgress({ tasks, services = [], activeProject, o
                     <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: isRunning ? 'var(--apple-green)' : 'var(--apple-red)', boxShadow: isRunning ? '0 0 6px var(--apple-green)' : 'none', flexShrink: 0 }} />
                     <span className="truncate flex-1" style={{ fontSize: 'var(--text-caption1)', color: 'var(--text-app)' }} title={service.name}>{service.name}</span>
                     <span className="shrink-0" style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>:{service.port}</span>
-                    <button onClick={() => handleToggleService(service)} className="apple-press shrink-0" style={{ padding: '4px', borderRadius: 'var(--radius-xs)', color: isRunning ? 'var(--apple-red)' : 'var(--apple-green)' }} title={isRunning ? 'Stop' : 'Start'}>
+                    <button onClick={() => handleToggleService(service)} className="apple-press shrink-0" style={{ padding: '4px', borderRadius: 'var(--radius-sm)', color: isRunning ? 'var(--apple-red)' : 'var(--apple-green)' }} title={isRunning ? 'Stop' : 'Start'}>
                       {isRunning ? <Square className="w-3.5 h-3.5" fill="currentColor" /> : <Play className="w-3.5 h-3.5" fill="currentColor" />}
                     </button>
                   </div>

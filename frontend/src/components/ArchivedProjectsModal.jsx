@@ -20,8 +20,8 @@ function ArchivedProjectsModal({ archivedProjects, onClose, onUnarchiveProject }
         className="w-full sm:w-[540px] sm:max-w-[92vw] sm:max-h-[80vh] h-full sm:h-auto flex flex-col"
         style={{
           background: 'var(--bg-card)',
-          borderRadius: 'var(--radius-lg)',
-          boxShadow: 'var(--shadow-xl)',
+          borderRadius: 'var(--radius-md)',
+          boxShadow: 'var(--shadow-popover)',
           overflow: 'hidden',
         }}
       >

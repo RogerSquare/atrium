@@ -1024,7 +1024,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
       <div
         onClick={(e) => e.stopPropagation()}
         className="flex overflow-hidden animate-slide-in"
-        style={{ width: '95vw', height: '90vh', maxWidth: '1800px', background: 'var(--bg-app)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-popover)' }}
+        style={{ width: '95vw', height: '90vh', maxWidth: '1800px', background: 'var(--bg-app)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)' }}
       >
         {/* Left: Design Chat */}
         <div className="flex flex-col" style={{ width: '420px', minWidth: '360px', borderRight: '0.5px solid var(--separator)' }}>
@@ -1035,8 +1035,8 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
 
             {/* Mode toggle */}
             <div className="flex items-center gap-0.5 ml-2" style={{ background: 'var(--fill-secondary)', borderRadius: 'var(--radius-sm)', padding: '2px' }}>
-              <button onClick={() => setMode('refine')} className="apple-press" style={{ padding: '3px 8px', borderRadius: 'var(--radius-xs)', fontSize: '10px', fontWeight: 'var(--font-semibold)', color: mode === 'refine' ? 'var(--accent-app)' : 'var(--text-muted)', background: mode === 'refine' ? 'var(--bg-card)' : 'transparent' }}>Refine</button>
-              <button onClick={() => setMode('prototype')} className="apple-press" style={{ padding: '3px 8px', borderRadius: 'var(--radius-xs)', fontSize: '10px', fontWeight: 'var(--font-semibold)', color: mode === 'prototype' ? 'var(--apple-purple)' : 'var(--text-muted)', background: mode === 'prototype' || mode === 'implement' ? 'var(--bg-card)' : 'transparent' }}>Prototype</button>
+              <button onClick={() => setMode('refine')} className="apple-press" style={{ padding: '3px 8px', borderRadius: 'var(--radius-sm)', fontSize: '10px', fontWeight: 'var(--font-semibold)', color: mode === 'refine' ? 'var(--accent-app)' : 'var(--text-muted)', background: mode === 'refine' ? 'var(--bg-card)' : 'transparent' }}>Refine</button>
+              <button onClick={() => setMode('prototype')} className="apple-press" style={{ padding: '3px 8px', borderRadius: 'var(--radius-sm)', fontSize: '10px', fontWeight: 'var(--font-semibold)', color: mode === 'prototype' ? 'var(--apple-purple)' : 'var(--text-muted)', background: mode === 'prototype' || mode === 'implement' ? 'var(--bg-card)' : 'transparent' }}>Prototype</button>
             </div>
 
             <div className="flex-1" />
@@ -1441,7 +1441,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
                   <div
                     style={{
                       display: 'inline-block', maxWidth: '90%', textAlign: 'left',
-                      padding: '10px 14px', borderRadius: 'var(--radius-lg)',
+                      padding: '10px 14px', borderRadius: 'var(--radius-md)',
                       fontSize: 'var(--text-footnote)', lineHeight: '1.5',
                       color: 'var(--text-app)',
                       background: msg.role === 'user' ? 'color-mix(in srgb, var(--accent-app) 15%, transparent)' : 'var(--bg-secondary)',

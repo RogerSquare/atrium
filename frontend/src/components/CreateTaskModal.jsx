@@ -52,7 +52,7 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
       <div
         className="w-full h-full sm:h-auto sm:max-w-2xl flex flex-col overflow-hidden"
         style={{ background: 'var(--bg-card)', borderRadius: '0', boxShadow: 'var(--shadow-popover)' }}
-        ref={el => { if (el && window.innerWidth >= 640) el.style.borderRadius = 'var(--radius-xl)' }}
+        ref={el => { if (el && window.innerWidth >= 640) el.style.borderRadius = 'var(--radius-md)' }}
       >
         {/* Header */}
         <header className="shrink-0 flex justify-between items-center" style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '0.5px solid var(--separator)' }}>
@@ -116,7 +116,7 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
           </div>
 
           {/* Fields — grouped */}
-          <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', background: 'var(--fill-secondary)', marginBottom: 'var(--space-5)' }}>
+          <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--fill-secondary)', marginBottom: 'var(--space-5)' }}>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label style={{ display: 'block', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-1)' }}>Project</label>

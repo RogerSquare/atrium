@@ -341,7 +341,6 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                   fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)',
                   color: activeTab === tab.id ? 'var(--text-app)' : 'var(--text-muted)',
                   background: activeTab === tab.id ? 'var(--bg-card)' : 'transparent',
-                  boxShadow: activeTab === tab.id ? 'var(--shadow-sm)' : 'none',
                 }}
               >
                 <Icon className="w-3.5 h-3.5 shrink-0" />
@@ -492,7 +491,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                                   width: '52px', height: '52px',
                                   borderRadius: '50%',
                                   background: t.bg,
-                                  boxShadow: isActive ? `0 0 0 3px var(--accent-app), var(--shadow-md)` : 'var(--shadow-sm)',
+                                  boxShadow: isActive ? `0 0 0 3px var(--accent-app)` : 'none',
                                   border: `2px solid ${t.bg === '#000000' || t.bg === '#1c1c1e' || t.bg === '#1e1e1e' || t.bg === '#0f1923' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'}`,
                                   transition: `box-shadow var(--duration-fast) var(--ease-default)`,
                                 }}
@@ -500,7 +499,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                                 <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: t.accent }} />
                               </div>
                               {isActive && (
-                                <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center text-white" style={{ background: 'var(--accent-app)', boxShadow: 'var(--shadow-sm)' }}>
+                                <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center text-white" style={{ background: 'var(--accent-app)' }}>
                                   <Check className="w-3 h-3" />
                                 </div>
                               )}
@@ -998,7 +997,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
         </div>
       )}
 
-      <div className="overflow-hidden flex flex-col" style={{ width: '960px', height: '620px', background: 'var(--bg-card)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-popover)' }} onClick={(e) => e.stopPropagation()}>
+      <div className="overflow-hidden flex flex-col" style={{ width: '960px', height: '620px', background: 'var(--bg-card)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)' }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <header className="shrink-0 flex justify-between items-center" style={{ padding: '12px 20px', borderBottom: 'var(--border-hairline)', background: 'var(--bg-card)' }}>
           <h2 style={{ fontSize: 'var(--text-title3)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>Settings</h2>
@@ -1029,7 +1028,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
           <div className="flex gap-2">
             <button onClick={handleClose} className="apple-press" style={{ padding: '8px 16px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Close</button>
             <button onClick={handleSave} disabled={saving || loading || !hasUnsavedChanges}
-              className="apple-press text-white flex items-center gap-2" style={{ padding: '8px 18px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', background: 'var(--accent-app)', boxShadow: 'var(--shadow-sm)', border: 'none', cursor: 'pointer', opacity: (saving || loading || !hasUnsavedChanges) ? 0.3 : 1 }}>
+              className="apple-press text-white flex items-center gap-2" style={{ padding: '8px 18px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', background: 'var(--accent-app)', border: 'none', cursor: 'pointer', opacity: (saving || loading || !hasUnsavedChanges) ? 0.3 : 1 }}>
               <Save className="w-3.5 h-3.5" /> {saving ? 'Saving...' : 'Save'}
             </button>
           </div>

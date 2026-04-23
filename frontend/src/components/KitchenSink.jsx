@@ -55,7 +55,7 @@ export default function KitchenSink({ onClose, currentTheme, onSetTheme }) {
         className="custom-scrollbar"
         style={{
           width: '90vw', maxWidth: '1000px', maxHeight: '90vh', overflow: 'auto',
-          background: 'var(--bg-app)', borderRadius: 'var(--radius-lg)',
+          background: 'var(--bg-app)', borderRadius: 'var(--radius-md)',
           padding: '24px', position: 'relative',
         }}
         onClick={(e) => e.stopPropagation()}

@@ -14,7 +14,7 @@ export default function BulkActionBar({ selectedIds, totalVisible, onSelectAll, 
       style={{
         padding: '10px 16px',
         marginBottom: 'var(--space-4)',
-        borderRadius: 'var(--radius-lg)',
+        borderRadius: 'var(--radius-md)',
         background: 'color-mix(in srgb, var(--bg-card) 85%, transparent)',
         border: 'var(--border-hairline)',
       }}
