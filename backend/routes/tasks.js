@@ -602,7 +602,7 @@ async function claimTaskForWait(id, assignee) {
       { timestamp: now, action: `Status changed to IN PROGRESS by ${assignee}` },
       { timestamp: now, action: `assignee changed to ${assignee} (auto-claim by wait-for-next-todo)` },
     ]);
-    trimActivityLog(parsed.data);
+    trimActivityLog(id, parsed.data);
     const updatedContent = matter.stringify(parsed.content, parsed.data);
     atomicWriteFileSync(filePath, updatedContent);
     const relativePath = path.relative(TASKS_DIR, path.dirname(filePath));
