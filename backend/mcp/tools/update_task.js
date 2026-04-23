@@ -6,6 +6,9 @@ const ALLOWED_FIELDS = new Set([
   'title', 'status', 'priority', 'assignee', 'type', 'component',
   'tags', 'files_affected', 'parent_task', 'depends_on', 'due_date',
   'content', 'project',
+  // Changes-view linkage fields — accepted by backend PUT /api/tasks/:id (tasks.js:726)
+  // and required by the closing checklist in the Atrium skill + CLAUDE.md.
+  'github_branch', 'github_pr_url',
 ]);
 
 module.exports = {
