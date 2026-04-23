@@ -283,13 +283,13 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
         style={{
           background: 'var(--bg-card)',
           borderRadius: '0',
-          boxShadow: 'var(--shadow-xl)',
+          boxShadow: 'var(--shadow-popover)',
         }}
         // Desktop: rounded sheet
         ref={el => { if (el && window.innerWidth >= 640) el.style.borderRadius = 'var(--radius-xl)' }}
       >
         {/* Header */}
-        <header className="shrink-0 vibrancy-thin" style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '0.5px solid var(--separator)', background: 'color-mix(in srgb, var(--bg-card) 85%, transparent)' }}>
+        <header className="shrink-0" style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: 'var(--border-hairline)', background: 'var(--bg-card)' }}>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2 flex-wrap">
               {/* Category dropdown + editable task id */}
@@ -336,7 +336,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
                               borderRadius: 'var(--radius-md)',
                               background: 'var(--bg-card)',
                               border: '1px solid var(--separator)',
-                              boxShadow: 'var(--shadow-lg)',
+                              boxShadow: 'var(--shadow-popover)',
                             }}
                           >
                             {CATEGORIES.map(c => (
@@ -636,7 +636,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
                                 onClick={() => handleRestore(selectedVersion.filename)}
                                 variant="primary"
                                 pill={false}
-                                style={{ padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-caption1)', boxShadow: 'var(--shadow-sm)' }}
+                                style={{ padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-caption1)' }}
                               >
                                 <RotateCcw className="w-3.5 h-3.5" /> Restore
                               </Button>
@@ -822,7 +822,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
                 onClick={handleAddComment}
                 disabled={!newComment.trim()}
                 aria-label="Send comment"
-                style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'var(--accent-app)', color: 'white', boxShadow: 'var(--shadow-sm)' }}
+                style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'var(--accent-app)', color: 'white' }}
               >
                 <Send className="w-[18px] h-[18px]" />
               </IconButton>
@@ -843,7 +843,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
               variant="primary"
               pill={false}
               onClick={handleSaveEdit}
-              style={{ padding: 'var(--space-2) var(--space-6)', fontSize: 'var(--text-subhead)', boxShadow: 'var(--shadow-sm)' }}
+              style={{ padding: 'var(--space-2) var(--space-6)', fontSize: 'var(--text-subhead)' }}
             >
               Save Changes
             </Button>
