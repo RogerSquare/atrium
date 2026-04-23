@@ -3,7 +3,7 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import { Rows3, LayoutGrid, Layers, ChevronDown, ChevronRight, CheckSquare } from 'lucide-react'
 import TaskCard from './TaskCard'
 import useIsMobile from '../hooks/useIsMobile'
-import { Select, Button } from './ui'
+import { Select, Button, Checkbox } from './ui'
 
 const COLUMNS = [
   { id: 'draft', title: 'Draft' },
@@ -171,7 +171,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
         <div
           ref={provided.innerRef}
           {...provided.droppableProps}
-          className="flex-1 flex flex-col gap-2.5 min-h-[60px]"
+          className="flex-1 flex flex-col gap-2 min-h-[60px]"
           style={{
             padding: 'var(--space-2)',
             borderRadius: 'var(--radius-md)',
@@ -206,35 +206,57 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
 
     return (
       <div>
-        {/* Segmented control for columns */}
-        <div className="mb-3" style={{ padding: '3px', borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)', display: 'grid', gap: '2px', gridTemplateColumns: `repeat(${displayColumns.length}, 1fr)` }}>
+        {/* Segmented control for columns — grid wrapper around Button primitives */}
+        <div
+          role="tablist"
+          className="mb-3"
+          style={{
+            padding: 'var(--space-1)',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--bg-secondary)',
+            display: 'grid',
+            gap: 'var(--space-1)',
+            gridTemplateColumns: `repeat(${displayColumns.length}, 1fr)`,
+          }}
+        >
           {displayColumns.map(col => {
             const count = col.isSafety ? uncategorizedTasks.length : tasks.filter(t => t.status === col.id).length
             const isActive = col.id === activeColumn
             return (
-              <button
+              <Button
                 key={col.id}
+                variant={col.isSafety ? 'danger' : isActive ? 'secondary' : 'ghost'}
+                size="sm"
+                pill={false}
+                role="tab"
+                aria-selected={isActive}
                 onClick={() => setActiveColumn(col.id)}
-                className="apple-press flex items-center justify-center gap-1.5 min-h-[44px]"
+                className="justify-center"
                 style={{
-                  borderRadius: 'var(--radius-sm)',
-                  fontSize: 'var(--text-caption2)',
-                  fontWeight: 'var(--font-semibold)',
-                  color: col.isSafety ? 'var(--apple-red)' : isActive ? 'var(--text-app)' : 'var(--text-muted)',
+                  minHeight: '44px',
                   background: isActive ? 'var(--bg-card)' : 'transparent',
                   boxShadow: isActive ? 'var(--shadow-sm)' : 'none',
-                  transition: `all var(--duration-fast) var(--ease-default)`,
+                  color: col.isSafety ? 'var(--apple-red)' : isActive ? 'var(--text-app)' : 'var(--text-muted)',
                 }}
               >
                 {col.title}
-                <span style={{
-                  minWidth: '18px', height: '18px', fontSize: '10px', fontWeight: 'var(--font-bold)',
-                  borderRadius: 'var(--radius-full)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: isActive ? 'var(--accent-app)' : 'var(--fill-primary)', color: isActive ? 'white' : 'var(--text-muted)',
-                }}>
+                <span
+                  style={{
+                    minWidth: '18px',
+                    height: '18px',
+                    fontSize: 'var(--text-caption2)',
+                    fontWeight: 'var(--font-bold)',
+                    borderRadius: 'var(--radius-full)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: isActive ? 'var(--accent-app)' : 'var(--fill-primary)',
+                    color: isActive ? 'white' : 'var(--text-muted)',
+                  }}
+                >
                   {count}
                 </span>
-              </button>
+              </Button>
             )
           })}
         </div>
@@ -243,7 +265,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
           ref={scrollRef}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
-          className="flex flex-col gap-2.5 min-h-[200px]"
+          className="flex flex-col gap-2 min-h-[200px]"
           style={{
             padding: 'var(--space-3)',
             borderRadius: 'var(--radius-lg)',
@@ -299,7 +321,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
       {swimlanes ? (
         <div className="space-y-3">
           {/* Sticky column headers */}
-          <div className="flex overflow-x-auto px-1" style={{ gap: '2px' }}>
+          <div className="flex overflow-x-auto px-1" style={{ gap: 'var(--space-1)' }}>
             {displayColumns.filter(c => !c.isSafety).map(col => {
               const allColTasks = tasks.filter(t => t.status === col.id)
               const allSelected = selectable && allColTasks.length > 0 && allColTasks.every(t => selectedIds.includes(t.id))
@@ -308,7 +330,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                   key={col.id}
                   className={`flex-1 text-center flex items-center justify-center gap-2${selectable ? ' cursor-pointer' : ''}`}
                   style={{
-                    minWidth: '240px', padding: '6px 0', borderRadius: 'var(--radius-sm)',
+                    minWidth: '240px', padding: 'var(--space-2) 0', borderRadius: 'var(--radius-sm)',
                     background: allSelected ? 'color-mix(in srgb, var(--accent-app) 12%, var(--fill-secondary))' : 'var(--fill-secondary)',
                     transition: `all var(--duration-fast) var(--ease-default)`,
                   }}
@@ -320,14 +342,13 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                   title={selectable ? `Click to select all ${col.title} tasks` : undefined}
                 >
                   {selectable && (
-                    <div style={{
-                      width: '14px', height: '14px', borderRadius: 'var(--radius-xs)',
-                      border: `2px solid ${allSelected ? 'var(--accent-app)' : 'var(--gray-3)'}`,
-                      background: allSelected ? 'var(--accent-app)' : 'transparent',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                    }}>
-                      {allSelected && <svg className="w-2 h-2 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
-                    </div>
+                    <Checkbox
+                      checked={Boolean(allSelected)}
+                      indeterminate={!allSelected && allColTasks.some(t => selectedIds.includes(t.id))}
+                      onChange={() => onToggleSelectColumn?.(allColTasks.map(t => t.id))}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={`Select all ${col.title}`}
+                    />
                   )}
                   <span style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)' }}>{col.title}</span>
                 </div>
@@ -366,7 +387,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                           {/* Column label + count inside each lane */}
                           <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-2)', padding: '0 var(--space-2)' }}>
                             <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)' }}>{col.title}</span>
-                            <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '1px 7px', borderRadius: 'var(--radius-full)', minWidth: '20px', textAlign: 'center' }}>{colTasks.length}</span>
+                            <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '0 var(--space-2)', borderRadius: 'var(--radius-full)', minWidth: '20px', textAlign: 'center' }}>{colTasks.length}</span>
                           </div>
                           {renderDroppable(col, colTasks, `${col.id}__${laneName}`)}
                         </div>
@@ -402,24 +423,21 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                   tabIndex={selectable && !col.isSafety ? 0 : undefined}
                   aria-label={selectable && !col.isSafety ? `Select all ${col.title} tasks${colTasks.length > 0 && colTasks.every(t => selectedIds.includes(t.id)) ? ' (all selected)' : ''}` : undefined}
                   title={selectable && !col.isSafety ? `Click to select all ${col.title} tasks` : undefined}
-                  style={selectable && !col.isSafety ? { borderRadius: 'var(--radius-sm)', padding: '4px 8px', margin: '0 0 8px 0', transition: `all var(--duration-fast) var(--ease-default)`, background: colTasks.length > 0 && colTasks.every(t => selectedIds.includes(t.id)) ? 'color-mix(in srgb, var(--accent-app) 12%, transparent)' : undefined } : undefined}
+                  style={selectable && !col.isSafety ? { borderRadius: 'var(--radius-sm)', padding: 'var(--space-1) var(--space-2)', margin: '0 0 var(--space-2) 0', transition: `all var(--duration-fast) var(--ease-default)`, background: colTasks.length > 0 && colTasks.every(t => selectedIds.includes(t.id)) ? 'color-mix(in srgb, var(--accent-app) 12%, transparent)' : undefined } : undefined}
                 >
                   <div className="flex items-center gap-2">
                     {selectable && !col.isSafety && (
-                      <div style={{
-                        width: '16px', height: '16px', borderRadius: 'var(--radius-xs)',
-                        border: `2px solid ${colTasks.length > 0 && colTasks.every(t => selectedIds.includes(t.id)) ? 'var(--accent-app)' : 'var(--gray-3)'}`,
-                        background: colTasks.length > 0 && colTasks.every(t => selectedIds.includes(t.id)) ? 'var(--accent-app)' : 'transparent',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                      }}>
-                        {colTasks.length > 0 && colTasks.every(t => selectedIds.includes(t.id)) && (
-                          <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                        )}
-                      </div>
+                      <Checkbox
+                        checked={colTasks.length > 0 && colTasks.every(t => selectedIds.includes(t.id))}
+                        indeterminate={colTasks.some(t => selectedIds.includes(t.id)) && !colTasks.every(t => selectedIds.includes(t.id))}
+                        onChange={() => onToggleSelectColumn?.(colTasks.map(t => t.id))}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={`Select all ${col.title}`}
+                      />
                     )}
                     <span style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: col.isSafety ? 'var(--apple-red)' : 'var(--text-muted)', letterSpacing: 'var(--tracking-wide)' }}>{col.title}</span>
                   </div>
-                  <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '2px 8px', borderRadius: 'var(--radius-full)', minWidth: '24px', textAlign: 'center' }}>
+                  <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-full)', minWidth: '24px', textAlign: 'center' }}>
                     {colTasks.length}
                   </span>
                 </div>
