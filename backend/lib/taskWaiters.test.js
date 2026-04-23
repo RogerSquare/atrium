@@ -15,6 +15,22 @@ test('register + notify with matching task resolves', async () => {
   assert.strictEqual(task.id, 't-1');
 });
 
+// Cycle 2: register + notify with a NON-matching task does NOT resolve.
+test('register + notify with non-matching task does not resolve', async () => {
+  const { register, notify } = requireFresh();
+  const waiterPromise = register({ status: 'todo' });
+  // Race the waiter against a short sleep. If it resolves within the sleep, test fails.
+  const raced = await Promise.race([
+    waiterPromise.then(() => 'resolved'),
+    (async () => {
+      notify({ id: 't-2', status: 'in_progress' }); // not matching
+      await new Promise(r => setTimeout(r, 50));
+      return 'sleep-won';
+    })(),
+  ]);
+  assert.strictEqual(raced, 'sleep-won', 'waiter should not have resolved for non-matching task');
+});
+
 // Helper: re-require the module with a fresh in-memory waiter map.
 // Node caches requires, but the module's top-level `new Map()` is fresh per require
 // only if we decache. Use delete require.cache.
