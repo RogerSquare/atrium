@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, memo } from 'react'
 import { ChevronDown, ChevronRight, ChevronLeft, Folder, Plus, Trash2, UserCircle2, Clock, SlidersHorizontal, X, BarChart3, Activity, Play, Square, Settings as SettingsIcon, MessageCircle, Eye, LogOut, PanelLeftClose, PanelLeftOpen, AlertCircle, Palette, MoreHorizontal, Archive, HelpCircle } from 'lucide-react'
 import { API_BASE, apiFetch } from '../config'
+import { Button, IconButton, Select, Avatar } from './ui'
 
 const FILTER_TYPES = ['all', 'frontend', 'backend', 'fullstack', 'devops']
 const PRIORITY_OPTIONS = [{ value: 'all', label: 'All' }, { value: 'high', label: 'High' }, { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' }]
@@ -8,14 +9,27 @@ const PRIORITY_OPTIONS = [{ value: 'all', label: 'All' }, { value: 'high', label
 function SidebarSection({ title, collapsed: sectionCollapsed, onToggle, badge, children }) {
   return (
     <div>
-      <button onClick={onToggle} className="w-full flex items-center gap-2 apple-press" style={{ padding: '8px 14px', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', letterSpacing: 'var(--tracking-wide)' }}>
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-2 apple-press"
+        style={{
+          padding: 'var(--space-2) var(--space-3)',
+          fontSize: 'var(--text-caption1)',
+          fontWeight: 'var(--font-semibold)',
+          color: 'var(--text-tertiary)',
+          letterSpacing: 'var(--tracking-wide)',
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+        }}
+      >
         {sectionCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
         <span className="flex-1 text-left uppercase" style={{ fontSize: 'var(--text-caption2)' }}>{title}</span>
         {badge > 0 && (
-          <span style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: 'white', background: 'var(--accent-app)', borderRadius: 'var(--radius-full)', minWidth: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>{badge}</span>
+          <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: 'white', background: 'var(--accent-app)', borderRadius: 'var(--radius-full)', minWidth: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 var(--space-1)' }}>{badge}</span>
         )}
       </button>
-      {!sectionCollapsed && <div style={{ padding: '0 8px 8px' }}>{children}</div>}
+      {!sectionCollapsed && <div style={{ padding: `0 var(--space-2) var(--space-2)` }}>{children}</div>}
     </div>
   )
 }
@@ -84,36 +98,51 @@ function Sidebar({
   // Collapsed: icon-only sidebar
   if (collapsed) {
     return (
-      <div className={`${mobile ? 'flex' : 'hidden sm:flex'} flex-col items-center shrink-0`} style={{ width: '60px', background: 'var(--bg-secondary)', borderRight: '0.5px solid var(--separator)', padding: '12px 0', transition: `width var(--duration-slow) var(--ease-default)` }}>
-        <button onClick={onToggleCollapse} className="apple-press mb-4" style={{ padding: '8px', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }} title="Expand sidebar">
+      <div
+        className={`${mobile ? 'flex' : 'hidden sm:flex'} flex-col items-center shrink-0`}
+        style={{
+          width: '60px',
+          background: 'var(--bg-secondary)',
+          borderRight: '0.5px solid var(--separator)',
+          padding: 'var(--space-3) 0',
+          transition: `width var(--duration-slow) var(--ease-default)`,
+        }}
+      >
+        <IconButton onClick={onToggleCollapse} className="mb-4" aria-label="Expand sidebar" title="Expand sidebar">
           <PanelLeftOpen className="w-[18px] h-[18px]" />
-        </button>
-        <img src="/favicon.svg" alt="Logo" style={{ width: '28px', height: '28px', marginBottom: '12px', opacity: 0.7 }} />
+        </IconButton>
+        <img src="/favicon.svg" alt="Logo" style={{ width: '28px', height: '28px', marginBottom: 'var(--space-3)', opacity: 0.7 }} />
         <div className="flex-1" />
         <div className="flex flex-col gap-1 items-center mt-auto">
-          <button onClick={onOpenPreview} className="apple-press" style={{ padding: '8px', borderRadius: 'var(--radius-sm)', color: showPreview ? 'var(--accent-app)' : 'var(--text-muted)' }} title="Preview">
+          <IconButton onClick={onOpenPreview} aria-label="Preview" title="Preview" style={{ color: showPreview ? 'var(--accent-app)' : undefined }}>
             <Eye className="w-[18px] h-[18px]" />
-          </button>
+          </IconButton>
           {onOpenDesignStudio && (
-            <button onClick={onOpenDesignStudio} className="apple-press" style={{ padding: '8px', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }} title="Design Studio">
+            <IconButton onClick={onOpenDesignStudio} aria-label="Design Studio" title="Design Studio">
               <Palette className="w-[18px] h-[18px]" />
-            </button>
+            </IconButton>
           )}
-          <button onClick={onOpenChat} className="apple-press relative" style={{ padding: '8px', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }} title="Chat">
+          <IconButton onClick={onOpenChat} aria-label="Chat" title="Chat" className="relative">
             <MessageCircle className="w-[18px] h-[18px]" />
-            {chatUnread > 0 && <span style={{ position: 'absolute', top: '2px', right: '2px', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--apple-red)' }} />}
-          </button>
-          <button onClick={onOpenSettings} className="apple-press" style={{ padding: '8px', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }} title="Settings">
+            {chatUnread > 0 && <span style={{ position: 'absolute', top: 'var(--space-0)', right: 'var(--space-0)', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--apple-red)' }} />}
+          </IconButton>
+          <IconButton onClick={onOpenSettings} aria-label="Settings" title="Settings">
             <SettingsIcon className="w-[18px] h-[18px]" />
-          </button>
+          </IconButton>
           {onOpenHelp && (
-            <button onClick={onOpenHelp} className="apple-press" style={{ padding: '8px', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }} title="Help & Usage">
+            <IconButton onClick={onOpenHelp} aria-label="Help & Usage" title="Help & Usage">
               <HelpCircle className="w-[18px] h-[18px]" />
-            </button>
+            </IconButton>
           )}
-          <div className="w-7 h-7 rounded-full flex items-center justify-center text-white mt-1 cursor-pointer" style={{ fontSize: '11px', fontWeight: 'var(--font-bold)', background: 'var(--accent-app)' }} title={user?.username} onClick={onLogout}>
-            {user?.username?.charAt(0).toUpperCase()}
-          </div>
+          <Avatar
+            size="sm"
+            alt={user?.username}
+            color="white"
+            background="var(--accent-app)"
+            className="mt-1 cursor-pointer"
+            title={user?.username}
+            onClick={onLogout}
+          />
         </div>
       </div>
     )
@@ -123,26 +152,26 @@ function Sidebar({
   return (
     <div className={`${mobile ? 'flex' : 'hidden sm:flex'} flex-col shrink-0`} style={{ width: mobile ? '100%' : '260px', height: '100%', background: 'var(--bg-secondary)', borderRight: '0.5px solid var(--separator)', transition: `width var(--duration-slow) var(--ease-default)`, overflow: 'hidden' }}>
       {/* Header: logo + archive shortcut + collapse toggle */}
-      <div className="flex items-center justify-between shrink-0" style={{ padding: '14px 14px 10px' }}>
+      <div className="flex items-center justify-between shrink-0" style={{ padding: 'var(--space-3) var(--space-3) var(--space-2)' }}>
         <div className="flex items-center gap-2.5">
           <img src="/favicon.svg" alt="Logo" style={{ width: '26px', height: '26px' }} />
           <span style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)', letterSpacing: 'var(--tracking-tight)' }}>Atrium</span>
         </div>
         <div className="flex items-center gap-1">
           {archivedProjects.length > 0 && (
-            <button
+            <IconButton
+              size="sm"
               onClick={onOpenArchivedModal}
-              className="apple-press"
-              style={{ padding: '6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)' }}
               title={`Archived projects (${archivedProjects.length})`}
               aria-label={`Archived projects (${archivedProjects.length})`}
+              style={{ color: 'var(--text-tertiary)' }}
             >
               <Archive className="w-4 h-4" />
-            </button>
+            </IconButton>
           )}
-          <button onClick={onToggleCollapse} className="apple-press" style={{ padding: '6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)' }} title="Collapse sidebar">
+          <IconButton size="sm" onClick={onToggleCollapse} title="Collapse sidebar" aria-label="Collapse sidebar" style={{ color: 'var(--text-tertiary)' }}>
             <PanelLeftClose className="w-4 h-4" />
-          </button>
+          </IconButton>
         </div>
       </div>
 
@@ -151,7 +180,7 @@ function Sidebar({
 
       {/* Projects */}
       <SidebarSection title="Projects" collapsed={sectionsCollapsed.projects} onToggle={() => toggleSection('projects')}>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-1">
           {projects.map(proj => {
             const folder = proj.folder || proj
             const projName = proj.name || proj
@@ -159,39 +188,50 @@ function Sidebar({
             const count = tasks.filter(t => t.project === folder).length
             const menuOpen = projectMenuOpenId === folder
             return (
-              <div key={folder} className="relative">
+              <div key={folder} className="relative flex items-center group" style={{
+                padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)',
+                background: isActive ? 'var(--fill-secondary)' : 'transparent',
+                transition: `background var(--duration-fast) var(--ease-default)`,
+              }}>
                 <button
                   onClick={() => onSetActiveProject(folder)}
-                  className="w-full flex items-center gap-2.5 text-left apple-press group"
+                  className="flex-1 flex items-center gap-2 text-left apple-press"
                   style={{
-                    padding: '7px 10px', borderRadius: 'var(--radius-sm)',
                     fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)',
                     color: isActive ? 'var(--text-app)' : 'var(--text-muted)',
-                    background: isActive ? 'var(--fill-secondary)' : 'transparent',
+                    background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
                   }}
                 >
                   <Folder className="w-4 h-4 shrink-0" style={{ color: isActive ? 'var(--accent-app)' : 'var(--text-tertiary)' }} />
-                  <span className="truncate">{folder === 'Root' ? 'Unassigned' : projName}</span>
-                  <span style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: isActive ? 'var(--accent-app)' : 'var(--text-tertiary)', background: isActive ? 'color-mix(in srgb, var(--accent-app) 12%, transparent)' : 'var(--fill-secondary)', padding: '1px 6px', borderRadius: 'var(--radius-full)', minWidth: '18px', textAlign: 'center', flexShrink: 0 }}>{count}</span>
-                  <div className="flex-1" />
-                  {folder !== 'Root' && isActive && (
-                    <button onClick={(e) => { e.stopPropagation(); onDeleteProject() }} className="apple-press opacity-0 group-hover:opacity-100 shrink-0" style={{ padding: '2px', borderRadius: 'var(--radius-xs)', color: 'var(--apple-red)', transition: `opacity var(--duration-fast)` }} title="Delete">
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  )}
-                  {folder !== 'Root' && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setProjectMenuOpenId(menuOpen ? null : folder) }}
-                      className="apple-press opacity-0 group-hover:opacity-100 shrink-0"
-                      style={{ padding: '2px', borderRadius: 'var(--radius-xs)', color: 'var(--text-tertiary)', transition: `opacity var(--duration-fast)`, opacity: menuOpen ? 1 : undefined, minWidth: '20px', minHeight: '20px' }}
-                      title="More"
-                      aria-haspopup="menu"
-                      aria-expanded={menuOpen}
-                    >
-                      <MoreHorizontal className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                  <span className="truncate flex-1">{folder === 'Root' ? 'Unassigned' : projName}</span>
+                  <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: isActive ? 'var(--accent-app)' : 'var(--text-tertiary)', background: isActive ? 'color-mix(in srgb, var(--accent-app) 12%, transparent)' : 'var(--fill-secondary)', padding: '0 var(--space-2)', borderRadius: 'var(--radius-full)', minWidth: '18px', textAlign: 'center', flexShrink: 0 }}>{count}</span>
                 </button>
+                {folder !== 'Root' && isActive && (
+                  <IconButton
+                    size="sm"
+                    onClick={(e) => { e.stopPropagation(); onDeleteProject() }}
+                    className="opacity-0 group-hover:opacity-100"
+                    style={{ width: '20px', height: '20px', padding: 'var(--space-0)', color: 'var(--apple-red)' }}
+                    title="Delete"
+                    aria-label="Delete project"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </IconButton>
+                )}
+                {folder !== 'Root' && (
+                  <IconButton
+                    size="sm"
+                    onClick={(e) => { e.stopPropagation(); setProjectMenuOpenId(menuOpen ? null : folder) }}
+                    className={`opacity-0 group-hover:opacity-100 ${menuOpen ? 'opacity-100' : ''}`}
+                    style={{ width: '20px', height: '20px', padding: 'var(--space-0)', color: 'var(--text-tertiary)' }}
+                    title="More"
+                    aria-label="Project actions"
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpen}
+                  >
+                    <MoreHorizontal className="w-3.5 h-3.5" />
+                  </IconButton>
+                )}
                 {menuOpen && folder !== 'Root' && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setProjectMenuOpenId(null)} />
@@ -199,116 +239,170 @@ function Sidebar({
                       role="menu"
                       className="absolute right-2 z-50 animate-fade-in"
                       style={{
-                        top: 'calc(100% + 2px)',
+                        top: 'calc(100% + var(--space-0))',
                         minWidth: '160px',
-                        padding: '4px',
+                        padding: 'var(--space-1)',
                         borderRadius: 'var(--radius-md)',
                         background: 'var(--bg-card)',
                         border: '1px solid var(--separator)',
                         boxShadow: 'var(--shadow-lg)',
                       }}
                     >
-                      <button
+                      <Button
+                        variant="ghost"
+                        pill={false}
                         role="menuitem"
                         onClick={() => {
                           setProjectMenuOpenId(null)
                           onArchiveProject?.(folder, projName)
                         }}
-                        className="w-full flex items-center gap-2 apple-press text-left"
-                        style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', color: 'var(--text-app)', minHeight: '32px' }}
+                        className="w-full justify-start"
+                        style={{ minHeight: '32px', fontSize: 'var(--text-caption1)', color: 'var(--text-app)' }}
                       >
                         <Archive className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--text-tertiary)' }} />
                         <span>Archive</span>
-                      </button>
+                      </Button>
                     </div>
                   </>
                 )}
               </div>
             )
           })}
-          <button onClick={onCreateProject} className="w-full flex items-center gap-2.5 text-left apple-press" style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)' }}>
+          <Button
+            variant="ghost"
+            pill={false}
+            onClick={onCreateProject}
+            className="w-full justify-start"
+            style={{ padding: 'var(--space-2)', fontSize: 'var(--text-caption1)', color: 'var(--text-tertiary)' }}
+          >
             <Plus className="w-4 h-4 shrink-0" />
             <span>New Project</span>
-          </button>
+          </Button>
         </div>
       </SidebarSection>
 
-      <div style={{ height: '0.5px', background: 'var(--separator)', margin: '4px 14px' }} />
+      <div style={{ height: '0.5px', background: 'var(--separator)', margin: 'var(--space-1) var(--space-3)' }} />
 
       {/* Filters */}
       <SidebarSection title="Filters" collapsed={sectionsCollapsed.filters} onToggle={() => toggleSection('filters')} badge={activeFilterCount}>
         <div className="flex flex-col gap-1">
           {/* Quick toggles */}
-          <button onClick={() => setFilterAssignee(filterAssignee === 'mine' ? 'all' : 'mine')} className="w-full flex items-center gap-2.5 text-left apple-press" style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: filterAssignee === 'mine' ? 'var(--accent-app)' : 'var(--text-muted)', background: filterAssignee === 'mine' ? 'color-mix(in srgb, var(--accent-app) 10%, transparent)' : 'transparent' }}>
+          <Button
+            variant={filterAssignee === 'mine' ? 'secondary' : 'ghost'}
+            pill={false}
+            onClick={() => setFilterAssignee(filterAssignee === 'mine' ? 'all' : 'mine')}
+            className="w-full justify-start"
+            style={{ padding: 'var(--space-2)', fontSize: 'var(--text-caption1)' }}
+          >
             <UserCircle2 className="w-4 h-4 shrink-0" />
             My Tasks
-          </button>
-          <button onClick={() => setFilterToday(prev => !prev)} className="w-full flex items-center gap-2.5 text-left apple-press" style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: filterToday ? 'var(--accent-app)' : 'var(--text-muted)', background: filterToday ? 'color-mix(in srgb, var(--accent-app) 10%, transparent)' : 'transparent' }}>
+          </Button>
+          <Button
+            variant={filterToday ? 'secondary' : 'ghost'}
+            pill={false}
+            onClick={() => setFilterToday(prev => !prev)}
+            className="w-full justify-start"
+            style={{ padding: 'var(--space-2)', fontSize: 'var(--text-caption1)' }}
+          >
             <Clock className="w-4 h-4 shrink-0" />
             Updated Today
-          </button>
-          <button onClick={() => setFilterStale(prev => !prev)} className="w-full flex items-center gap-2.5 text-left apple-press" style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: filterStale ? 'var(--apple-orange)' : 'var(--text-muted)', background: filterStale ? 'color-mix(in srgb, var(--apple-orange) 10%, transparent)' : 'transparent' }}>
+          </Button>
+          <Button
+            variant={filterStale ? 'secondary' : 'ghost'}
+            pill={false}
+            onClick={() => setFilterStale(prev => !prev)}
+            className="w-full justify-start"
+            style={{
+              padding: 'var(--space-2)',
+              fontSize: 'var(--text-caption1)',
+              color: filterStale ? 'var(--apple-orange)' : undefined,
+              background: filterStale ? 'color-mix(in srgb, var(--apple-orange) 10%, transparent)' : undefined,
+            }}
+          >
             <AlertCircle className="w-4 h-4 shrink-0" />
             Stale Tasks
-          </button>
+          </Button>
 
           {/* Type */}
-          <div style={{ padding: '4px 10px' }}>
-            <span style={{ display: 'block', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>Type</span>
-            <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full cursor-pointer focus:outline-none" style={{ background: 'var(--fill-secondary)', border: 'none', borderRadius: 'var(--radius-sm)', padding: '6px 10px', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: filterType !== 'all' ? 'var(--accent-app)' : 'var(--text-muted)', textTransform: 'capitalize' }}>
+          <div style={{ padding: 'var(--space-1) var(--space-2)' }}>
+            <span style={{ display: 'block', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-1)' }}>Type</span>
+            <Select
+              fullWidth
+              active={filterType !== 'all'}
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              style={{ textTransform: 'capitalize' }}
+            >
               {FILTER_TYPES.map(t => <option key={t} value={t}>{t === 'all' ? 'All' : t}</option>)}
-            </select>
+            </Select>
           </div>
 
           {/* Priority */}
-          <div style={{ padding: '4px 10px' }}>
-            <span style={{ display: 'block', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>Priority</span>
-            <select value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)} className="w-full cursor-pointer focus:outline-none" style={{ background: 'var(--fill-secondary)', border: 'none', borderRadius: 'var(--radius-sm)', padding: '6px 10px', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: filterPriority !== 'all' ? 'var(--accent-app)' : 'var(--text-muted)' }}>
+          <div style={{ padding: 'var(--space-1) var(--space-2)' }}>
+            <span style={{ display: 'block', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-1)' }}>Priority</span>
+            <Select
+              fullWidth
+              active={filterPriority !== 'all'}
+              value={filterPriority}
+              onChange={(e) => setFilterPriority(e.target.value)}
+            >
               {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-            </select>
+            </Select>
           </div>
 
           {/* Assignee */}
           {filterAssignee !== 'mine' && (
-            <div style={{ padding: '4px 10px' }}>
-              <span style={{ display: 'block', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>Assignee</span>
-              <select value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)} className="w-full cursor-pointer focus:outline-none" style={{ background: 'var(--fill-secondary)', border: 'none', borderRadius: 'var(--radius-sm)', padding: '6px 10px', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: filterAssignee !== 'all' ? 'var(--accent-app)' : 'var(--text-muted)' }}>
+            <div style={{ padding: 'var(--space-1) var(--space-2)' }}>
+              <span style={{ display: 'block', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-1)' }}>Assignee</span>
+              <Select
+                fullWidth
+                active={filterAssignee !== 'all'}
+                value={filterAssignee}
+                onChange={(e) => setFilterAssignee(e.target.value)}
+              >
                 <option value="all">All</option>
                 <option value="unassigned">Unassigned</option>
                 {uniqueAssignees.map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
+              </Select>
             </div>
           )}
 
           {activeFilterCount > 0 && (
-            <button onClick={resetAllFilters} className="apple-press flex items-center gap-1.5" style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--apple-red)' }}>
+            <Button
+              variant="danger"
+              pill={false}
+              size="sm"
+              onClick={resetAllFilters}
+              className="justify-start"
+              style={{ padding: 'var(--space-2)', fontSize: 'var(--text-caption1)' }}
+            >
               <X className="w-3.5 h-3.5" /> Reset filters
-            </button>
+            </Button>
           )}
 
-          <div style={{ padding: '2px 10px', fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>
+          <div style={{ padding: 'var(--space-0) var(--space-2)', fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>
             {filteredTasks.length} of {tasks.length} tasks
           </div>
         </div>
       </SidebarSection>
 
-      <div style={{ height: '0.5px', background: 'var(--separator)', margin: '4px 14px' }} />
+      <div style={{ height: '0.5px', background: 'var(--separator)', margin: 'var(--space-1) var(--space-3)' }} />
 
       {/* Dashboard */}
       {total > 0 && (
         <SidebarSection title="Dashboard" collapsed={sectionsCollapsed.dashboard} onToggle={() => toggleSection('dashboard')}>
-          <div style={{ padding: '4px 10px' }}>
+          <div style={{ padding: 'var(--space-1) var(--space-2)' }}>
             {/* Progress */}
-            <div className="flex items-center justify-between" style={{ marginBottom: '6px' }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-2)' }}>
               <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-muted)' }}>Progress</span>
               <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: 'var(--text-app)' }}>{donePercent}%</span>
             </div>
-            <div className="flex overflow-hidden" style={{ height: '4px', borderRadius: 'var(--radius-full)', background: 'var(--fill-primary)', marginBottom: '8px' }}>
+            <div className="flex overflow-hidden" style={{ height: '4px', borderRadius: 'var(--radius-full)', background: 'var(--fill-primary)', marginBottom: 'var(--space-2)' }}>
               {counts.done > 0 && <div style={{ width: `${(counts.done / total) * 100}%`, background: 'var(--apple-green)', transition: `width var(--duration-slow) var(--ease-out)` }} />}
               {counts.review > 0 && <div style={{ width: `${(counts.review / total) * 100}%`, background: 'var(--apple-orange)' }} />}
               {counts.in_progress > 0 && <div style={{ width: `${(counts.in_progress / total) * 100}%`, background: 'var(--apple-blue)' }} />}
             </div>
-            <div className="flex flex-wrap gap-x-3 gap-y-1" style={{ marginBottom: '8px' }}>
+            <div className="flex flex-wrap gap-x-3 gap-y-1" style={{ marginBottom: 'var(--space-2)' }}>
               {[{ key: 'done', label: 'Done', color: 'var(--apple-green)' }, { key: 'review', label: 'Review', color: 'var(--apple-orange)' }, { key: 'in_progress', label: 'Active', color: 'var(--apple-blue)' }, { key: 'todo', label: 'To Do', color: 'var(--gray-3)' }].map(s => counts[s.key] > 0 && (
                 <div key={s.key} className="flex items-center gap-1">
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: s.color }} />
@@ -328,18 +422,24 @@ function Sidebar({
 
             {/* Services */}
             {projectServices.length > 0 && (
-              <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '0.5px solid var(--separator)' }}>
+              <div style={{ marginTop: 'var(--space-2)', paddingTop: 'var(--space-2)', borderTop: '0.5px solid var(--separator)' }}>
                 {projectServices.map(svc => {
                   const running = svc.status === 'running'
                   return (
-                    <div key={svc.id} className="flex items-center gap-2" style={{ padding: '4px 0' }}>
+                    <div key={svc.id} className="flex items-center gap-2" style={{ padding: 'var(--space-1) 0' }}>
                       <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: running ? 'var(--apple-green)' : 'var(--apple-red)', boxShadow: running ? '0 0 6px var(--apple-green)' : 'none', flexShrink: 0 }} />
                       <span className="truncate" style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-app)' }}>{svc.name}</span>
-                      <span style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '1px 6px', borderRadius: 'var(--radius-full)', flexShrink: 0 }}>:{svc.port}</span>
+                      <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '0 var(--space-2)', borderRadius: 'var(--radius-full)', flexShrink: 0 }}>:{svc.port}</span>
                       <div className="flex-1" />
-                      <button onClick={(e) => { e.stopPropagation(); handleToggleService(svc) }} className="apple-press shrink-0" style={{ padding: '3px', borderRadius: 'var(--radius-xs)', color: running ? 'var(--apple-red)' : 'var(--apple-green)' }} title={running ? `Stop ${svc.name}` : `Start ${svc.name}`}>
+                      <IconButton
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); handleToggleService(svc) }}
+                        style={{ width: '24px', height: '24px', padding: 'var(--space-1)', color: running ? 'var(--apple-red)' : 'var(--apple-green)' }}
+                        title={running ? `Stop ${svc.name}` : `Start ${svc.name}`}
+                        aria-label={running ? `Stop ${svc.name}` : `Start ${svc.name}`}
+                      >
                         {running ? <Square className="w-3 h-3" fill="currentColor" /> : <Play className="w-3 h-3" fill="currentColor" />}
-                      </button>
+                      </IconButton>
                     </div>
                   )
                 })}
@@ -352,40 +452,74 @@ function Sidebar({
       </div>{/* end scrollable middle */}
 
       {/* Bottom: actions + user — always visible */}
-      <div className="shrink-0" style={{ padding: '8px', borderTop: '0.5px solid var(--separator)' }}>
-        <div className="flex flex-col gap-0.5">
-          <button onClick={onOpenPreview} className="w-full flex items-center gap-2.5 text-left apple-press" style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: showPreview ? 'var(--accent-app)' : 'var(--text-muted)' }}>
+      <div className="shrink-0" style={{ padding: 'var(--space-2)', borderTop: '0.5px solid var(--separator)' }}>
+        <div className="flex flex-col gap-1">
+          <Button
+            variant={showPreview ? 'secondary' : 'ghost'}
+            pill={false}
+            onClick={onOpenPreview}
+            className="w-full justify-start"
+            style={{ padding: 'var(--space-2)', fontSize: 'var(--text-caption1)' }}
+          >
             <Eye className="w-4 h-4 shrink-0" /> Preview
-          </button>
+          </Button>
           {onOpenDesignStudio && (
-            <button onClick={onOpenDesignStudio} className="w-full flex items-center gap-2.5 text-left apple-press" style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)' }}>
+            <Button
+              variant="ghost"
+              pill={false}
+              onClick={onOpenDesignStudio}
+              className="w-full justify-start"
+              style={{ padding: 'var(--space-2)', fontSize: 'var(--text-caption1)' }}
+            >
               <Palette className="w-4 h-4 shrink-0" /> Design Studio
-            </button>
+            </Button>
           )}
-          <button onClick={onOpenChat} className="w-full flex items-center gap-2.5 text-left apple-press relative" style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)' }}>
+          <Button
+            variant="ghost"
+            pill={false}
+            onClick={onOpenChat}
+            className="w-full justify-start relative"
+            style={{ padding: 'var(--space-2)', fontSize: 'var(--text-caption1)' }}
+          >
             <MessageCircle className="w-4 h-4 shrink-0" /> Chat
             {chatUnread > 0 && (
-              <span style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: 'white', background: 'var(--apple-red)', borderRadius: 'var(--radius-full)', minWidth: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', marginLeft: 'auto' }}>{chatUnread}</span>
+              <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: 'white', background: 'var(--apple-red)', borderRadius: 'var(--radius-full)', minWidth: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 var(--space-1)', marginLeft: 'auto' }}>{chatUnread}</span>
             )}
-          </button>
-          <button onClick={onOpenSettings} className="w-full flex items-center gap-2.5 text-left apple-press" style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)' }}>
+          </Button>
+          <Button
+            variant="ghost"
+            pill={false}
+            onClick={onOpenSettings}
+            className="w-full justify-start"
+            style={{ padding: 'var(--space-2)', fontSize: 'var(--text-caption1)' }}
+          >
             <SettingsIcon className="w-4 h-4 shrink-0" /> Settings
-          </button>
+          </Button>
           {onOpenHelp && (
-            <button onClick={onOpenHelp} className="w-full flex items-center gap-2.5 text-left apple-press" style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)' }}>
+            <Button
+              variant="ghost"
+              pill={false}
+              onClick={onOpenHelp}
+              className="w-full justify-start"
+              style={{ padding: 'var(--space-2)', fontSize: 'var(--text-caption1)' }}
+            >
               <HelpCircle className="w-4 h-4 shrink-0" /> Help &amp; Usage
-            </button>
+            </Button>
           )}
         </div>
-        <div style={{ height: '0.5px', background: 'var(--separator)', margin: '8px 0' }} />
-        <div className="flex items-center gap-2.5" style={{ padding: '6px 10px' }}>
-          <div className="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0" style={{ fontSize: '11px', fontWeight: 'var(--font-bold)', background: 'var(--accent-app)' }}>
-            {user?.username?.charAt(0).toUpperCase()}
-          </div>
+        <div style={{ height: '0.5px', background: 'var(--separator)', margin: 'var(--space-2) 0' }} />
+        <div className="flex items-center gap-2" style={{ padding: 'var(--space-1) var(--space-2)' }}>
+          <Avatar size="sm" alt={user?.username} color="white" background="var(--accent-app)" />
           <span className="flex-1 truncate" style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-app)' }}>{user?.username}</span>
-          <button onClick={onLogout} className="apple-press" style={{ padding: '4px', borderRadius: 'var(--radius-xs)', color: 'var(--text-tertiary)' }} title="Logout">
+          <IconButton
+            size="sm"
+            onClick={onLogout}
+            style={{ width: '24px', height: '24px', padding: 'var(--space-1)', color: 'var(--text-tertiary)' }}
+            title="Logout"
+            aria-label="Logout"
+          >
             <LogOut className="w-3.5 h-3.5" />
-          </button>
+          </IconButton>
         </div>
       </div>
     </div>

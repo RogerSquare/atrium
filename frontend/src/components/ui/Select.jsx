@@ -1,19 +1,19 @@
 import { forwardRef } from 'react'
 import { Loader2 } from 'lucide-react'
 
-const Select = forwardRef(({ pill = false, active, loading, disabled, className = '', style, children, ...props }, ref) => {
+const Select = forwardRef(({ pill = false, active, loading, disabled, fullWidth, containerClassName = '', className = '', style, children, ...props }, ref) => {
   const isDisabled = disabled || loading
 
   return (
-    <div className="relative inline-flex items-center">
+    <div className={`relative ${fullWidth ? 'flex' : 'inline-flex'} items-center ${containerClassName}`}>
       <select
         ref={ref}
         disabled={isDisabled}
         aria-busy={loading || undefined}
         className={className}
         style={{
-          padding: pill ? '5px 10px' : '6px 10px',
-          paddingRight: loading ? '28px' : undefined,
+          padding: pill ? 'var(--space-1) var(--space-2)' : 'var(--space-1) var(--space-2)',
+          paddingRight: loading ? 'var(--space-7)' : undefined,
           borderRadius: pill ? 'var(--radius-full)' : 'var(--radius-sm)',
           fontSize: 'var(--text-caption1)',
           fontWeight: 'var(--font-medium)',
@@ -22,6 +22,7 @@ const Select = forwardRef(({ pill = false, active, loading, disabled, className 
           background: active ? 'color-mix(in srgb, var(--accent-app) 10%, transparent)' : 'var(--fill-secondary)',
           cursor: isDisabled ? 'not-allowed' : 'pointer',
           opacity: isDisabled ? 0.5 : 1,
+          width: fullWidth ? '100%' : undefined,
           transition: `all var(--duration-fast) var(--ease-default)`,
           ...style,
         }}
