@@ -16,5 +16,13 @@ function validateReviewLinkage(task, previousStatus) {
       received: { github_branch: task.github_branch || null, github_pr_url: task.github_pr_url || null },
     };
   }
+  if (branch && !prUrl && !branch.toLowerCase().includes(task.id.toLowerCase())) {
+    return {
+      error: `github_branch '${branch}' does not contain task ID '${task.id}' as a case-insensitive substring.`,
+      detail: `Rename the branch to include the task ID (e.g., 'feat/${task.id}', 'fix/${task.id}', 'opt/${task.id}') so the Changes view can link the PR to the task. Alternatively, set github_pr_url directly.`,
+      task_id: task.id,
+      received: { github_branch: branch },
+    };
+  }
   return null;
 }

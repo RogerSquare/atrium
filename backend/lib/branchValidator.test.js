@@ -5,6 +5,22 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
+// Cycle 2: branch set but doesn't contain task id → Case 2 error.
+test('review + branch without task id → Case 2 error', () => {
+  const { validateReviewLinkage } = requireFresh();
+  const task = {
+    id: 'feat-x-001',
+    status: 'review',
+    github_branch: 'feat/unrelated',
+    github_pr_url: null,
+    tags: [],
+  };
+  const result = validateReviewLinkage(task, 'todo');
+  assert.ok(result, 'should return an error object');
+  assert.match(result.error, /does not contain task ID/i);
+  assert.deepStrictEqual(result.received, { github_branch: 'feat/unrelated' });
+});
+
 function requireFresh() {
   const p = require.resolve('./branchValidator');
   delete require.cache[p];
