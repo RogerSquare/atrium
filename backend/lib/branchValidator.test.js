@@ -35,6 +35,20 @@ test('previousStatus=review → null (grandfathered)', () => {
   assert.strictEqual(validateReviewLinkage(task, 'review'), null);
 });
 
+// Cycle 5: no-code tag opt-out → null.
+test('tags includes no-code → null (opt-out)', () => {
+  const { validateReviewLinkage } = requireFresh();
+  const task = { id: 'feat-x-001', status: 'review', github_branch: null, github_pr_url: null, tags: ['no-code'] };
+  assert.strictEqual(validateReviewLinkage(task, 'todo'), null);
+});
+
+// Cycle 6: github_pr_url alone (no branch) → null.
+test('pr_url only, no branch → null (Pass-1 override)', () => {
+  const { validateReviewLinkage } = requireFresh();
+  const task = { id: 'feat-x-001', status: 'review', github_branch: null, github_pr_url: 'https://github.com/x/y/pull/1', tags: [] };
+  assert.strictEqual(validateReviewLinkage(task, 'todo'), null);
+});
+
 function requireFresh() {
   const p = require.resolve('./branchValidator');
   delete require.cache[p];

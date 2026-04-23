@@ -10,6 +10,8 @@ function validateReviewLinkage(task, previousStatus) {
   // Existing review/done tasks are grandfathered (~99% of the board lacks linkage fields).
   if (previousStatus === 'review' || previousStatus === 'done') return null;
   if (task.status !== 'review') return null;
+  // Opt-out for non-code tasks (docs, research, plan, etc.)
+  if (Array.isArray(task.tags) && task.tags.includes('no-code')) return null;
 
   const branch = typeof task.github_branch === 'string' && task.github_branch.trim() ? task.github_branch : null;
   const prUrl = typeof task.github_pr_url === 'string' && task.github_pr_url.trim() ? task.github_pr_url : null;
