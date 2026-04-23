@@ -1,5 +1,5 @@
 function slugify(input) {
-  return input.toLowerCase().replace(/ /g, '-');
+  return input.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/ /g, '-');
 }
 
 module.exports = { slugify };
