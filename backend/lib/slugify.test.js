@@ -13,3 +13,7 @@ test('strips non-alphanumeric characters', () => {
 test('trims leading and trailing whitespace/hyphens', () => {
   assert.equal(slugify('   leading and trailing   '), 'leading-and-trailing');
 });
+
+test('collapses consecutive hyphens and spaces', () => {
+  assert.equal(slugify('multi---hyphen   spaces'), 'multi-hyphen-spaces');
+});
