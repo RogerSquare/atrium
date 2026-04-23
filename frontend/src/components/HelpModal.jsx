@@ -61,7 +61,7 @@ export default function HelpModal({ onClose }) {
         style={{
           background: 'var(--bg-app)',
           borderRadius: 'var(--radius-lg)',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+          boxShadow: 'var(--shadow-popover)',
         }}
         onClick={(e) => e.stopPropagation()}
       >

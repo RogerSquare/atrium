@@ -51,7 +51,7 @@ export default function ProjectProgress({ tasks, services = [], activeProject, o
   const donePercent = Math.round((counts.done / total) * 100)
 
   return (
-    <div className="h-full overflow-hidden" style={{ background: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)' }}>
+    <div className="h-full overflow-hidden" style={{ background: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', border: 'var(--border-hairline)' }}>
       <header className="flex items-center gap-2" style={{ padding: '12px 16px', borderBottom: '0.5px solid var(--separator)' }}>
         <div style={{ padding: '6px', borderRadius: 'var(--radius-sm)', background: 'color-mix(in srgb, var(--accent-app) 12%, transparent)' }}>
           <BarChart3 className="w-4 h-4" style={{ color: 'var(--accent-app)' }} />
