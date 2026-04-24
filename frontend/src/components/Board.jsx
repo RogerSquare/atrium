@@ -28,7 +28,7 @@ const STALE_THRESHOLDS = { in_progress: 3, review: 7 } // days
 // has this many or more tasks, its cards render in compact mode even if the
 // user hasn't toggled the global compact switch. Per-column, not per-board —
 // a quiet column stays full-size while a flooded column compresses.
-const AUTO_COMPACT_THRESHOLD = 15
+const AUTO_COMPACT_THRESHOLD = 100
 
 function isTaskStale(task) {
   const threshold = STALE_THRESHOLDS[task.status]
