@@ -18,10 +18,12 @@ import TopBar from './TopBar'
 import FilterBar from './FilterBar'
 import FocalZone from './FocalZone'
 import DetailPane from './DetailPane'
+import CommandPalette from './CommandPalette'
 import TaskModal from '../TaskModal'
 import Settings from '../Settings'
 import HelpModal from '../HelpModal'
 import CreateProjectModal from '../CreateProjectModal'
+import CreateTaskModal from '../CreateTaskModal'
 import ArchivedProjectsModal from '../ArchivedProjectsModal'
 import ErrorToast from '../ErrorToast'
 import UndoToast from '../UndoToast'
@@ -46,6 +48,7 @@ export default function AppShell() {
   const {
     filteredTasks, tasks, projects, activeProject, setActiveProject,
     loading, selectedTask, selectTask, handleDeleteTask, handleCreateProject,
+    handleCreateTask,
     archivedProjects, archiveProject, unarchiveProject,
     searchQuery, setSearchQuery,
     filterType, setFilterType, filterPriority, setFilterPriority,
@@ -65,7 +68,9 @@ export default function AppShell() {
   const [showSettings, setShowSettings] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [showCreateProject, setShowCreateProject] = useState(false)
+  const [showCreateTask, setShowCreateTask] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const syncingUrl = useRef(false)
 
   const handleChangeView = useCallback((view) => {
@@ -281,6 +286,34 @@ export default function AppShell() {
           onCreateProject={handleCreateProject}
         />
       )}
+      {showCreateTask && (
+        <CreateTaskModal
+          projects={projects}
+          activeProject={activeProject}
+          onClose={() => setShowCreateTask(false)}
+          onCreateTask={handleCreateTask}
+        />
+      )}
+
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        projects={projects}
+        onSetActiveProject={setActiveProject}
+        onChangeView={handleChangeView}
+        onSetFilterType={setFilterType}
+        onSetFilterPriority={setFilterPriority}
+        onSetFilterAssignee={setFilterAssignee}
+        onSetFilterToday={setFilterToday}
+        onSetFilterStale={setFilterStale}
+        onResetFilters={resetAllFilters}
+        onSetTheme={setTheme}
+        onCreateProject={() => setShowCreateProject(true)}
+        onCreateTask={() => setShowCreateTask(true)}
+        onOpenSettings={() => setShowSettings(true)}
+        onOpenHelp={() => setShowHelp(true)}
+        onLogout={handleLogout}
+      />
       {showArchived && (
         <ArchivedProjectsModal
           archivedProjects={archivedProjects}

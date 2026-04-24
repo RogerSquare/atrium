@@ -818,3 +818,16 @@ select:focus-visible {
   background: color-mix(in srgb, var(--bg-card) 80%, transparent);
   border-top: 0.5px solid var(--separator);
 }
+
+/* --- Command palette (cmdk) --- */
+[cmdk-item][data-selected='true'] {
+  background: color-mix(in srgb, var(--accent-app) 12%, transparent);
+}
+[cmdk-group-heading] {
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  font-size: var(--text-caption2);
+  font-weight: var(--font-semibold);
+  color: var(--text-tertiary);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
