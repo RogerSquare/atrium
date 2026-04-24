@@ -14,13 +14,17 @@ const LANE_PALETTE = [
   'var(--apple-red)',
 ]
 
-const LANE_WIDTH = 28
-const LANE_PAD_LEFT = 14
-const LANE_PAD_RIGHT = 18
-const ROW_HEIGHT = 38
-const ROW_GAP = 3
+// Phase 8 facelift — tightened gutter + row height for denser vertical rhythm.
+// Labels are at most 6 chars ("devops"/"mobile"), so 120px is plenty. SVG
+// overlay positioning is all derived from these constants so the graph
+// stays aligned with the row content.
+const LANE_WIDTH = 22
+const LANE_PAD_LEFT = 10
+const LANE_PAD_RIGHT = 12
+const ROW_HEIGHT = 34
+const ROW_GAP = 2
 const ROW_STRIDE = ROW_HEIGHT + ROW_GAP
-const LABEL_COL_WIDTH = 180
+const LABEL_COL_WIDTH = 120
 const UNCATEGORIZED_LANE = '__other__'
 
 const CATEGORY_STYLE = {
@@ -216,9 +220,9 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
 
   const graphWidth = LANE_PAD_LEFT + lanes.length * LANE_WIDTH + LANE_PAD_RIGHT
   // Separator between queued (top) and active (bottom) sections
-  const SEPARATOR_HEIGHT = visibleActiveCount > 0 && (visibleQueuedCount > 0 || totalQueuedCount > 0) ? 28 : 0
+  const SEPARATOR_HEIGHT = visibleActiveCount > 0 && (visibleQueuedCount > 0 || totalQueuedCount > 0) ? 24 : 0
   // Queued header (collapsible) sits above the rows
-  const QUEUED_HEADER_HEIGHT = totalQueuedCount > 0 ? 28 : 0
+  const QUEUED_HEADER_HEIGHT = totalQueuedCount > 0 ? 24 : 0
   const totalHeight = visibleCount * ROW_STRIDE + SEPARATOR_HEIGHT + QUEUED_HEADER_HEIGHT
 
   // SVG y-position for a row: active rows (below the separator) are offset.
@@ -299,7 +303,7 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
           onClick={() => fetchLinks(true)} disabled={loading}
           className="apple-press flex items-center gap-1.5"
           style={{
-            padding: '5px 10px', borderRadius: 'var(--radius-md)',
+            padding: '4px 10px', borderRadius: 'var(--radius-md)',
             background: 'var(--fill-secondary)', border: '1px solid var(--separator)',
             fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)',
             opacity: loading ? 0.6 : 1,
@@ -523,7 +527,7 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                 {/* Label column — category name shown only on the first (topmost) row of each lane */}
                 <div
                   className="shrink-0 flex items-center justify-end"
-                  style={{ width: `${LABEL_COL_WIDTH}px`, padding: '0 10px 0 12px' }}
+                  style={{ width: `${LABEL_COL_WIDTH}px`, padding: '0 8px 0 10px' }}
                 >
                   {showLabel && (
                     <button
@@ -532,15 +536,15 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                         e.stopPropagation()
                         setFocus(focusedCategory === r.lane.key ? null : r.lane.key)
                       }}
-                      className="apple-press flex items-center gap-1.5 whitespace-nowrap"
+                      className="apple-press flex items-center gap-1 whitespace-nowrap"
                       style={{
-                        padding: '3px 10px',
+                        padding: '2px 8px',
                         borderRadius: 'var(--radius-sm)',
                         background: r.lane.key === UNCATEGORIZED_LANE
                           ? 'var(--fill-secondary)'
                           : `color-mix(in srgb, ${r.lane.color} ${focusedCategory === r.lane.key ? 42 : 26}%, transparent)`,
                         color: r.lane.key === UNCATEGORIZED_LANE ? 'var(--text-tertiary)' : r.lane.color,
-                        fontSize: '11px',
+                        fontSize: '10px',
                         fontWeight: 600,
                         fontFamily: 'var(--font-mono, ui-monospace, monospace)',
                         letterSpacing: '0.02em',
@@ -564,8 +568,8 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
 
                 {/* Message column */}
                 <div
-                  className="flex-1 flex items-center gap-2.5 min-w-0"
-                  style={{ padding: '0 12px' }}
+                  className="flex-1 flex items-center gap-2 min-w-0"
+                  style={{ padding: '0 10px' }}
                 >
                   <TimelineEntry task={r.task} link={r.link} categoryStyle={catStyle} />
                 </div>
