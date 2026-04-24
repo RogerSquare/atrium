@@ -1,72 +1,67 @@
-// Facelift Phase 9 — GraphView (force-directed rewrite).
+// Facelift Phase 9 — GraphView (knowledge-graph rewrite).
 //
-// Tasks float freely in a circular cloud. A Fruchterman-Reingold-ish
-// force simulation — repulsion between every pair + attraction along
-// each edge + mild center gravity — settles the graph over ~300
-// iterations before render, so connected clusters naturally gravitate
-// toward each other and unrelated chains drift apart.
-//
-// Orphans (no edges in or out) are hidden — a dependency graph with
-// unconnected singletons is just noise. Use Board/List for those.
+// Obsidian/Roam-style network view. Circles sized by degree (more
+// connections = bigger dot), force-directed layout via Fruchterman-
+// Reingold, pan + zoom on the canvas, and hover-highlight that dims
+// everything except the hovered node, its neighbors, and the edges
+// between them. The goal is to make dependency paths readable at a
+// glance without any hierarchical structure getting in the way.
 
-import { memo, useMemo } from 'react'
+import { memo, useMemo, useRef, useState, useCallback } from 'react'
 import { STATUS_COLOR } from '../constants'
 
-const NODE_W = 72
-const NODE_H = 22
-const PADDING = 40           // canvas padding around the settled cloud
+// ---- Simulation --------------------------------------------------------
+const PADDING = 60
 const ITERATIONS = 250
-const K = 90                 // ideal edge length (also the force constant)
+const K = 90                    // ideal edge length
+
+// ---- Rendering ---------------------------------------------------------
+const NODE_R_MIN = 5
+const NODE_R_MAX = 16
+const LABEL_FONT = 10
+const ZOOM_MIN = 0.2
+const ZOOM_MAX = 4
 
 function buildGraph(tasks) {
   const byId = new Map(tasks.map((t) => [t.id, t]))
   const depEdges = []
   const parentEdges = []
-  const anyIn = new Map()
-  const anyOut = new Map()
+  const degree = new Map()
+  const neighbors = new Map() // id -> Set of connected ids
+  const bump = (a, b) => {
+    degree.set(a, (degree.get(a) || 0) + 1)
+    degree.set(b, (degree.get(b) || 0) + 1)
+    if (!neighbors.has(a)) neighbors.set(a, new Set())
+    if (!neighbors.has(b)) neighbors.set(b, new Set())
+    neighbors.get(a).add(b)
+    neighbors.get(b).add(a)
+  }
 
   for (const t of tasks) {
     for (const depId of t.depends_on || []) {
       if (!byId.has(depId) || depId === t.id) continue
       depEdges.push({ from: depId, to: t.id })
-      anyIn.set(t.id, true)
-      anyOut.set(depId, true)
+      bump(depId, t.id)
     }
     if (t.parent_task && byId.has(t.parent_task) && t.parent_task !== t.id) {
       parentEdges.push({ from: t.parent_task, to: t.id })
-      anyIn.set(t.id, true)
-      anyOut.set(t.parent_task, true)
+      bump(t.parent_task, t.id)
     }
   }
 
-  // Keep only nodes that participate in an edge — orphans don't belong in a
-  // dependency graph and just crowd the canvas.
-  const connected = tasks.filter((t) => anyIn.get(t.id) || anyOut.get(t.id))
-  return { connected, byId, depEdges, parentEdges }
+  const connected = tasks.filter((t) => (degree.get(t.id) || 0) > 0)
+  return { connected, byId, depEdges, parentEdges, degree, neighbors }
 }
 
-// Canonical Fruchterman-Reingold.
-//
-// Key correctness points the first pass missed:
-// - Per-iteration displacement is CAPPED by a cooling temperature, so a big
-//   attractive/repulsive force never teleports a node across the canvas.
-// - Attraction uses d²/k (strong but bounded by the temperature cap) and
-//   only fires along edges. Repulsion uses k²/d and fires on every pair.
-// - No multiplicative center gravity (that was shrinking the whole cloud
-//   to ~30% over 300 iterations). Drift control comes from repulsion
-//   between disconnected pairs plus a tiny end-of-loop pull to origin.
 function runForceLayout(nodes, edges) {
   const n = nodes.length
   if (n === 0) return new Map()
 
   const positions = new Map()
-  // Seed radius scales with sqrt(n) so density stays roughly constant across
-  // graphs of different sizes. Tiny random jitter breaks symmetry on the
-  // seed circle so repulsion doesn't lock nodes into perfect polygonal rings.
   const R = K * Math.sqrt(n) * 0.7
   nodes.forEach((node, i) => {
     const angle = (i / n) * Math.PI * 2
-    const jitter = (Math.random() - 0.5) * 0.2
+    const jitter = (Math.random() - 0.5) * 0.25
     positions.set(node.id, {
       x: Math.cos(angle + jitter) * R,
       y: Math.sin(angle + jitter) * R,
@@ -74,7 +69,6 @@ function runForceLayout(nodes, edges) {
   })
 
   const ids = nodes.map((node) => node.id)
-  // Initial temperature = seed radius, cooled linearly to 0.
   const T0 = R
 
   for (let iter = 0; iter < ITERATIONS; iter++) {
@@ -82,7 +76,7 @@ function runForceLayout(nodes, edges) {
     const disp = new Map()
     for (const id of ids) disp.set(id, { x: 0, y: 0 })
 
-    // Repulsion between every pair: f_r = k² / d, direction = from other to self.
+    // Pair repulsion.
     for (let i = 0; i < n; i++) {
       const ai = ids[i]
       const a = positions.get(ai)
@@ -105,7 +99,7 @@ function runForceLayout(nodes, edges) {
       }
     }
 
-    // Attraction along edges: f_a = d² / k, direction = toward other.
+    // Edge attraction.
     for (const e of edges) {
       const a = positions.get(e.from)
       const b = positions.get(e.to)
@@ -125,8 +119,7 @@ function runForceLayout(nodes, edges) {
       db.y += uy * force
     }
 
-    // Apply displacement, CAPPED at current temperature so no node moves
-    // more than ~t units per iteration. This is the critical stability knob.
+    // Apply with temperature cap.
     for (const id of ids) {
       const p = positions.get(id)
       const d = disp.get(id)
@@ -140,18 +133,22 @@ function runForceLayout(nodes, edges) {
   return positions
 }
 
+// Map a raw degree to a node radius using a log-ish curve so high-degree
+// hubs stand out without tiny-degree nodes vanishing.
+function radiusFor(deg, maxDeg) {
+  if (maxDeg <= 1) return NODE_R_MIN + 2
+  const t = Math.log(1 + deg) / Math.log(1 + maxDeg)
+  return NODE_R_MIN + t * (NODE_R_MAX - NODE_R_MIN)
+}
+
 function GraphView({ tasks, onSelectTask }) {
-  const { byId, positions, depLines, parentLines, viewBox, isEmpty } = useMemo(() => {
-    const { connected, byId, depEdges, parentEdges } = buildGraph(tasks)
+  const computed = useMemo(() => {
+    const { connected, byId, depEdges, parentEdges, degree, neighbors } = buildGraph(tasks)
     if (connected.length === 0) {
-      return { byId, positions: new Map(), depLines: [], parentLines: [], viewBox: '0 0 400 200', isEmpty: true }
+      return { empty: true }
     }
+    const positions = runForceLayout(connected, [...depEdges, ...parentEdges])
 
-    // Run simulation over both edge kinds (parent edges pull like deps).
-    const allEdges = [...depEdges, ...parentEdges]
-    const positions = runForceLayout(connected, allEdges)
-
-    // Compute bounding box + translate to positive quadrant so SVG renders.
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     for (const { x, y } of positions.values()) {
       if (x < minX) minX = x
@@ -159,34 +156,81 @@ function GraphView({ tasks, onSelectTask }) {
       if (x > maxX) maxX = x
       if (y > maxY) maxY = y
     }
-    // Shift so origin is top-left with padding.
     const offsetX = -minX + PADDING
     const offsetY = -minY + PADDING
     for (const p of positions.values()) {
       p.x += offsetX
       p.y += offsetY
     }
-    const width = (maxX - minX) + PADDING * 2
-    const height = (maxY - minY) + PADDING * 2
-
-    const depLines = depEdges
-      .map(({ from, to }) => ({ from, to, a: positions.get(from), b: positions.get(to) }))
-      .filter((l) => l.a && l.b)
-    const parentLines = parentEdges
-      .map(({ from, to }) => ({ from, to, a: positions.get(from), b: positions.get(to) }))
-      .filter((l) => l.a && l.b)
+    const width = maxX - minX + PADDING * 2
+    const height = maxY - minY + PADDING * 2
+    const maxDeg = Math.max(...Array.from(degree.values()))
 
     return {
       byId,
       positions,
-      depLines,
-      parentLines,
-      viewBox: `0 0 ${width} ${height}`,
-      isEmpty: false,
+      depEdges,
+      parentEdges,
+      neighbors,
+      degree,
+      maxDeg,
+      worldWidth: width,
+      worldHeight: height,
+      empty: false,
     }
   }, [tasks])
 
-  if (tasks.length === 0 || isEmpty) {
+  // ---- Viewport state (pan + zoom) -------------------------------------
+  const svgRef = useRef(null)
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const dragRef = useRef(null)
+  const [hoveredId, setHoveredId] = useState(null)
+
+  const handleWheel = useCallback((e) => {
+    e.preventDefault()
+    const svg = svgRef.current
+    if (!svg) return
+    const rect = svg.getBoundingClientRect()
+    // Convert cursor to world coords BEFORE zoom so we can preserve the
+    // cursor's anchor point after zooming.
+    const cursorX = e.clientX - rect.left
+    const cursorY = e.clientY - rect.top
+    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12
+    setZoom((prev) => {
+      const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, prev * factor))
+      setPan((prevPan) => {
+        const scale = next / prev
+        return {
+          x: cursorX - scale * (cursorX - prevPan.x),
+          y: cursorY - scale * (cursorY - prevPan.y),
+        }
+      })
+      return next
+    })
+  }, [])
+
+  const handlePointerDown = useCallback((e) => {
+    if (e.target !== svgRef.current && !e.currentTarget.contains(e.target)) return
+    // Only drag when clicking the background, not a node.
+    if (e.target.tagName === 'circle' || e.target.tagName === 'text') return
+    dragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y }
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+  }, [pan])
+
+  const handlePointerMove = useCallback((e) => {
+    if (!dragRef.current) return
+    const dx = e.clientX - dragRef.current.startX
+    const dy = e.clientY - dragRef.current.startY
+    setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy })
+  }, [])
+
+  const handlePointerUp = useCallback((e) => {
+    dragRef.current = null
+    e.currentTarget.releasePointerCapture?.(e.pointerId)
+  }, [])
+
+  if (!computed || computed.empty) {
     return (
       <div
         className="text-center py-12 italic"
@@ -199,89 +243,216 @@ function GraphView({ tasks, onSelectTask }) {
     )
   }
 
+  const { byId, positions, depEdges, parentEdges, neighbors, degree, maxDeg, worldWidth, worldHeight } = computed
+
+  const activeNeighbors = hoveredId ? (neighbors.get(hoveredId) || new Set()) : null
+  const isDimmed = (id) => hoveredId && hoveredId !== id && !activeNeighbors.has(id)
+  const isEdgeDimmed = (from, to) =>
+    hoveredId && hoveredId !== from && hoveredId !== to
+
+  const resetView = () => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }
+
   return (
     <div
-      className="w-full h-full"
+      className="w-full h-full relative"
       style={{
         borderRadius: 'var(--radius-md)',
         border: 'var(--border-hairline)',
         background: 'var(--bg-card)',
         minHeight: 400,
-        position: 'relative',
         overflow: 'hidden',
       }}
     >
       <svg
-        viewBox={viewBox}
-        preserveAspectRatio="xMidYMid meet"
-        style={{ width: '100%', height: '100%', display: 'block' }}
+        ref={svgRef}
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${worldWidth} ${worldHeight}`}
+        onWheel={handleWheel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp}
+        style={{
+          display: 'block',
+          cursor: dragRef.current ? 'grabbing' : 'grab',
+          touchAction: 'none',
+        }}
       >
-        {/* Parent edges first (underneath) — muted + dashed. */}
-        {parentLines.map(({ from, to, a, b }) => (
-          <line
-            key={`p-${from}->${to}`}
-            x1={a.x}
-            y1={a.y}
-            x2={b.x}
-            y2={b.y}
-            stroke="var(--text-tertiary)"
-            strokeWidth="1"
-            strokeDasharray="3 3"
-            strokeOpacity="0.5"
-          />
-        ))}
-        {/* depends_on edges on top — accent color. */}
-        {depLines.map(({ from, to, a, b }) => (
-          <line
-            key={`d-${from}->${to}`}
-            x1={a.x}
-            y1={a.y}
-            x2={b.x}
-            y2={b.y}
-            stroke="var(--accent-app)"
-            strokeWidth="1.25"
-            strokeOpacity="0.6"
-          />
-        ))}
-
-        {/* Nodes — small pills carrying the task id. Full title on hover. */}
-        {[...positions.entries()].map(([id, { x, y }]) => {
-          const task = byId.get(id)
-          if (!task) return null
-          const statusColor = STATUS_COLOR[task.status] || 'var(--gray-1)'
-          return (
-            <g
-              key={id}
-              transform={`translate(${x - NODE_W / 2}, ${y - NODE_H / 2})`}
-              style={{ cursor: 'pointer' }}
-              onClick={() => onSelectTask?.(task)}
-            >
-              <title>{task.title}</title>
-              <rect
-                width={NODE_W}
-                height={NODE_H}
-                rx="11"
-                ry="11"
-                fill="var(--bg-card)"
-                stroke={statusColor}
-                strokeWidth="1.5"
+        {/* Pan + zoom transform wrapper. We scale in screen space by reading
+            the SVG's bounding rect in the wheel handler, but translate in
+            user coordinates via this group transform. */}
+        <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
+          {/* Parent edges — dashed + muted. */}
+          {parentEdges.map(({ from, to }) => {
+            const a = positions.get(from)
+            const b = positions.get(to)
+            if (!a || !b) return null
+            const dim = isEdgeDimmed(from, to)
+            return (
+              <line
+                key={`p-${from}->${to}`}
+                x1={a.x}
+                y1={a.y}
+                x2={b.x}
+                y2={b.y}
+                stroke="var(--text-tertiary)"
+                strokeWidth={1 / zoom}
+                strokeDasharray={`${3 / zoom} ${3 / zoom}`}
+                strokeOpacity={dim ? 0.08 : 0.45}
               />
-              <circle cx="10" cy={NODE_H / 2} r="3" fill={statusColor} />
-              <text
-                x="20"
-                y={NODE_H / 2 + 3.5}
-                style={{
-                  fontSize: '9px',
-                  fontFamily: 'var(--font-mono)',
-                  fill: 'var(--text-app)',
-                }}
+            )
+          })}
+          {/* depends_on edges — solid accent. */}
+          {depEdges.map(({ from, to }) => {
+            const a = positions.get(from)
+            const b = positions.get(to)
+            if (!a || !b) return null
+            const dim = isEdgeDimmed(from, to)
+            return (
+              <line
+                key={`d-${from}->${to}`}
+                x1={a.x}
+                y1={a.y}
+                x2={b.x}
+                y2={b.y}
+                stroke="var(--accent-app)"
+                strokeWidth={1.5 / zoom}
+                strokeOpacity={dim ? 0.1 : 0.65}
+              />
+            )
+          })}
+
+          {/* Nodes */}
+          {[...positions.entries()].map(([id, { x, y }]) => {
+            const task = byId.get(id)
+            if (!task) return null
+            const r = radiusFor(degree.get(id) || 0, maxDeg)
+            const statusColor = STATUS_COLOR[task.status] || 'var(--gray-1)'
+            const dim = isDimmed(id)
+            const isHovered = hoveredId === id
+            const labelFontSize = LABEL_FONT / zoom
+            return (
+              <g
+                key={id}
+                onMouseEnter={() => setHoveredId(id)}
+                onMouseLeave={() => setHoveredId(null)}
+                onClick={() => onSelectTask?.(task)}
+                style={{ cursor: 'pointer' }}
+                opacity={dim ? 0.2 : 1}
               >
-                {task.id.length > 14 ? task.id.slice(0, 13) + '…' : task.id}
-              </text>
-            </g>
-          )
-        })}
+                <title>{task.title}</title>
+                <circle
+                  cx={x}
+                  cy={y}
+                  r={r}
+                  fill={statusColor}
+                  stroke={isHovered ? 'var(--accent-app)' : 'var(--bg-card)'}
+                  strokeWidth={isHovered ? 2.5 / zoom : 1.5 / zoom}
+                />
+                <text
+                  x={x}
+                  y={y + r + labelFontSize + 2}
+                  textAnchor="middle"
+                  style={{
+                    fontSize: `${labelFontSize}px`,
+                    fontFamily: 'var(--font-sans)',
+                    fill: isHovered ? 'var(--text-app)' : 'var(--text-muted)',
+                    fontWeight: isHovered ? 600 : 400,
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {task.id}
+                </text>
+              </g>
+            )
+          })}
+        </g>
       </svg>
+
+      {/* Controls overlay */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 'var(--space-2)',
+          right: 'var(--space-2)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--space-1)',
+        }}
+      >
+        <button
+          onClick={() => setZoom((z) => Math.min(ZOOM_MAX, z * 1.25))}
+          className="apple-press"
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--bg-card)',
+            border: 'var(--border-hairline)',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            fontSize: 14,
+            fontWeight: 600,
+          }}
+          title="Zoom in"
+        >
+          +
+        </button>
+        <button
+          onClick={() => setZoom((z) => Math.max(ZOOM_MIN, z / 1.25))}
+          className="apple-press"
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--bg-card)',
+            border: 'var(--border-hairline)',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            fontSize: 14,
+            fontWeight: 600,
+          }}
+          title="Zoom out"
+        >
+          −
+        </button>
+        <button
+          onClick={resetView}
+          className="apple-press"
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--bg-card)',
+            border: 'var(--border-hairline)',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            fontSize: 10,
+            fontWeight: 600,
+          }}
+          title="Reset view"
+        >
+          ⌂
+        </button>
+      </div>
+
+      {/* Hint */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 'var(--space-2)',
+          left: 'var(--space-2)',
+          fontSize: 'var(--text-caption2)',
+          color: 'var(--text-tertiary)',
+          pointerEvents: 'none',
+        }}
+      >
+        scroll to zoom · drag to pan · hover a node to see its neighbors
+      </div>
     </div>
   )
 }
