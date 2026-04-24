@@ -4,7 +4,6 @@
 // Center: ViewSwitcher (Board / List / Changes)
 // Right: AvatarPopover (Theme / Settings / Help / Logout)
 
-import { Eye } from 'lucide-react'
 import ViewSwitcher from '../ViewSwitcher'
 import ProjectAnchor from './ProjectAnchor'
 import AvatarPopover from './AvatarPopover'
@@ -27,10 +26,6 @@ export default function TopBar({
   // Avatar popover
   onOpenSettings,
   onOpenHelp,
-  // Preview
-  onTogglePreview,
-  previewOpen,
-  previewRunningCount = 0,
 }) {
   return (
     <header
@@ -62,31 +57,8 @@ export default function TopBar({
         <ViewSwitcher activeView={activeView} onChangeView={onChangeView} />
       </div>
 
-      {/* Right — preview toggle + avatar popover */}
+      {/* Right — avatar popover */}
       <div className="flex items-center gap-2">
-        {onTogglePreview && (
-          <button
-            type="button"
-            onClick={onTogglePreview}
-            className="apple-press relative flex items-center justify-center"
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: 'var(--radius-sm)',
-              background: previewOpen ? 'color-mix(in srgb, var(--accent-app) 14%, transparent)' : 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              color: previewOpen ? 'var(--accent-app)' : 'var(--text-muted)',
-            }}
-            title={previewRunningCount > 0
-              ? `Preview (${previewRunningCount} running)`
-              : 'Preview services'}
-            aria-label="Preview services"
-            aria-pressed={previewOpen}
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-        )}
         <AvatarPopover
           user={user}
           theme={theme}

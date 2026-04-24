@@ -12,6 +12,7 @@
 // TaskModal stays as opt-in focus mode via Cmd+Shift+Enter.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { Eye } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTaskContext } from '../../contexts/TaskContext'
 import { API_BASE, apiFetch } from '../../config'
@@ -217,11 +218,6 @@ export default function AppShell() {
         archivedCount={archivedProjects?.length || 0}
         onOpenSettings={() => setShowSettings(true)}
         onOpenHelp={() => setShowHelp(true)}
-        onTogglePreview={() => setShowPreview((v) => !v)}
-        previewOpen={showPreview}
-        previewRunningCount={
-          previewServices.filter((s) => s.status === 'running').length
-        }
       />
 
       <FilterBar
@@ -374,6 +370,42 @@ export default function AppShell() {
           socket={socketRef?.current}
           activeProject={activeProject}
         />
+      )}
+
+      {/* Floating Preview button — bottom-right FAB. Hidden while the
+          DetailPane takes over the viewport on narrow screens so it
+          doesn't overlap the close button. */}
+      {!(narrow && detailOpen) && !showPreview && (
+        <button
+          type="button"
+          onClick={() => setShowPreview(true)}
+          className="apple-press"
+          title={
+            previewServices.filter((s) => s.status === 'running').length > 0
+              ? `Preview (${previewServices.filter((s) => s.status === 'running').length} running)`
+              : 'Preview services'
+          }
+          aria-label="Preview services"
+          style={{
+            position: 'fixed',
+            right: 'calc(var(--space-4) + env(safe-area-inset-right, 0px))',
+            bottom: 'calc(var(--space-4) + env(safe-area-inset-bottom, 0px))',
+            width: '48px',
+            height: '48px',
+            borderRadius: 'var(--radius-full)',
+            background: 'var(--bg-card)',
+            color: 'var(--text-app)',
+            border: 'var(--border-hairline)',
+            boxShadow: 'var(--shadow-popover)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 30,
+          }}
+        >
+          <Eye className="w-[18px] h-[18px]" />
+        </button>
       )}
 
       <UndoToast
