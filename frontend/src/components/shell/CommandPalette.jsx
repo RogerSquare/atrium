@@ -82,6 +82,7 @@ export default function CommandPalette({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={backdropTransition}
+          className="facelift-palette-overlay"
           style={{
             position: 'fixed',
             inset: 0,

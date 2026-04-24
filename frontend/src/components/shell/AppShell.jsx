@@ -72,6 +72,18 @@ export default function AppShell() {
   const [showCreateTask, setShowCreateTask] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  // Narrow-viewport mode — master-detail doesn't fit below 768px, so DetailPane
+  // switches to a full-screen overlay instead of sitting in its own grid column.
+  const [narrow, setNarrow] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)').matches : false
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const mql = window.matchMedia('(max-width: 768px)')
+    const onChange = (e) => setNarrow(e.matches)
+    mql.addEventListener?.('change', onChange)
+    return () => mql.removeEventListener?.('change', onChange)
+  }, [])
   const syncingUrl = useRef(false)
 
   const handleChangeView = useCallback((view) => {
@@ -134,7 +146,8 @@ export default function AppShell() {
   useEffect(() => { if (!selectedTask) setFocusModal(false) }, [selectedTask])
 
   const detailOpen = Boolean(selectedTask) && !focusModal
-  const detailGridCol = detailOpen ? `minmax(0, ${detailWidth}px)` : '0'
+  // On narrow viewports, detail pane is a fixed overlay — grid column stays 0.
+  const detailGridCol = detailOpen && !narrow ? `minmax(0, ${detailWidth}px)` : '0'
 
   const handleArchiveProject = useCallback(async (idOrName, displayName) => {
     const result = await archiveProject(idOrName)
@@ -248,6 +261,7 @@ export default function AppShell() {
             aiChatEnabled={aiChatEnabled}
             width={detailWidth}
             onWidthChange={setDetailWidth}
+            narrow={narrow}
           />
         )}
       </AnimatePresence>
