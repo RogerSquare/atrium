@@ -11,7 +11,7 @@ export default function UndoToast({ message, canUndo, canRedo, onUndo, onRedo, o
           padding: '10px 16px',
           borderRadius: 'var(--radius-full)',
           background: 'color-mix(in srgb, var(--bg-card) 85%, transparent)',
-          boxShadow: 'var(--shadow-lg)',
+          boxShadow: 'var(--shadow-popover)',
         }}
       >
         <span className="truncate max-w-[240px]" style={{ fontSize: 'var(--text-subhead)', color: 'var(--text-app)' }}>{message}</span>

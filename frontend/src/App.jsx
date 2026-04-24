@@ -311,7 +311,7 @@ function AppContent() {
             <HelpCircle className="w-4 h-4" />
           </button>
 
-          <button onClick={() => setShowCreateTaskModal(true)} className="apple-press text-white whitespace-nowrap hidden sm:flex items-center gap-1.5" style={{ padding: '7px 16px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', background: 'var(--accent-app)', boxShadow: 'var(--shadow-sm)' }}>
+          <button onClick={() => setShowCreateTaskModal(true)} className="apple-press text-white whitespace-nowrap hidden sm:flex items-center gap-1.5" style={{ padding: '7px 16px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', background: 'var(--accent-app)' }}>
             <Plus className="w-4 h-4" /> New Task
           </button>
           {!showMobileSearch && (

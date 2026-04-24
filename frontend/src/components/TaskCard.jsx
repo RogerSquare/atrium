@@ -112,7 +112,7 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
       className="apple-hover cursor-pointer relative flex flex-col focus-visible:outline-none"
       style={{
         background: 'var(--bg-card)',
-        borderRadius: 'var(--radius-lg)',
+        borderRadius: 'var(--radius-md)',
         padding: 'var(--space-4)',
         border: 'var(--border-hairline)',
         borderLeft: `3px solid ${priorityColor}`,

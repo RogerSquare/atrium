@@ -20,9 +20,9 @@ export default function ButtonGroup({ children, className = '', style, ...props 
       {items.map((child, i) => {
         const childStyle = {
           borderRadius: i === 0
-            ? 'var(--radius-xs) 0 0 var(--radius-xs)'
+            ? 'var(--radius-sm) 0 0 var(--radius-sm)'
             : i === last
-            ? '0 var(--radius-xs) var(--radius-xs) 0'
+            ? '0 var(--radius-sm) var(--radius-sm) 0'
             : 0,
           ...(child.props.style || {}),
         }

@@ -44,7 +44,7 @@ export default function ChatMessage({ message, currentUser, onReact }) {
         {/* Bubble */}
         <div
           style={{
-            borderRadius: isGif ? 'var(--radius-lg)' : '18px',
+            borderRadius: isGif ? 'var(--radius-md)' : '18px',
             ...(isGif ? { padding: '4px' } : isOwn ? {
               background: 'var(--accent-app)',
               color: 'white',
@@ -62,7 +62,7 @@ export default function ChatMessage({ message, currentUser, onReact }) {
           }}
         >
           {isGif ? (
-            <img src={message.content} alt="GIF" style={{ maxWidth: '220px', borderRadius: 'var(--radius-lg)' }} loading="lazy" />
+            <img src={message.content} alt="GIF" style={{ maxWidth: '220px', borderRadius: 'var(--radius-md)' }} loading="lazy" />
           ) : (
             message.content
           )}

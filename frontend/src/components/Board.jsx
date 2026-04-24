@@ -268,7 +268,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
           className="flex flex-col gap-2 min-h-[200px]"
           style={{
             padding: 'var(--space-3)',
-            borderRadius: 'var(--radius-lg)',
+            borderRadius: 'var(--radius-md)',
             background: activeCol.isSafety ? 'color-mix(in srgb, var(--apple-red) 6%, transparent)' : 'var(--bg-secondary)',
             border: 'var(--border-hairline)',
             transition: `background var(--duration-normal) var(--ease-default)`,
@@ -359,7 +359,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
           {Array.from(swimlanes.entries()).map(([laneName, laneTasks]) => {
             const isCollapsed = collapsedLanes[laneName]
             return (
-              <div key={laneName} className="overflow-hidden" style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-secondary)', border: 'var(--border-hairline)' }}>
+              <div key={laneName} className="overflow-hidden" style={{ borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)', border: 'var(--border-hairline)' }}>
                 <button
                   onClick={() => toggleLane(laneName)}
                   className="w-full flex items-center gap-2 text-left apple-press"
@@ -408,7 +408,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                 key={col.id}
                 className="flex-1 min-w-[280px] flex flex-col"
                 style={{
-                  borderRadius: 'var(--radius-lg)',
+                  borderRadius: 'var(--radius-md)',
                   padding: 'var(--space-4)',
                   background: col.isSafety ? 'color-mix(in srgb, var(--apple-red) 6%, transparent)' : 'var(--bg-secondary)',
                   border: 'var(--border-hairline)',

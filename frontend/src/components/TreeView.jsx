@@ -63,7 +63,7 @@ function TreeNode({ task, children: childTasks, childrenMap, depth, onSelectTask
         onMouseLeave={e => { if (!justUpdated) e.currentTarget.style.background = 'transparent' }}
       >
         {hasChildren ? (
-          <button onClick={(e) => { e.stopPropagation(); onToggle(task.id) }} className="apple-press shrink-0" style={{ padding: '2px', borderRadius: 'var(--radius-xs)', color: 'var(--text-tertiary)', transition: `transform var(--duration-fast) var(--ease-default)` }}>
+          <button onClick={(e) => { e.stopPropagation(); onToggle(task.id) }} className="apple-press shrink-0" style={{ padding: '2px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)', transition: `transform var(--duration-fast) var(--ease-default)` }}>
             {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
           </button>
         ) : (
@@ -168,7 +168,7 @@ function TreeView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
       </div>
 
       {/* Tree */}
-      <div className="overflow-hidden" style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-sm)' }}>
+      <div className="overflow-hidden" style={{ borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)', border: 'var(--border-hairline)' }}>
         {tree.roots.length === 0 && tree.orphans.length === 0 ? (
           <div className="text-center" style={{ padding: '48px', fontSize: 'var(--text-subhead)', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
             No tasks match the current filters

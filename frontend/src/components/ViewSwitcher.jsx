@@ -27,7 +27,6 @@ function ViewSwitcher({ activeView, onChangeView }) {
               fontWeight: 'var(--font-medium)',
               color: isActive ? 'var(--text-app)' : 'var(--text-muted)',
               background: isActive ? 'var(--bg-card)' : 'transparent',
-              boxShadow: isActive ? 'var(--shadow-sm)' : 'none',
             }}
             title={`${label} view`}
           >
