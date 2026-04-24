@@ -1,12 +1,32 @@
-// Facelift TopBar — Phase 2 placeholder.
+// Facelift TopBar — Phase 4.
 //
-// Phase 2 ships the skeleton (brand + view switcher). Phase 4 replaces this
-// with the real project-anchor combobox + filter bar + avatar popover +
-// conditional preview icon. Keep this file dumb — it's just layout slots.
+// Left: brand + ProjectAnchor (replaces left-sidebar project list)
+// Center: ViewSwitcher (Board / List / Changes)
+// Right: AvatarPopover (Theme / Settings / Help / Logout)
 
 import ViewSwitcher from '../ViewSwitcher'
+import ProjectAnchor from './ProjectAnchor'
+import AvatarPopover from './AvatarPopover'
 
-export default function TopBar({ activeView, onChangeView, user }) {
+export default function TopBar({
+  user,
+  theme,
+  onSetTheme,
+  onLogout,
+  activeView,
+  onChangeView,
+  // Project anchor
+  projects,
+  tasks,
+  activeProject,
+  onSetActiveProject,
+  onCreateProject,
+  onOpenArchived,
+  archivedCount,
+  // Avatar popover
+  onOpenSettings,
+  onOpenHelp,
+}) {
   return (
     <header
       className="shrink-0 flex items-center justify-between"
@@ -18,22 +38,35 @@ export default function TopBar({ activeView, onChangeView, user }) {
         background: 'var(--bg-card)',
       }}
     >
+      {/* Left — brand + project anchor */}
       <div className="flex items-center gap-3">
-        <img src="/favicon.svg" alt="Atrium" style={{ width: '24px', height: '24px' }} />
-        <span style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)', letterSpacing: 'var(--tracking-tight)' }}>
-          Atrium
-        </span>
-        {/* Phase 4 inserts project-anchor combobox here */}
+        <img src="/favicon.svg" alt="Atrium" style={{ width: '20px', height: '20px' }} />
+        <ProjectAnchor
+          projects={projects}
+          tasks={tasks}
+          activeProject={activeProject}
+          onSetActiveProject={onSetActiveProject}
+          onCreateProject={onCreateProject}
+          onOpenArchived={onOpenArchived}
+          archivedCount={archivedCount}
+        />
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* Center — view switcher */}
+      <div className="flex items-center">
         <ViewSwitcher activeView={activeView} onChangeView={onChangeView} />
-        {/* Phase 4 inserts avatar-popover here; for now just show username */}
-        {user?.username && (
-          <span style={{ fontSize: 'var(--text-caption1)', color: 'var(--text-muted)', padding: '0 var(--space-2)' }}>
-            {user.username}
-          </span>
-        )}
+      </div>
+
+      {/* Right — avatar popover */}
+      <div className="flex items-center gap-2">
+        <AvatarPopover
+          user={user}
+          theme={theme}
+          onSetTheme={onSetTheme}
+          onOpenSettings={onOpenSettings}
+          onOpenHelp={onOpenHelp}
+          onLogout={onLogout}
+        />
       </div>
     </header>
   )
