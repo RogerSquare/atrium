@@ -9,11 +9,12 @@
 // Resize: drag handle on the left edge persists to localStorage.
 
 import { useEffect, useRef, useState } from 'react'
-import { X, FileText, MessageSquare, Activity, Sparkles, Terminal } from 'lucide-react'
+import { X, FileText, MessageSquare, Activity, Sparkles, Terminal, GitCommit } from 'lucide-react'
 import { IconButton } from '../ui'
 import DetailDescription from '../detail/DetailDescription'
 import DetailComments from '../detail/DetailComments'
 import DetailActivity from '../detail/DetailActivity'
+import DetailChanges from '../detail/DetailChanges'
 import DetailAI from '../detail/DetailAI'
 import DetailAgentLog from '../detail/DetailAgentLog'
 import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
@@ -22,6 +23,7 @@ const TABS = [
   { id: 'description', label: 'Description', icon: FileText },
   { id: 'comments', label: 'Comments', icon: MessageSquare },
   { id: 'activity', label: 'Activity', icon: Activity },
+  { id: 'changes', label: 'Changes', icon: GitCommit },
   { id: 'ai', label: 'AI', icon: Sparkles },
   { id: 'agent', label: 'Agent Log', icon: Terminal },
 ]
@@ -235,6 +237,9 @@ export default function DetailPane({
             )}
             {activeTab === 'activity' && (
               <DetailActivity task={task} />
+            )}
+            {activeTab === 'changes' && (
+              <DetailChanges task={task} />
             )}
             {activeTab === 'ai' && (
               <DetailAI task={task} currentUser={currentUser} aiChatEnabled={aiChatEnabled} />

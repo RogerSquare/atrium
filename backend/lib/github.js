@@ -350,9 +350,82 @@ function clearCache() {
   cache.clear();
 }
 
+// ---- Per-PR changes (commits + files + diff stats) --------------------
+// Second cache layer keyed by `${repoPath}#${prNumber}` with same 5-min TTL.
+// Kept separate from the links cache so clearing one doesn't invalidate the other.
+const changesCache = new Map();
+
+async function getPrChanges(projectIdOrName, prNumber, { refresh = false } = {}) {
+  const repoPath = resolveProjectRepoPath(projectIdOrName);
+  if (!repoPath) {
+    return { error: 'no_git_repo' };
+  }
+  if (!prNumber) {
+    return { error: 'no_pr' };
+  }
+
+  const cacheKey = `${repoPath}#${prNumber}`;
+  const cached = changesCache.get(cacheKey);
+  if (!refresh && cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  const out = await ghOutput(repoPath, [
+    'pr', 'view', String(prNumber),
+    '--json', 'number,title,url,headRefName,baseRefName,commits,files,additions,deletions,changedFiles',
+  ]);
+  if (!out) {
+    return { error: 'gh_failed' };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(out);
+  } catch (err) {
+    logger.warn({ err: err.message }, 'gh pr view returned invalid JSON');
+    return { error: 'parse_failed' };
+  }
+
+  // Shape the response into a stable contract the frontend can render without
+  // having to know about `gh`'s exact field names.
+  const data = {
+    pr_number: parsed.number,
+    pr_title: parsed.title,
+    pr_url: parsed.url,
+    head_branch: parsed.headRefName,
+    base_branch: parsed.baseRefName,
+    additions: parsed.additions ?? 0,
+    deletions: parsed.deletions ?? 0,
+    changed_files: parsed.changedFiles ?? (parsed.files ? parsed.files.length : 0),
+    commits: (parsed.commits || []).map(c => ({
+      oid: c.oid,
+      abbreviated_oid: (c.oid || '').slice(0, 7),
+      message_headline: (c.messageHeadline || '').trim(),
+      authored_date: c.authoredDate || null,
+      author: c.authors && c.authors[0]
+        ? { login: c.authors[0].login || null, name: c.authors[0].name || null }
+        : null,
+    })),
+    files: (parsed.files || []).map(f => ({
+      path: f.path,
+      additions: f.additions ?? 0,
+      deletions: f.deletions ?? 0,
+    })),
+    fetched_at: new Date().toISOString(),
+  };
+
+  changesCache.set(cacheKey, { fetchedAt: Date.now(), data });
+  return data;
+}
+
+function clearChangesCache() {
+  changesCache.clear();
+}
+
 module.exports = {
   getLinks,
   clearCache,
+  getPrChanges,
+  clearChangesCache,
   parseGithubRemote,
   parsePrNumberFromUrl,
   matchBranchToTaskId,
