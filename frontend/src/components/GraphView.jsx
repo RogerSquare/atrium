@@ -15,10 +15,8 @@ import { STATUS_COLOR } from '../constants'
 const NODE_W = 72
 const NODE_H = 22
 const PADDING = 40           // canvas padding around the settled cloud
-const ITERATIONS = 300
-const IDEAL_EDGE_LEN = 90    // target distance between connected nodes
-const REPULSION_K = 95       // pair-repulsion constant
-const CENTER_GRAVITY = 0.004 // pull toward (0, 0) each iteration
+const ITERATIONS = 250
+const K = 90                 // ideal edge length (also the force constant)
 
 function buildGraph(tasks) {
   const byId = new Map(tasks.map((t) => [t.id, t]))
@@ -47,65 +45,95 @@ function buildGraph(tasks) {
   return { connected, byId, depEdges, parentEdges }
 }
 
+// Canonical Fruchterman-Reingold.
+//
+// Key correctness points the first pass missed:
+// - Per-iteration displacement is CAPPED by a cooling temperature, so a big
+//   attractive/repulsive force never teleports a node across the canvas.
+// - Attraction uses d²/k (strong but bounded by the temperature cap) and
+//   only fires along edges. Repulsion uses k²/d and fires on every pair.
+// - No multiplicative center gravity (that was shrinking the whole cloud
+//   to ~30% over 300 iterations). Drift control comes from repulsion
+//   between disconnected pairs plus a tiny end-of-loop pull to origin.
 function runForceLayout(nodes, edges) {
-  if (nodes.length === 0) return new Map()
+  const n = nodes.length
+  if (n === 0) return new Map()
 
-  // Seed positions on a circle so the simulation starts with something stable.
   const positions = new Map()
-  const R = Math.max(120, nodes.length * 8)
-  nodes.forEach((n, i) => {
-    const a = (i / nodes.length) * Math.PI * 2
-    positions.set(n.id, { x: Math.cos(a) * R, y: Math.sin(a) * R })
+  // Seed radius scales with sqrt(n) so density stays roughly constant across
+  // graphs of different sizes. Tiny random jitter breaks symmetry on the
+  // seed circle so repulsion doesn't lock nodes into perfect polygonal rings.
+  const R = K * Math.sqrt(n) * 0.7
+  nodes.forEach((node, i) => {
+    const angle = (i / n) * Math.PI * 2
+    const jitter = (Math.random() - 0.5) * 0.2
+    positions.set(node.id, {
+      x: Math.cos(angle + jitter) * R,
+      y: Math.sin(angle + jitter) * R,
+    })
   })
 
-  const ids = nodes.map((n) => n.id)
-  const n = ids.length
+  const ids = nodes.map((node) => node.id)
+  // Initial temperature = seed radius, cooled linearly to 0.
+  const T0 = R
 
   for (let iter = 0; iter < ITERATIONS; iter++) {
-    // Alpha cools over time so late iterations make only fine adjustments.
-    const alpha = 1 - iter / ITERATIONS
+    const t = T0 * (1 - iter / ITERATIONS)
+    const disp = new Map()
+    for (const id of ids) disp.set(id, { x: 0, y: 0 })
 
-    // Pair repulsion (O(n²) — fine up to a few hundred nodes).
+    // Repulsion between every pair: f_r = k² / d, direction = from other to self.
     for (let i = 0; i < n; i++) {
-      const a = positions.get(ids[i])
+      const ai = ids[i]
+      const a = positions.get(ai)
+      const da = disp.get(ai)
       for (let j = i + 1; j < n; j++) {
-        const b = positions.get(ids[j])
-        const dx = b.x - a.x
-        const dy = b.y - a.y
-        const distSq = dx * dx + dy * dy || 0.01
-        const dist = Math.sqrt(distSq)
-        const force = (REPULSION_K * REPULSION_K) / dist
-        const fx = (dx / dist) * force * alpha
-        const fy = (dy / dist) * force * alpha
-        a.x -= fx
-        a.y -= fy
-        b.x += fx
-        b.y += fy
+        const bi = ids[j]
+        const b = positions.get(bi)
+        const db = disp.get(bi)
+        const dx = a.x - b.x
+        const dy = a.y - b.y
+        let dist = Math.sqrt(dx * dx + dy * dy)
+        if (dist < 0.01) dist = 0.01
+        const force = (K * K) / dist
+        const ux = dx / dist
+        const uy = dy / dist
+        da.x += ux * force
+        da.y += uy * force
+        db.x -= ux * force
+        db.y -= uy * force
       }
     }
 
-    // Edge attraction pulls connected nodes toward each other.
+    // Attraction along edges: f_a = d² / k, direction = toward other.
     for (const e of edges) {
       const a = positions.get(e.from)
       const b = positions.get(e.to)
       if (!a || !b) continue
-      const dx = b.x - a.x
-      const dy = b.y - a.y
-      const dist = Math.sqrt(dx * dx + dy * dy) || 0.01
-      const force = (dist * dist) / IDEAL_EDGE_LEN
-      const fx = (dx / dist) * force * alpha * 0.5
-      const fy = (dy / dist) * force * alpha * 0.5
-      a.x += fx
-      a.y += fy
-      b.x -= fx
-      b.y -= fy
+      const da = disp.get(e.from)
+      const db = disp.get(e.to)
+      const dx = a.x - b.x
+      const dy = a.y - b.y
+      let dist = Math.sqrt(dx * dx + dy * dy)
+      if (dist < 0.01) dist = 0.01
+      const force = (dist * dist) / K
+      const ux = dx / dist
+      const uy = dy / dist
+      da.x -= ux * force
+      da.y -= uy * force
+      db.x += ux * force
+      db.y += uy * force
     }
 
-    // Gentle center gravity so the cloud doesn't drift off into infinity.
+    // Apply displacement, CAPPED at current temperature so no node moves
+    // more than ~t units per iteration. This is the critical stability knob.
     for (const id of ids) {
       const p = positions.get(id)
-      p.x *= 1 - CENTER_GRAVITY
-      p.y *= 1 - CENTER_GRAVITY
+      const d = disp.get(id)
+      const mag = Math.sqrt(d.x * d.x + d.y * d.y) || 0.01
+      const capped = Math.min(mag, t)
+      p.x += (d.x / mag) * capped
+      p.y += (d.y / mag) * capped
     }
   }
 
