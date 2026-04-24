@@ -372,19 +372,26 @@ export default function AppShell() {
         />
       )}
 
-      {/* Floating Preview button — bottom-right FAB. Hidden while the
-          DetailPane takes over the viewport on narrow screens so it
-          doesn't overlap the close button. */}
-      {!(narrow && detailOpen) && !showPreview && (
+      {/* Floating Preview button — bottom-right FAB.
+          Only renders when the active project has at least one service
+          registered in services.json — avoids showing a dead affordance
+          on projects that don't have a dev server to preview. Also
+          hidden while PreviewPanel is open or while DetailPane takes
+          over the viewport on narrow screens. */}
+      {(() => {
+        const projectServices = previewServices.filter((s) => s.group === activeProject)
+        const runningCount = projectServices.filter((s) => s.status === 'running').length
+        const shouldShow =
+          projectServices.length > 0 && !(narrow && detailOpen) && !showPreview
+        if (!shouldShow) return null
+        return (
         <button
           type="button"
           onClick={() => setShowPreview(true)}
           className="apple-press"
-          title={
-            previewServices.filter((s) => s.status === 'running').length > 0
-              ? `Preview (${previewServices.filter((s) => s.status === 'running').length} running)`
-              : 'Preview services'
-          }
+          title={runningCount > 0
+            ? `Preview (${runningCount} running)`
+            : 'Preview services'}
           aria-label="Preview services"
           style={{
             position: 'fixed',
@@ -406,7 +413,8 @@ export default function AppShell() {
         >
           <Eye className="w-[18px] h-[18px]" />
         </button>
-      )}
+        )
+      })()}
 
       <UndoToast
         message={undoRedo.undoToast}
