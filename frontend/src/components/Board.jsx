@@ -24,12 +24,6 @@ const SWIMLANE_OPTIONS = [
 
 const STALE_THRESHOLDS = { in_progress: 3, review: 7 } // days
 
-// Auto-compact threshold (facelift Phase 5 plan decision #1). When a column
-// has this many or more tasks, its cards render in compact mode even if the
-// user hasn't toggled the global compact switch. Per-column, not per-board —
-// a quiet column stays full-size while a flooded column compresses.
-const AUTO_COMPACT_THRESHOLD = 100
-
 function isTaskStale(task) {
   const threshold = STALE_THRESHOLDS[task.status]
   if (!threshold) return false
@@ -151,9 +145,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
     return ids
   }, [displayColumns, columnTasks])
 
-  // renderCard takes an explicit compact flag so each column can decide for itself
-  // whether to use the denser layout (per Phase 5 plan).
-  const renderCard = (task, isDragging, compact) => (
+  const renderCard = (task, isDragging) => (
     <TaskCard
       task={task}
       onUpdateTask={onUpdateTask}
@@ -167,48 +159,45 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
       onShiftSelect={onShiftSelect}
       orderedTaskIds={orderedTaskIds}
       justUpdated={recentlyUpdatedIds.includes(task.id)}
-      compact={compact}
+      compact={compactMode}
       isStale={staleIds.has(task.id)}
       githubLinks={githubLinks}
     />
   )
 
-  const renderDroppable = (col, colTasks, droppableId) => {
-    const effectiveCompact = compactMode || colTasks.length >= AUTO_COMPACT_THRESHOLD
-    return (
-      <Droppable droppableId={droppableId} isDropDisabled={col.isSafety}>
-        {(provided, snapshot) => (
-          <div
-            ref={provided.innerRef}
-            {...provided.droppableProps}
-            className="flex-1 flex flex-col gap-2 min-h-[60px]"
-            style={{
-              padding: 'var(--space-2)',
-              borderRadius: 'var(--radius-md)',
-              background: snapshot.isDraggingOver ? 'color-mix(in srgb, var(--accent-app) 6%, transparent)' : 'transparent',
-              transition: `background var(--duration-fast) var(--ease-default)`,
-            }}
-          >
-            {colTasks.map((task, index) => (
-              <Draggable key={task.id} draggableId={task.id} index={index}>
-                {(provided, snapshot) => (
-                  <div
-                    ref={provided.innerRef}
-                    {...provided.draggableProps}
-                    {...provided.dragHandleProps}
-                    style={provided.draggableProps.style}
-                  >
-                    {renderCard(task, snapshot.isDragging, effectiveCompact)}
-                  </div>
-                )}
-              </Draggable>
-            ))}
-            {provided.placeholder}
-          </div>
-        )}
-      </Droppable>
-    )
-  }
+  const renderDroppable = (col, colTasks, droppableId) => (
+    <Droppable droppableId={droppableId} isDropDisabled={col.isSafety}>
+      {(provided, snapshot) => (
+        <div
+          ref={provided.innerRef}
+          {...provided.droppableProps}
+          className="flex-1 flex flex-col gap-2 min-h-[60px]"
+          style={{
+            padding: 'var(--space-2)',
+            borderRadius: 'var(--radius-md)',
+            background: snapshot.isDraggingOver ? 'color-mix(in srgb, var(--accent-app) 6%, transparent)' : 'transparent',
+            transition: `background var(--duration-fast) var(--ease-default)`,
+          }}
+        >
+          {colTasks.map((task, index) => (
+            <Draggable key={task.id} draggableId={task.id} index={index}>
+              {(provided, snapshot) => (
+                <div
+                  ref={provided.innerRef}
+                  {...provided.draggableProps}
+                  {...provided.dragHandleProps}
+                  style={provided.draggableProps.style}
+                >
+                  {renderCard(task, snapshot.isDragging)}
+                </div>
+              )}
+            </Draggable>
+          ))}
+          {provided.placeholder}
+        </div>
+      )}
+    </Droppable>
+  )
 
   // Mobile: tabbed single-column view
   if (isMobile) {
@@ -288,12 +277,9 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
           {colTasks.length === 0 && (
             <p className="text-center py-8" style={{ fontSize: 'var(--text-footnote)', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No tasks</p>
           )}
-          {(() => {
-            const effectiveCompact = compactMode || colTasks.length >= AUTO_COMPACT_THRESHOLD
-            return colTasks.map(task => (
-              <div key={task.id}>{renderCard(task, false, effectiveCompact)}</div>
-            ))
-          })()}
+          {colTasks.map(task => (
+            <div key={task.id}>{renderCard(task, false)}</div>
+          ))}
         </div>
       </div>
     )
