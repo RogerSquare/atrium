@@ -67,9 +67,9 @@ export default function ProjectAnchor({
     <div ref={rootRef} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="apple-press flex items-center gap-2"
+        className="apple-press flex items-center gap-2 facelift-pill"
         style={{
-          padding: 'var(--space-1) var(--space-2)',
+          padding: '0 var(--space-2)',
           borderRadius: 'var(--radius-sm)',
           background: 'transparent',
           border: 'none',

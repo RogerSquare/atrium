@@ -246,9 +246,9 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
           {repoUrl && (
             <a
               href={repoUrl} target="_blank" rel="noreferrer"
-              className="flex items-center gap-1.5 apple-press"
+              className="flex items-center gap-1.5 apple-press facelift-pill"
               style={{
-                padding: '4px 10px', borderRadius: 'var(--radius-md)',
+                padding: '0 10px', borderRadius: 'var(--radius-md)',
                 background: 'var(--fill-secondary)', border: '1px solid var(--separator)',
                 fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)',
                 fontFamily: 'var(--font-mono, ui-monospace, monospace)',
@@ -274,9 +274,9 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
             <button
               type="button"
               onClick={() => setFocus(null)}
-              className="apple-press flex items-center gap-1"
+              className="apple-press flex items-center gap-1 facelift-pill"
               style={{
-                padding: '4px 8px 4px 10px',
+                padding: '0 8px 0 10px',
                 borderRadius: 'var(--radius-md)',
                 background: focusStyle
                   ? `color-mix(in srgb, ${focusStyle.color} 18%, transparent)`
@@ -301,9 +301,9 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
         </div>
         <button
           onClick={() => fetchLinks(true)} disabled={loading}
-          className="apple-press flex items-center gap-1.5"
+          className="apple-press flex items-center gap-1.5 facelift-pill"
           style={{
-            padding: '4px 10px', borderRadius: 'var(--radius-md)',
+            padding: '0 10px', borderRadius: 'var(--radius-md)',
             background: 'var(--fill-secondary)', border: '1px solid var(--separator)',
             fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)',
             opacity: loading ? 0.6 : 1,

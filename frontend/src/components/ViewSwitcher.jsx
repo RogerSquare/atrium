@@ -20,9 +20,9 @@ function ViewSwitcher({ activeView, onChangeView }) {
           <button
             key={id}
             onClick={() => onChangeView(id)}
-            className="apple-segment apple-press flex items-center gap-1.5"
+            className="apple-segment apple-press flex items-center gap-1.5 facelift-pill"
             style={{
-              padding: '5px 12px',
+              padding: '0 12px',
               borderRadius: 'var(--radius-sm)',
               fontSize: 'var(--text-caption2)',
               fontWeight: 'var(--font-medium)',

@@ -51,9 +51,10 @@ export default function FilterBar({
           placeholder="Search tasks…"
           value={searchQuery || ''}
           onChange={(e) => setSearchQuery(e.target.value)}
+          className="facelift-pill"
           style={{
             width: '100%',
-            padding: 'var(--space-1) var(--space-2) var(--space-1) calc(var(--space-2) + 20px)',
+            padding: '0 var(--space-2) 0 calc(var(--space-2) + 20px)',
             borderRadius: 'var(--radius-sm)',
             border: 'var(--border-hairline)',
             background: 'var(--bg-card)',
@@ -86,8 +87,9 @@ export default function FilterBar({
       <select
         value={filterType}
         onChange={(e) => setFilterType(e.target.value)}
+        className="facelift-pill"
         style={{
-          padding: 'var(--space-1) var(--space-2)',
+          padding: '0 var(--space-2)',
           borderRadius: 'var(--radius-sm)',
           border: 'var(--border-hairline)',
           background: filterType !== 'all' ? 'color-mix(in srgb, var(--accent-app) 8%, transparent)' : 'var(--bg-card)',
@@ -107,8 +109,9 @@ export default function FilterBar({
       <select
         value={filterPriority}
         onChange={(e) => setFilterPriority(e.target.value)}
+        className="facelift-pill"
         style={{
-          padding: 'var(--space-1) var(--space-2)',
+          padding: '0 var(--space-2)',
           borderRadius: 'var(--radius-sm)',
           border: 'var(--border-hairline)',
           background: filterPriority !== 'all' ? 'color-mix(in srgb, var(--accent-app) 8%, transparent)' : 'var(--bg-card)',
@@ -128,6 +131,7 @@ export default function FilterBar({
         variant={filterAssignee === 'mine' ? 'secondary' : 'ghost'}
         pill={false}
         size="sm"
+        className="facelift-pill"
         onClick={() => setFilterAssignee(filterAssignee === 'mine' ? 'all' : 'mine')}
       >
         <UserCircle2 className="w-3.5 h-3.5" />
@@ -139,6 +143,7 @@ export default function FilterBar({
         variant={filterToday ? 'secondary' : 'ghost'}
         pill={false}
         size="sm"
+        className="facelift-pill"
         onClick={() => setFilterToday((v) => !v)}
       >
         <Clock className="w-3.5 h-3.5" />
@@ -150,6 +155,7 @@ export default function FilterBar({
         variant={filterStale ? 'secondary' : 'ghost'}
         pill={false}
         size="sm"
+        className="facelift-pill"
         onClick={() => setFilterStale((v) => !v)}
         style={{
           color: filterStale ? 'var(--apple-orange)' : undefined,
@@ -162,7 +168,7 @@ export default function FilterBar({
 
       {/* Reset */}
       {activeFilterCount > 0 && (
-        <Button variant="danger" pill={false} size="sm" onClick={resetAllFilters}>
+        <Button variant="danger" pill={false} size="sm" className="facelift-pill" onClick={resetAllFilters}>
           <X className="w-3 h-3" />
           Reset ({activeFilterCount})
         </Button>

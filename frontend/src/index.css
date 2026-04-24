@@ -819,6 +819,23 @@ select:focus-visible {
   border-top: 0.5px solid var(--separator);
 }
 
+/* --- Facelift pill — unified height for pill-shaped controls ---
+   Apply `.facelift-pill` to FilterBar pills, toolbar chips, view-switcher
+   segments, and the project anchor. Sets a fixed 28px height with
+   consistent vertical centering so native <select>, <input>, and
+   <button> elements line up on the same baseline. Horizontal padding
+   stays component-defined so text room is preserved. Display isn't
+   set here — consumers already handle that via `flex`/`inline-flex`
+   utility classes. */
+.facelift-pill {
+  height: 28px;
+  line-height: 1;
+  padding-top: 0;
+  padding-bottom: 0;
+  box-sizing: border-box;
+  align-items: center;
+}
+
 /* --- Command palette (cmdk) --- */
 [cmdk-item][data-selected='true'] {
   background: color-mix(in srgb, var(--accent-app) 12%, transparent);
