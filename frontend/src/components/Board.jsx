@@ -9,7 +9,6 @@ const COLUMNS = [
   { id: 'draft', title: 'Draft' },
   { id: 'todo', title: 'To Do' },
   { id: 'in_progress', title: 'In Progress' },
-  { id: 'waiting_input', title: 'Waiting Input' },
   { id: 'review', title: 'Review' },
   { id: 'done', title: 'Done' }
 ]
