@@ -87,6 +87,17 @@
   --duration-normal: 250ms;
   --duration-slow: 350ms;
 
+  /* --- Motion (facelift v1) --- */
+  /* Shared-element card -> detail pane morph */
+  --ease-morph: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-morph: 240ms;
+  /* Command palette open/close */
+  --duration-palette: 160ms;
+  /* View/page crossfade */
+  --duration-view-fade: 180ms;
+  /* Tab crossfade inside detail pane */
+  --duration-tab-fade: 140ms;
+
   /* --- Safe Area --- */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -705,6 +716,16 @@ select:focus-visible {
   /* Smooth scrolling can cause motion sickness */
   .apple-scroll {
     scroll-behavior: auto !important;
+  }
+
+  /* Facelift motion tokens collapse to 0 under reduced-motion.
+     Consumers reading these CSS vars get an instant transition.
+     framer-motion consumers should use useReducedMotion() to branch. */
+  :root {
+    --duration-morph: 0ms;
+    --duration-palette: 0ms;
+    --duration-view-fade: 0ms;
+    --duration-tab-fade: 0ms;
   }
 }
 

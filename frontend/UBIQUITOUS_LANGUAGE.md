@@ -1,14 +1,52 @@
 # Atrium Frontend — Ubiquitous Language (Visual Design)
 
-_Updated 2026-04-23 (v2 — adds aesthetic-lane vocabulary)_
+_Updated 2026-04-23 (v3 — adds layout & information-architecture vocabulary)_
 
-**Purpose**: Give you vocabulary to put a *name* on what feels off in the UI. When you see something that bugs you but can't articulate why, skim this file — odds are the word is here. This file covers the *visual language* of the UI (design system, composition, polish). It's a sibling to the root `UBIQUITOUS_LANGUAGE.md`, which covers the task-board *domain*.
+**Purpose**: Give you vocabulary to put a *name* on what feels off in the UI. When you see something that bugs you but can't articulate why, skim this file — odds are the word is here. This file covers the *visual language* of the UI (design system, composition, polish, and layout). It's a sibling to the root `UBIQUITOUS_LANGUAGE.md`, which covers the task-board *domain*.
 
 Anchored to what Atrium actually has: Tailwind v4 with `@theme` tokens, Apple HIG-inspired type + color + spacing scales in `src/index.css`, primitives in `src/components/ui/` (Button, Badge, Card, Select, IconButton, Input, Checkbox, Avatar, ButtonGroup), and feature components (TaskCard, Sidebar, Board, etc.) that consume them.
 
-Two axes to separate when talking about visual issues: **which aesthetic lane** (the overall philosophy) and **how well the lane is executed** (drift, rhythm, polish within it). Earlier phases of refinement worked *within* the Apple-HIG lane; a redesign might *switch lanes* entirely.
+Three axes to separate when talking about UI issues:
+1. **Layout / IA** — where things live on the page, which zone owns which responsibility (this section)
+2. **Aesthetic lane** — the overall visual philosophy (maximalist vs minimalist, below)
+3. **Execution within a lane** — drift, rhythm, polish (also below)
+
+These are independent. You can have a beautifully-executed maximalist UI with a terrible layout, or a pristine minimalist UI that's hard to navigate. Name which axis a complaint is about before you act on it.
 
 ---
+
+## Layout & information architecture
+
+Where things live on the page, in what zones, in what priority. Distinct from the aesthetic lane — you can change layout without changing style, and vice versa.
+
+| Term | Definition | Aliases to avoid |
+|---|---|---|
+| **Information architecture (IA)** | The skeleton of how content and actions are organized on a screen — which region owns what responsibility | Layout (too specific) |
+| **Zone** | A named region of the page with a single responsibility (nav zone, focal zone, detail zone, status zone) | Section (too vague), panel |
+| **Focal zone** | The region that carries the primary content — the reason the user opened this screen | Main area |
+| **Peripheral zone** | Supporting regions around the focal zone — nav, status, metadata, secondary actions | Sidebars (too specific) |
+| **Anchor** | A fixed reference element that orients the user across states (logo in top-left, avatar in top-right) | Landmark |
+| **Reading gravity** | Where the eye is pulled first when a screen loads — should land on the focal zone | Attention |
+| **Layout pattern** | A named arrangement of zones — e.g. single-column, split-pane, sidebar-left, master-detail, canvas-and-rail, command-palette-centric | Template |
+| **Master-detail** | Layout pattern where a list of items is paired with a detail view of one selected item (GitHub issue list + selected issue) | Split view (ambiguous) |
+| **Split-pane** | Two side-by-side zones of roughly equal weight — different from master-detail which has weight asymmetry | Two-column |
+| **Command surface** | Where users initiate actions — toolbar, floating button, command palette, inline hover menu, keyboard shortcut | Actions |
+| **Navigation pattern** | How users move between views — tabs, sidebar nav, breadcrumb, command palette, back-forward | Menu |
+| **Top-level nav** | Navigation that switches the entire focal zone (switching projects, switching views) | Main menu |
+| **In-context nav** | Navigation that changes something inside the current focal zone (switching tabs inside a task modal) | Sub-menu |
+| **Density gradient** | Different zones carry different visual densities — dense lists in peripheral, airy focus in focal | Density mix |
+| **Information scent** | Visual cues that tell the user what's behind a click before they click (icon + label + count) | Affordance (different concept) |
+
+## Redesign scopes
+
+Three different "redesigns" get confused. Name the scope before starting.
+
+| Term | Definition | Scope | Example |
+|---|---|---|---|
+| **Style refresh** | Change the visual vocabulary inside the existing layout — colors, shapes, weights, shadows | Just styling | PRs #27–#32 (refinement) |
+| **Aesthetic pivot** | Change the aesthetic lane — maximalist → minimalist, tactile → flat. Same components, same layout, different look | Styling + primitives | PRs #33–#40 (minimalist lane) |
+| **Facelift** | Rearrange zones, change command surfaces, rethink navigation. Same functionality, different composition | Layout + IA | (this task) |
+| **Full rebuild** | Change functionality too — new screens, removed features, new interaction models | All of the above + behavior | Not what we're doing |
 
 ## Aesthetic lane
 
@@ -188,11 +226,16 @@ What separates "works" from "feels crafted."
 > **You**: "Are shadows just out?"
 > **Me**: "In the minimalist lane, yes — **flatness** plus **hairline borders** replaces **elevation** as the way to convey layers. **Functional color** (red for error, green for success) stays; **decorative color** goes."
 
+> **You**: "It still looks the same — I wanted a completely new look."
+> **Me**: "That's usually a **facelift**, not another **aesthetic pivot**. We changed the style vocabulary in the last pass but kept the **layout pattern** (sidebar + board + right-hand task modal). What's missing is rearranging **zones** — moving the **command surface**, changing the **focal zone**'s weight, possibly switching to a **master-detail** pattern. Want me to scope that as its own task?"
+
 ## Flagged ambiguities
 
 - **"Card"** is overloaded in this repo: `src/components/ui/Card.jsx` is a **Primitive**; `src/components/TaskCard.jsx` is a **Feature component**. When you say "the card," say which tier you mean or say "**task card**" vs "the card primitive."
 - **"Refinement"** vs **"Redesign"** is the most load-bearing distinction in this file. **Refinement** stays inside the current **aesthetic lane** and fixes drift/rhythm/polish (what PRs #27–#32 did). **Redesign** switches lanes — different shadows, different shapes, different palette. Name which one before starting work.
-- **"Clean"** is the most overloaded word used for UI. Decompose into: (a) **uniformity** (low variance between siblings), (b) **flatness** (no shadows), (c) **restraint** (less decorative color), (d) **data-first** (dense, small chrome). Pick one.
+- **"Clean"** is the most overloaded word used for UI. Decompose into: (a) **uniformity** (low variance between siblings), (b) **flatness** (no shadows), (c) **restraint** (less decorative color), (d) **data-first** (dense, small chrome), (e) **spatial clarity** (IA that makes the reading path obvious — focal zone easy to find, command surface predictable). The first four are style; (e) is layout. The 2026-04-23 "still looks the same" feedback was really about (e), not (a–d).
+- **"Redesign"** is now overloaded three ways: **Style refresh** (colors/shapes), **Aesthetic pivot** (lane switch), **Facelift** (layout / IA rework). Pick one before starting — the work shapes are very different.
+- **"Facelift"** vs **"Redesign"** — colloquially people use them interchangeably but in this glossary a **Facelift** specifically touches layout / IA / composition, not style. A facelift can ship on top of an existing aesthetic lane or alongside a lane switch.
 - **"Uniform"** vs **"Consistent"**: **Consistency** = using the same tokens everywhere (what refinement gave us). **Uniformity** = sibling elements looking visibly identical (fewer pill-vs-rectangle contrasts, fewer one-off fills). They are orthogonal — a consistent UI can still feel non-uniform.
 - **"GitHub-like"** as a reference means: **minimalist lane** + **hairline borders** + **monochrome palette** + **data-first density** + **rounded rectangles, not pills**. Always unpack before using.
 - **"Refined"** is used in both lanes but means different things. Maximalist refined = Apple's craft (precise easing, optical alignment); minimalist refined = GitHub/Linear's discipline (no wasted pixel, consistent hairlines). Pick the lane first.
