@@ -1,284 +1,259 @@
-// Facelift Phase 9 — GraphView.
+// Facelift Phase 9 — GraphView (force-directed rewrite).
 //
-// Fourth view for the focal zone. Visualizes tasks as a layered DAG keyed on
-// the `depends_on` field: upstream tasks on the left, dependents on the right.
-// Tasks with no incoming or outgoing edges collect into an "Orphans" column
-// on the far right so the main graph stays readable.
+// Tasks float freely in a circular cloud. A Fruchterman-Reingold-ish
+// force simulation — repulsion between every pair + attraction along
+// each edge + mild center gravity — settles the graph over ~300
+// iterations before render, so connected clusters naturally gravitate
+// toward each other and unrelated chains drift apart.
 //
-// Rendering: SVG + absolute-positioned DOM nodes (no new deps). Layering by
-// Kahn-ish topological pass with a cycle-safe fallback (anything that can't be
-// ordered drops to layer 0 so a malformed chain still renders).
+// Orphans (no edges in or out) are hidden — a dependency graph with
+// unconnected singletons is just noise. Use Board/List for those.
 
 import { memo, useMemo } from 'react'
 import { STATUS_COLOR } from '../constants'
 
-const NODE_WIDTH = 200
-const NODE_HEIGHT = 58
-const LAYER_GAP = 64   // horizontal gap between layers
-const ROW_GAP = 16     // vertical gap between nodes within a layer
-const PADDING = 24
+const NODE_W = 72
+const NODE_H = 22
+const PADDING = 40           // canvas padding around the settled cloud
+const ITERATIONS = 300
+const IDEAL_EDGE_LEN = 90    // target distance between connected nodes
+const REPULSION_K = 95       // pair-repulsion constant
+const CENTER_GRAVITY = 0.004 // pull toward (0, 0) each iteration
 
-function buildLayers(tasks) {
+function buildGraph(tasks) {
   const byId = new Map(tasks.map((t) => [t.id, t]))
-  // Layering considers BOTH edge kinds (depends_on + parent_task) so sub-tasks
-  // sit to the right of their parent and blocked tasks sit to the right of
-  // their blockers. Dangling references (archived/deleted tasks) are stripped
-  // so one broken pointer doesn't trap the whole chain at layer 0.
-  const layerEdges = new Map()  // incoming-edge set used for Kahn ordering
-  const depEdges = new Map()    // depends_on only — rendered as solid edges
-  const parentEdges = new Map() // parent_task only — rendered as dashed edges
+  const depEdges = []
+  const parentEdges = []
   const anyIn = new Map()
   const anyOut = new Map()
+
   for (const t of tasks) {
-    const deps = (t.depends_on || []).filter((d) => byId.has(d) && d !== t.id)
-    const parent = t.parent_task && byId.has(t.parent_task) && t.parent_task !== t.id ? t.parent_task : null
-    depEdges.set(t.id, new Set(deps))
-    parentEdges.set(t.id, parent)
-    const incoming = new Set(deps)
-    if (parent) incoming.add(parent)
-    layerEdges.set(t.id, incoming)
-    anyIn.set(t.id, incoming.size > 0)
-    for (const src of incoming) {
-      if (!anyOut.has(src)) anyOut.set(src, 0)
-      anyOut.set(src, anyOut.get(src) + 1)
+    for (const depId of t.depends_on || []) {
+      if (!byId.has(depId) || depId === t.id) continue
+      depEdges.push({ from: depId, to: t.id })
+      anyIn.set(t.id, true)
+      anyOut.set(depId, true)
+    }
+    if (t.parent_task && byId.has(t.parent_task) && t.parent_task !== t.id) {
+      parentEdges.push({ from: t.parent_task, to: t.id })
+      anyIn.set(t.id, true)
+      anyOut.set(t.parent_task, true)
     }
   }
 
-  // Kahn's algorithm — nodes with zero incoming edges are layer 0; each pass
-  // peels the next layer. Any remaining nodes (part of a cycle) land in a
-  // final "unresolved" layer so nothing disappears.
-  const layer = new Map()
-  const remaining = new Set(tasks.map((t) => t.id))
-  let depth = 0
-  while (remaining.size > 0) {
-    const ready = []
-    for (const id of remaining) {
-      const incoming = layerEdges.get(id)
-      if ([...incoming].every((x) => layer.has(x))) ready.push(id)
+  // Keep only nodes that participate in an edge — orphans don't belong in a
+  // dependency graph and just crowd the canvas.
+  const connected = tasks.filter((t) => anyIn.get(t.id) || anyOut.get(t.id))
+  return { connected, byId, depEdges, parentEdges }
+}
+
+function runForceLayout(nodes, edges) {
+  if (nodes.length === 0) return new Map()
+
+  // Seed positions on a circle so the simulation starts with something stable.
+  const positions = new Map()
+  const R = Math.max(120, nodes.length * 8)
+  nodes.forEach((n, i) => {
+    const a = (i / nodes.length) * Math.PI * 2
+    positions.set(n.id, { x: Math.cos(a) * R, y: Math.sin(a) * R })
+  })
+
+  const ids = nodes.map((n) => n.id)
+  const n = ids.length
+
+  for (let iter = 0; iter < ITERATIONS; iter++) {
+    // Alpha cools over time so late iterations make only fine adjustments.
+    const alpha = 1 - iter / ITERATIONS
+
+    // Pair repulsion (O(n²) — fine up to a few hundred nodes).
+    for (let i = 0; i < n; i++) {
+      const a = positions.get(ids[i])
+      for (let j = i + 1; j < n; j++) {
+        const b = positions.get(ids[j])
+        const dx = b.x - a.x
+        const dy = b.y - a.y
+        const distSq = dx * dx + dy * dy || 0.01
+        const dist = Math.sqrt(distSq)
+        const force = (REPULSION_K * REPULSION_K) / dist
+        const fx = (dx / dist) * force * alpha
+        const fy = (dy / dist) * force * alpha
+        a.x -= fx
+        a.y -= fy
+        b.x += fx
+        b.y += fy
+      }
     }
-    if (ready.length === 0) {
-      for (const id of remaining) layer.set(id, depth)
-      break
+
+    // Edge attraction pulls connected nodes toward each other.
+    for (const e of edges) {
+      const a = positions.get(e.from)
+      const b = positions.get(e.to)
+      if (!a || !b) continue
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const dist = Math.sqrt(dx * dx + dy * dy) || 0.01
+      const force = (dist * dist) / IDEAL_EDGE_LEN
+      const fx = (dx / dist) * force * alpha * 0.5
+      const fy = (dy / dist) * force * alpha * 0.5
+      a.x += fx
+      a.y += fy
+      b.x -= fx
+      b.y -= fy
     }
-    for (const id of ready) {
-      layer.set(id, depth)
-      remaining.delete(id)
+
+    // Gentle center gravity so the cloud doesn't drift off into infinity.
+    for (const id of ids) {
+      const p = positions.get(id)
+      p.x *= 1 - CENTER_GRAVITY
+      p.y *= 1 - CENTER_GRAVITY
     }
-    depth += 1
   }
 
-  // Isolated = no edges of either kind in or out.
-  const isolated = new Set()
-  for (const t of tasks) {
-    if (!anyIn.get(t.id) && !(anyOut.get(t.id) > 0)) isolated.add(t.id)
-  }
-
-  // Collect layer buckets for connected nodes.
-  const connectedLayers = new Map()
-  for (const t of tasks) {
-    if (isolated.has(t.id)) continue
-    const l = layer.get(t.id) ?? 0
-    if (!connectedLayers.has(l)) connectedLayers.set(l, [])
-    connectedLayers.get(l).push(t)
-  }
-  const sortedLayers = [...connectedLayers.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([, list]) => list)
-
-  if (isolated.size > 0) {
-    sortedLayers.push(tasks.filter((t) => isolated.has(t.id)))
-  }
-
-  return { layers: sortedLayers, byId, depEdges, parentEdges }
+  return positions
 }
 
 function GraphView({ tasks, onSelectTask }) {
-  const { byId, positions, depLines, parentLines, canvasWidth, canvasHeight } = useMemo(() => {
-    const { layers, depEdges, parentEdges } = buildLayers(tasks)
-
-    // Assign (x, y) per task.
-    const positions = new Map()
-    layers.forEach((layerTasks, layerIdx) => {
-      const x = PADDING + layerIdx * (NODE_WIDTH + LAYER_GAP)
-      layerTasks.forEach((t, rowIdx) => {
-        const y = PADDING + rowIdx * (NODE_HEIGHT + ROW_GAP)
-        positions.set(t.id, { x, y })
-      })
-    })
-
-    // depends_on → solid edges. parent → dashed edges. Both only drawn when
-    // both endpoints are on canvas.
-    const depLines = []
-    const parentLines = []
-    for (const t of tasks) {
-      for (const depId of depEdges.get(t.id) || []) {
-        if (!positions.has(depId) || !positions.has(t.id)) continue
-        depLines.push({ from: depId, to: t.id })
-      }
-      const parentId = parentEdges.get(t.id)
-      if (parentId && positions.has(parentId) && positions.has(t.id)) {
-        parentLines.push({ from: parentId, to: t.id })
-      }
+  const { byId, positions, depLines, parentLines, viewBox, isEmpty } = useMemo(() => {
+    const { connected, byId, depEdges, parentEdges } = buildGraph(tasks)
+    if (connected.length === 0) {
+      return { byId, positions: new Map(), depLines: [], parentLines: [], viewBox: '0 0 400 200', isEmpty: true }
     }
 
-    const canvasWidth = PADDING + layers.length * (NODE_WIDTH + LAYER_GAP)
-    const canvasHeight =
-      PADDING + Math.max(1, ...layers.map((l) => l.length)) * (NODE_HEIGHT + ROW_GAP)
+    // Run simulation over both edge kinds (parent edges pull like deps).
+    const allEdges = [...depEdges, ...parentEdges]
+    const positions = runForceLayout(connected, allEdges)
+
+    // Compute bounding box + translate to positive quadrant so SVG renders.
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const { x, y } of positions.values()) {
+      if (x < minX) minX = x
+      if (y < minY) minY = y
+      if (x > maxX) maxX = x
+      if (y > maxY) maxY = y
+    }
+    // Shift so origin is top-left with padding.
+    const offsetX = -minX + PADDING
+    const offsetY = -minY + PADDING
+    for (const p of positions.values()) {
+      p.x += offsetX
+      p.y += offsetY
+    }
+    const width = (maxX - minX) + PADDING * 2
+    const height = (maxY - minY) + PADDING * 2
+
+    const depLines = depEdges
+      .map(({ from, to }) => ({ from, to, a: positions.get(from), b: positions.get(to) }))
+      .filter((l) => l.a && l.b)
+    const parentLines = parentEdges
+      .map(({ from, to }) => ({ from, to, a: positions.get(from), b: positions.get(to) }))
+      .filter((l) => l.a && l.b)
 
     return {
-      byId: new Map(tasks.map((t) => [t.id, t])),
+      byId,
       positions,
       depLines,
       parentLines,
-      canvasWidth,
-      canvasHeight,
+      viewBox: `0 0 ${width} ${height}`,
+      isEmpty: false,
     }
   }, [tasks])
 
-  if (tasks.length === 0) {
+  if (tasks.length === 0 || isEmpty) {
     return (
       <div
         className="text-center py-12 italic"
         style={{ color: 'var(--text-muted)', fontSize: 'var(--text-subhead)' }}
       >
-        No tasks to graph.
+        {tasks.length === 0
+          ? 'No tasks to graph.'
+          : 'No dependencies yet. Set parent_task or depends_on on a few tasks to see them connected here.'}
       </div>
     )
   }
 
   return (
     <div
-      className="overflow-auto custom-scrollbar"
+      className="w-full h-full"
       style={{
         borderRadius: 'var(--radius-md)',
         border: 'var(--border-hairline)',
         background: 'var(--bg-card)',
-        height: '100%',
-        minHeight: 0,
+        minHeight: 400,
+        position: 'relative',
+        overflow: 'hidden',
       }}
     >
-      <div
-        className="relative"
-        style={{
-          width: Math.max(canvasWidth, 400),
-          height: Math.max(canvasHeight, 200),
-        }}
+      <svg
+        viewBox={viewBox}
+        preserveAspectRatio="xMidYMid meet"
+        style={{ width: '100%', height: '100%', display: 'block' }}
       >
-        {/* Edges — drawn beneath nodes via absolute SVG.
-            Parent-task edges render first (underneath) with a dashed, muted
-            stroke so they read as hierarchy/grouping. depends_on edges render
-            on top with a solid, accented stroke so blockers stand out. */}
-        <svg
-          width={canvasWidth}
-          height={canvasHeight}
-          className="absolute top-0 left-0 pointer-events-none"
-        >
-          {parentLines.map(({ from, to }) => {
-            const a = positions.get(from)
-            const b = positions.get(to)
-            if (!a || !b) return null
-            const x1 = a.x + NODE_WIDTH
-            const y1 = a.y + NODE_HEIGHT / 2
-            const x2 = b.x
-            const y2 = b.y + NODE_HEIGHT / 2
-            const midX = (x1 + x2) / 2
-            const d = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`
-            return (
-              <path
-                key={`p-${from}->${to}`}
-                d={d}
-                stroke="var(--text-tertiary)"
-                strokeWidth="1"
-                strokeDasharray="4 4"
-                strokeOpacity="0.5"
-                fill="none"
-              />
-            )
-          })}
-          {depLines.map(({ from, to }) => {
-            const a = positions.get(from)
-            const b = positions.get(to)
-            if (!a || !b) return null
-            const x1 = a.x + NODE_WIDTH
-            const y1 = a.y + NODE_HEIGHT / 2
-            const x2 = b.x
-            const y2 = b.y + NODE_HEIGHT / 2
-            const midX = (x1 + x2) / 2
-            const d = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`
-            return (
-              <path
-                key={`d-${from}->${to}`}
-                d={d}
-                stroke="var(--accent-app)"
-                strokeWidth="1.5"
-                strokeOpacity="0.6"
-                fill="none"
-              />
-            )
-          })}
-        </svg>
+        {/* Parent edges first (underneath) — muted + dashed. */}
+        {parentLines.map(({ from, to, a, b }) => (
+          <line
+            key={`p-${from}->${to}`}
+            x1={a.x}
+            y1={a.y}
+            x2={b.x}
+            y2={b.y}
+            stroke="var(--text-tertiary)"
+            strokeWidth="1"
+            strokeDasharray="3 3"
+            strokeOpacity="0.5"
+          />
+        ))}
+        {/* depends_on edges on top — accent color. */}
+        {depLines.map(({ from, to, a, b }) => (
+          <line
+            key={`d-${from}->${to}`}
+            x1={a.x}
+            y1={a.y}
+            x2={b.x}
+            y2={b.y}
+            stroke="var(--accent-app)"
+            strokeWidth="1.25"
+            strokeOpacity="0.6"
+          />
+        ))}
 
-        {/* Nodes */}
+        {/* Nodes — small pills carrying the task id. Full title on hover. */}
         {[...positions.entries()].map(([id, { x, y }]) => {
           const task = byId.get(id)
           if (!task) return null
+          const statusColor = STATUS_COLOR[task.status] || 'var(--gray-1)'
           return (
-            <button
+            <g
               key={id}
-              type="button"
+              transform={`translate(${x - NODE_W / 2}, ${y - NODE_H / 2})`}
+              style={{ cursor: 'pointer' }}
               onClick={() => onSelectTask?.(task)}
-              className="apple-press absolute text-left"
-              style={{
-                left: x,
-                top: y,
-                width: NODE_WIDTH,
-                height: NODE_HEIGHT,
-                padding: 'var(--space-2)',
-                borderRadius: 'var(--radius-md)',
-                background: 'var(--bg-card)',
-                border: 'var(--border-hairline)',
-                boxShadow: 'var(--shadow-card)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '4px',
-                cursor: 'pointer',
-              }}
-              title={task.title}
             >
-              <div className="flex items-center gap-1.5">
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    background: STATUS_COLOR[task.status] || 'var(--gray-1)',
-                    flexShrink: 0,
-                  }}
-                />
-                <span
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 'var(--text-caption2)',
-                    color: 'var(--text-tertiary)',
-                  }}
-                >
-                  {task.id}
-                </span>
-              </div>
-              <span
-                className="truncate"
+              <title>{task.title}</title>
+              <rect
+                width={NODE_W}
+                height={NODE_H}
+                rx="11"
+                ry="11"
+                fill="var(--bg-card)"
+                stroke={statusColor}
+                strokeWidth="1.5"
+              />
+              <circle cx="10" cy={NODE_H / 2} r="3" fill={statusColor} />
+              <text
+                x="20"
+                y={NODE_H / 2 + 3.5}
                 style={{
-                  fontSize: 'var(--text-caption1)',
-                  fontWeight: 'var(--font-medium)',
-                  color: 'var(--text-app)',
+                  fontSize: '9px',
+                  fontFamily: 'var(--font-mono)',
+                  fill: 'var(--text-app)',
                 }}
               >
-                {task.title}
-              </span>
-            </button>
+                {task.id.length > 14 ? task.id.slice(0, 13) + '…' : task.id}
+              </text>
+            </g>
           )
         })}
-      </div>
+      </svg>
     </div>
   )
 }
