@@ -215,13 +215,23 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
           {task.priority || 'Medium'}
         </Badge>
         {task.assignee && (
-          <div className="flex items-center gap-1.5" style={{ padding: 'var(--space-1) var(--space-3)', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>
-            <Avatar size="xs" alt={task.assignee} color="white" background="var(--gray-2)" />
+          <Badge
+            preset="muted"
+            className="flex items-center gap-1"
+            style={{ padding: '2px 8px', color: 'var(--text-app)' }}
+          >
+            <Avatar
+              size="xs"
+              alt={task.assignee}
+              color="white"
+              background="var(--gray-2)"
+              style={{ width: '14px', height: '14px', fontSize: '8px' }}
+            />
             <span className="truncate max-w-[80px]">{task.assignee}</span>
             {task.status === 'in_progress' && (
-              <span className="animate-gentle-pulse" style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--apple-green)', boxShadow: '0 0 5px var(--apple-green)' }} />
+              <span className="animate-gentle-pulse" style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--apple-green)' }} />
             )}
-          </div>
+          </Badge>
         )}
 
         {task.due_date && (() => {
