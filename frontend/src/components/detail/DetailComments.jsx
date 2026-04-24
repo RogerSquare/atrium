@@ -34,7 +34,7 @@ export default function DetailComments({ task, currentUser, onUpdateTask }) {
     <div className="flex flex-col h-full min-h-0">
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         {commentsMarkdown ? (
-          <div className="prose prose-app max-w-none">
+          <div className="prose prose-app max-w-none prose-p:text-app-text prose-li:text-app-text prose-headings:text-app-text prose-strong:text-app-text prose-a:text-app-accent hover:prose-a:text-app-accent-hover prose-code:text-app-accent prose-code:bg-app-bg prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-pre:bg-app-bg prose-pre:border prose-pre:border-app-border prose-blockquote:border-app-accent prose-blockquote:bg-app-bg/50 prose-blockquote:py-1 prose-blockquote:px-4 prose-blockquote:text-app-text-muted prose-hr:border-app-border">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{commentsMarkdown}</ReactMarkdown>
           </div>
         ) : (

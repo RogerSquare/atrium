@@ -20,34 +20,43 @@ const PADDING = 24
 
 function buildLayers(tasks) {
   const byId = new Map(tasks.map((t) => [t.id, t]))
-  // Only count edges for deps that point to a task we actually have. A dangling
-  // depends_on id (task archived / deleted) shouldn't trap the task at layer 0.
-  const deps = new Map()
-  const dependents = new Map()
+  // Layering considers BOTH edge kinds (depends_on + parent_task) so sub-tasks
+  // sit to the right of their parent and blocked tasks sit to the right of
+  // their blockers. Dangling references (archived/deleted tasks) are stripped
+  // so one broken pointer doesn't trap the whole chain at layer 0.
+  const layerEdges = new Map()  // incoming-edge set used for Kahn ordering
+  const depEdges = new Map()    // depends_on only — rendered as solid edges
+  const parentEdges = new Map() // parent_task only — rendered as dashed edges
+  const anyIn = new Map()
+  const anyOut = new Map()
   for (const t of tasks) {
-    const live = (t.depends_on || []).filter((d) => byId.has(d))
-    deps.set(t.id, new Set(live))
-    for (const d of live) {
-      if (!dependents.has(d)) dependents.set(d, new Set())
-      dependents.get(d).add(t.id)
+    const deps = (t.depends_on || []).filter((d) => byId.has(d) && d !== t.id)
+    const parent = t.parent_task && byId.has(t.parent_task) && t.parent_task !== t.id ? t.parent_task : null
+    depEdges.set(t.id, new Set(deps))
+    parentEdges.set(t.id, parent)
+    const incoming = new Set(deps)
+    if (parent) incoming.add(parent)
+    layerEdges.set(t.id, incoming)
+    anyIn.set(t.id, incoming.size > 0)
+    for (const src of incoming) {
+      if (!anyOut.has(src)) anyOut.set(src, 0)
+      anyOut.set(src, anyOut.get(src) + 1)
     }
   }
 
-  // Kahn's algorithm — nodes with zero live deps are layer 0; each pass peels
-  // the next layer. Any remaining nodes (part of a cycle) land in a final
-  // "unresolved" layer so nothing disappears.
+  // Kahn's algorithm — nodes with zero incoming edges are layer 0; each pass
+  // peels the next layer. Any remaining nodes (part of a cycle) land in a
+  // final "unresolved" layer so nothing disappears.
   const layer = new Map()
   const remaining = new Set(tasks.map((t) => t.id))
   let depth = 0
   while (remaining.size > 0) {
     const ready = []
     for (const id of remaining) {
-      const d = deps.get(id)
-      // A task is ready when every one of its deps has already been placed.
-      if ([...d].every((x) => layer.has(x))) ready.push(id)
+      const incoming = layerEdges.get(id)
+      if ([...incoming].every((x) => layer.has(x))) ready.push(id)
     }
     if (ready.length === 0) {
-      // Cycle — drop everything left at the current depth and bail.
       for (const id of remaining) layer.set(id, depth)
       break
     }
@@ -58,13 +67,10 @@ function buildLayers(tasks) {
     depth += 1
   }
 
-  // Isolated nodes (no edges in or out) move to their own far-right column so
-  // the main chain doesn't stretch to accommodate a loose pile.
+  // Isolated = no edges of either kind in or out.
   const isolated = new Set()
   for (const t of tasks) {
-    const hasIn = deps.get(t.id).size > 0
-    const hasOut = dependents.has(t.id) && dependents.get(t.id).size > 0
-    if (!hasIn && !hasOut) isolated.add(t.id)
+    if (!anyIn.get(t.id) && !(anyOut.get(t.id) > 0)) isolated.add(t.id)
   }
 
   // Collect layer buckets for connected nodes.
@@ -83,12 +89,12 @@ function buildLayers(tasks) {
     sortedLayers.push(tasks.filter((t) => isolated.has(t.id)))
   }
 
-  return { layers: sortedLayers, byId, dependents }
+  return { layers: sortedLayers, byId, depEdges, parentEdges }
 }
 
 function GraphView({ tasks, onSelectTask }) {
-  const { layers, byId, positions, edges, canvasWidth, canvasHeight } = useMemo(() => {
-    const { layers } = buildLayers(tasks)
+  const { byId, positions, depLines, parentLines, canvasWidth, canvasHeight } = useMemo(() => {
+    const { layers, depEdges, parentEdges } = buildLayers(tasks)
 
     // Assign (x, y) per task.
     const positions = new Map()
@@ -100,14 +106,18 @@ function GraphView({ tasks, onSelectTask }) {
       })
     })
 
-    // Collect edges — one per (source → target) pair where both endpoints are
-    // on the canvas. Self-loops are skipped.
-    const edges = []
+    // depends_on → solid edges. parent → dashed edges. Both only drawn when
+    // both endpoints are on canvas.
+    const depLines = []
+    const parentLines = []
     for (const t of tasks) {
-      for (const depId of t.depends_on || []) {
+      for (const depId of depEdges.get(t.id) || []) {
         if (!positions.has(depId) || !positions.has(t.id)) continue
-        if (depId === t.id) continue
-        edges.push({ from: depId, to: t.id })
+        depLines.push({ from: depId, to: t.id })
+      }
+      const parentId = parentEdges.get(t.id)
+      if (parentId && positions.has(parentId) && positions.has(t.id)) {
+        parentLines.push({ from: parentId, to: t.id })
       }
     }
 
@@ -115,7 +125,14 @@ function GraphView({ tasks, onSelectTask }) {
     const canvasHeight =
       PADDING + Math.max(1, ...layers.map((l) => l.length)) * (NODE_HEIGHT + ROW_GAP)
 
-    return { layers, byId: new Map(tasks.map((t) => [t.id, t])), positions, edges, canvasWidth, canvasHeight }
+    return {
+      byId: new Map(tasks.map((t) => [t.id, t])),
+      positions,
+      depLines,
+      parentLines,
+      canvasWidth,
+      canvasHeight,
+    }
   }, [tasks])
 
   if (tasks.length === 0) {
@@ -147,13 +164,16 @@ function GraphView({ tasks, onSelectTask }) {
           height: Math.max(canvasHeight, 200),
         }}
       >
-        {/* Edges — drawn beneath nodes via absolute SVG. */}
+        {/* Edges — drawn beneath nodes via absolute SVG.
+            Parent-task edges render first (underneath) with a dashed, muted
+            stroke so they read as hierarchy/grouping. depends_on edges render
+            on top with a solid, accented stroke so blockers stand out. */}
         <svg
           width={canvasWidth}
           height={canvasHeight}
           className="absolute top-0 left-0 pointer-events-none"
         >
-          {edges.map(({ from, to }) => {
+          {parentLines.map(({ from, to }) => {
             const a = positions.get(from)
             const b = positions.get(to)
             if (!a || !b) return null
@@ -165,12 +185,34 @@ function GraphView({ tasks, onSelectTask }) {
             const d = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`
             return (
               <path
-                key={`${from}->${to}`}
+                key={`p-${from}->${to}`}
                 d={d}
-                stroke="var(--separator)"
-                strokeWidth="1.5"
+                stroke="var(--text-tertiary)"
+                strokeWidth="1"
+                strokeDasharray="4 4"
+                strokeOpacity="0.5"
                 fill="none"
-                strokeOpacity="0.8"
+              />
+            )
+          })}
+          {depLines.map(({ from, to }) => {
+            const a = positions.get(from)
+            const b = positions.get(to)
+            if (!a || !b) return null
+            const x1 = a.x + NODE_WIDTH
+            const y1 = a.y + NODE_HEIGHT / 2
+            const x2 = b.x
+            const y2 = b.y + NODE_HEIGHT / 2
+            const midX = (x1 + x2) / 2
+            const d = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`
+            return (
+              <path
+                key={`d-${from}->${to}`}
+                d={d}
+                stroke="var(--accent-app)"
+                strokeWidth="1.5"
+                strokeOpacity="0.6"
+                fill="none"
               />
             )
           })}

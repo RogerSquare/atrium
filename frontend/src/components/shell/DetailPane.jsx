@@ -44,6 +44,7 @@ export default function DetailPane({
   aiChatEnabled,
   width,
   onWidthChange,
+  narrow = false,
 }) {
   const [activeTab, setActiveTab] = useState('description')
   const dragStartX = useRef(null)
@@ -80,13 +81,18 @@ export default function DetailPane({
 
   const agentRunning = activeAgents?.some((a) => a.taskId === task.id)
 
-  return (
-    <motion.aside
-      initial={{ opacity: 0, x: 24 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 24 }}
-      transition={morphTransition}
-      style={{
+  const asideStyle = narrow
+    ? {
+        // Narrow-viewport mode: full-screen overlay.
+        position: 'fixed',
+        inset: 0,
+        zIndex: 40,
+        background: 'var(--bg-card)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }
+    : {
         gridArea: 'detail',
         borderLeft: 'var(--border-hairline)',
         background: 'var(--bg-card)',
@@ -95,23 +101,34 @@ export default function DetailPane({
         minWidth: 0,
         overflow: 'hidden',
         position: 'relative',
-      }}
+      }
+
+  // Slide direction matches presentation: overlay slides from the right on mobile too.
+  return (
+    <motion.aside
+      initial={{ opacity: 0, x: narrow ? '100%' : 24 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: narrow ? '100%' : 24 }}
+      transition={morphTransition}
+      style={asideStyle}
     >
-      {/* Drag handle — left edge, 4px wide */}
-      <div
-        onMouseDown={handleDragStart}
-        style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: '4px',
-          cursor: 'col-resize',
-          zIndex: 1,
-        }}
-        aria-label="Resize detail pane"
-        role="separator"
-      />
+      {/* Drag handle — hidden on narrow viewports (no side-by-side layout to resize). */}
+      {!narrow && (
+        <div
+          onMouseDown={handleDragStart}
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: '4px',
+            cursor: 'col-resize',
+            zIndex: 1,
+          }}
+          aria-label="Resize detail pane"
+          role="separator"
+        />
+      )}
 
       {/* Header: id + title + close */}
       <header

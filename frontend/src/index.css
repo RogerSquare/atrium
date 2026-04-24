@@ -831,3 +831,8 @@ select:focus-visible {
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
 }
+@media (max-width: 768px) {
+  .facelift-palette-overlay {
+    padding: 6vh 12px 12px !important;
+  }
+}

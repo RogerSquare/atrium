@@ -1,13 +1,15 @@
 // Facelift initiative feature flags (see tasks/Atrium/ui-facelift-*).
 //
-// Phase 1 ships new tokens + libraries but gates the new shell, detail pane,
-// palette, and motion layer behind FACELIFT_SHELL_ENABLED. Every subsequent
-// phase adds code behind this flag until Phase 10 flips the default to true.
+// Phase 10 (2026-04-24) flipped DEFAULT_ENABLED to true — the facelift shell
+// is now the default experience. Users who want the legacy sidebar+board
+// can opt out via `localStorage.atriumFacelift = 'false'`.
 //
-// Dev toggle: run `localStorage.atriumFacelift = 'true'` in the browser console
-// and reload. Run `localStorage.removeItem('atriumFacelift')` to turn off.
+// Dev toggles:
+//   localStorage.atriumFacelift = 'true'   → force facelift on (rarely needed)
+//   localStorage.atriumFacelift = 'false'  → force legacy shell
+//   localStorage.removeItem('atriumFacelift')  → use the default (true)
 
-const DEFAULT_ENABLED = false
+const DEFAULT_ENABLED = true
 
 function readLocalStorage() {
   if (typeof window === 'undefined' || !window.localStorage) return null

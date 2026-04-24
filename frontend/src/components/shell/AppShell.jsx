@@ -12,8 +12,10 @@
 // TaskModal stays as opt-in focus mode via Cmd+Shift+Enter.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { Eye } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTaskContext } from '../../contexts/TaskContext'
+import { API_BASE, apiFetch } from '../../config'
 import TopBar from './TopBar'
 import FilterBar from './FilterBar'
 import FocalZone from './FocalZone'
@@ -26,6 +28,7 @@ import HelpModal from '../HelpModal'
 import CreateProjectModal from '../CreateProjectModal'
 import CreateTaskModal from '../CreateTaskModal'
 import ArchivedProjectsModal from '../ArchivedProjectsModal'
+import PreviewPanel from '../PreviewPanel'
 import ErrorToast from '../ErrorToast'
 import UndoToast from '../UndoToast'
 
@@ -72,12 +75,45 @@ export default function AppShell() {
   const [showCreateTask, setShowCreateTask] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewServices, setPreviewServices] = useState([])
+  // Narrow-viewport mode — master-detail doesn't fit below 768px, so DetailPane
+  // switches to a full-screen overlay instead of sitting in its own grid column.
+  const [narrow, setNarrow] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)').matches : false
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const mql = window.matchMedia('(max-width: 768px)')
+    const onChange = (e) => setNarrow(e.matches)
+    mql.addEventListener?.('change', onChange)
+    return () => mql.removeEventListener?.('change', onChange)
+  }, [])
   const syncingUrl = useRef(false)
 
   const handleChangeView = useCallback((view) => {
     setActiveView(view)
     localStorage.setItem('taskBoardView', view)
   }, [])
+
+  // --- Preview services (background poll) --------------------------------
+  const fetchPreviewServices = useCallback(async () => {
+    try {
+      const res = await apiFetch(`${API_BASE}/api/services`)
+      if (res.ok) setPreviewServices(await res.json())
+    } catch { /* non-critical */ }
+  }, [])
+  useEffect(() => {
+    fetchPreviewServices()
+    const interval = setInterval(fetchPreviewServices, 30000)
+    return () => clearInterval(interval)
+  }, [fetchPreviewServices])
+  useEffect(() => {
+    if (!showPreview) return
+    fetchPreviewServices()
+    const interval = setInterval(fetchPreviewServices, 10000)
+    return () => clearInterval(interval)
+  }, [showPreview, fetchPreviewServices])
 
   // --- URL <-> selection round-trip -------------------------------------
   useEffect(() => {
@@ -134,7 +170,8 @@ export default function AppShell() {
   useEffect(() => { if (!selectedTask) setFocusModal(false) }, [selectedTask])
 
   const detailOpen = Boolean(selectedTask) && !focusModal
-  const detailGridCol = detailOpen ? `minmax(0, ${detailWidth}px)` : '0'
+  // On narrow viewports, detail pane is a fixed overlay — grid column stays 0.
+  const detailGridCol = detailOpen && !narrow ? `minmax(0, ${detailWidth}px)` : '0'
 
   const handleArchiveProject = useCallback(async (idOrName, displayName) => {
     const result = await archiveProject(idOrName)
@@ -248,6 +285,7 @@ export default function AppShell() {
             aiChatEnabled={aiChatEnabled}
             width={detailWidth}
             onWidthChange={setDetailWidth}
+            narrow={narrow}
           />
         )}
       </AnimatePresence>
@@ -325,6 +363,58 @@ export default function AppShell() {
           onUnarchiveProject={(idOrName, displayName) => unarchiveProject(idOrName, displayName)}
         />
       )}
+      {showPreview && (
+        <PreviewPanel
+          services={previewServices}
+          onClose={() => setShowPreview(false)}
+          socket={socketRef?.current}
+          activeProject={activeProject}
+        />
+      )}
+
+      {/* Floating Preview button — bottom-right FAB.
+          Only renders when the active project has at least one service
+          registered in services.json — avoids showing a dead affordance
+          on projects that don't have a dev server to preview. Also
+          hidden while PreviewPanel is open or while DetailPane takes
+          over the viewport on narrow screens. */}
+      {(() => {
+        const projectServices = previewServices.filter((s) => s.group === activeProject)
+        const runningCount = projectServices.filter((s) => s.status === 'running').length
+        const shouldShow =
+          projectServices.length > 0 && !(narrow && detailOpen) && !showPreview
+        if (!shouldShow) return null
+        return (
+        <button
+          type="button"
+          onClick={() => setShowPreview(true)}
+          className="apple-press"
+          title={runningCount > 0
+            ? `Preview (${runningCount} running)`
+            : 'Preview services'}
+          aria-label="Preview services"
+          style={{
+            position: 'fixed',
+            right: 'calc(var(--space-4) + env(safe-area-inset-right, 0px))',
+            bottom: 'calc(var(--space-4) + env(safe-area-inset-bottom, 0px))',
+            width: '48px',
+            height: '48px',
+            borderRadius: 'var(--radius-full)',
+            background: 'var(--bg-card)',
+            color: 'var(--text-app)',
+            border: 'var(--border-hairline)',
+            boxShadow: 'var(--shadow-popover)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 30,
+          }}
+        >
+          <Eye className="w-[18px] h-[18px]" />
+        </button>
+        )
+      })()}
 
       <UndoToast
         message={undoRedo.undoToast}
