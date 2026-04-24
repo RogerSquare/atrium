@@ -1,14 +1,8 @@
-// GraphView — radial tree (task ui-graph-redesign-012).
+// GraphView — radial tree (task ui-graph-redesign-012, refactored in -013 phase 1).
 //
-// Layout model:
-//   - The task with the most children (combined parent_task + depends_on
-//     in-edges) becomes the canvas center. "Main branch" sits in the middle.
-//   - BFS outward assigns a depth to every reachable task; nodes are placed
-//     on concentric rings keyed by depth. Children cluster around their
-//     parent's angle so a subtree reads as a contiguous wedge.
-//   - Tasks not reachable from the root (separate connected components,
-//     true orphans, phase/plan/research nodes with no edges) are all still
-//     shown — they land on a final outer ring so nothing disappears.
+// Phase 1 of ui-graph-redesign-013 extracted the pure graph model + layout
+// math into sibling modules under `./viz/`. This file now owns the rendering,
+// viewport, and interaction glue only. Visual output is unchanged.
 //
 // Visual grammar:
 //   - Node fill = task category color (feat/bug/ui/opt/devops/comp/mobile).
@@ -19,6 +13,8 @@
 // Navigation: drag to pan, scroll to zoom. No orphan filtering.
 
 import { memo, useMemo, useRef, useState, useCallback } from 'react'
+import { buildModel, pickRoot } from './viz/graphModel'
+import { radialLayout, radiusForDepth } from './viz/layouts/radial'
 
 const CATEGORY_COLOR = {
   feat:   'var(--apple-blue)',
@@ -37,14 +33,6 @@ function categoryColor(taskId) {
   return CATEGORY_COLOR[prefix] || DEFAULT_COLOR
 }
 
-// Ring spacing — bigger at center, compressed as we go out so deep trees
-// don't blow out the canvas.
-function radiusForDepth(depth) {
-  if (depth === 0) return 0
-  // Diminishing returns: depth 1 = 160, 2 = 280, 3 = 380, 4 = 460, ...
-  return 160 + 120 * Math.log2(depth + 1) * Math.sqrt(depth)
-}
-
 function nodeRadiusFor(childCount, maxChildCount) {
   const MIN = 7
   const MAX = 22
@@ -52,129 +40,6 @@ function nodeRadiusFor(childCount, maxChildCount) {
   // Log scale so a hub with 20 children doesn't dwarf a node with 2.
   const t = Math.log(1 + childCount) / Math.log(1 + maxChildCount)
   return MIN + t * (MAX - MIN)
-}
-
-// Build edges, adjacency, and child-count map from a flat task list.
-function buildModel(tasks) {
-  const byId = new Map(tasks.map((t) => [t.id, t]))
-  const parentEdges = []  // parent_task: parent -> child
-  const depEdges = []     // depends_on: blocker -> dependent
-  const outDegree = new Map() // how many children/dependents this node has
-  const neighbors = new Map() // id -> Set of connected ids (both directions)
-  const children = new Map()  // id -> Set of downstream node ids
-
-  const touch = (parent, child) => {
-    outDegree.set(parent, (outDegree.get(parent) || 0) + 1)
-    if (!neighbors.has(parent)) neighbors.set(parent, new Set())
-    if (!neighbors.has(child)) neighbors.set(child, new Set())
-    neighbors.get(parent).add(child)
-    neighbors.get(child).add(parent)
-    if (!children.has(parent)) children.set(parent, new Set())
-    children.get(parent).add(child)
-  }
-
-  for (const t of tasks) {
-    if (t.parent_task && byId.has(t.parent_task) && t.parent_task !== t.id) {
-      parentEdges.push({ from: t.parent_task, to: t.id })
-      touch(t.parent_task, t.id)
-    }
-    for (const depId of t.depends_on || []) {
-      if (!byId.has(depId) || depId === t.id) continue
-      depEdges.push({ from: depId, to: t.id })
-      touch(depId, t.id)
-    }
-  }
-
-  return { byId, parentEdges, depEdges, outDegree, neighbors, children }
-}
-
-// Find the task that should anchor the canvas — the one with the most
-// downstream children. Ties broken by task id for stability.
-function pickRoot(byId, outDegree) {
-  let best = null
-  let bestCount = -1
-  for (const id of byId.keys()) {
-    const count = outDegree.get(id) || 0
-    if (count > bestCount || (count === bestCount && (!best || id < best))) {
-      best = id
-      bestCount = count
-    }
-  }
-  return best
-}
-
-// Radial BFS from root. Each node gets a depth + an angle; children fan
-// out inside the angular slice reserved for their parent.
-function radialLayout(byId, children, neighbors, root) {
-  const depth = new Map()
-  const angle = new Map()
-  const positions = new Map()
-  if (!root) return positions
-
-  depth.set(root, 0)
-  angle.set(root, 0)
-  positions.set(root, { x: 0, y: 0 })
-
-  // Assign angles to children by recursing through the tree. Each child
-  // receives a slice of its parent's arc proportional to its subtree size
-  // so dense branches get visually more room than sparse ones.
-  const subtreeSize = new Map()
-  const computeSize = (id, visited) => {
-    if (visited.has(id)) return 0
-    visited.add(id)
-    let size = 1
-    const kids = children.get(id)
-    if (kids) for (const c of kids) size += computeSize(c, visited)
-    subtreeSize.set(id, size)
-    return size
-  }
-  computeSize(root, new Set())
-
-  const assign = (id, startAngle, endAngle, d, visited) => {
-    if (visited.has(id)) return
-    visited.add(id)
-    const mid = (startAngle + endAngle) / 2
-    depth.set(id, d)
-    angle.set(id, mid)
-    const r = radiusForDepth(d)
-    positions.set(id, { x: Math.cos(mid) * r, y: Math.sin(mid) * r })
-
-    const kids = [...(children.get(id) || [])].filter((k) => !visited.has(k))
-    if (kids.length === 0) return
-
-    // Split the arc proportionally among children by subtree size.
-    const totalSize = kids.reduce((s, k) => s + (subtreeSize.get(k) || 1), 0)
-    const arcSpan = endAngle - startAngle
-    let cursor = startAngle
-    for (const k of kids) {
-      const ks = subtreeSize.get(k) || 1
-      const span = (ks / totalSize) * arcSpan
-      assign(k, cursor, cursor + span, d + 1, visited)
-      cursor += span
-    }
-  }
-
-  const visited = new Set()
-  // Root gets full 360° sweep.
-  assign(root, -Math.PI, Math.PI, 0, visited)
-
-  // Anything not visited from the root lives in its own island. Give each
-  // island a small sub-sweep and place it on a ring beyond the farthest
-  // reached depth, so they're visible but clearly separate from the main tree.
-  const unreached = [...byId.keys()].filter((id) => !visited.has(id))
-  if (unreached.length > 0) {
-    const outerDepth = Math.max(...[...depth.values()], 0) + 1
-    const outerR = radiusForDepth(outerDepth) + 80
-    const step = (Math.PI * 2) / unreached.length
-    unreached.forEach((id, i) => {
-      const a = i * step - Math.PI
-      depth.set(id, outerDepth)
-      angle.set(id, a)
-      positions.set(id, { x: Math.cos(a) * outerR, y: Math.sin(a) * outerR })
-    })
-  }
-
-  return positions
 }
 
 // ---- Component ---------------------------------------------------------
@@ -185,9 +50,10 @@ const ZOOM_MAX = 5
 function GraphView({ tasks, onSelectTask }) {
   const model = useMemo(() => {
     if (!tasks || tasks.length === 0) return null
-    const { byId, parentEdges, depEdges, outDegree, neighbors, children } = buildModel(tasks)
+    const model = buildModel(tasks)
+    const { byId, parentEdges, depEdges, outDegree, neighbors } = model
     const rootId = pickRoot(byId, outDegree)
-    const positions = radialLayout(byId, children, neighbors, rootId)
+    const positions = radialLayout(model, rootId)
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     for (const { x, y } of positions.values()) {
