@@ -21,7 +21,9 @@ import HelpModal from './components/HelpModal'
 import UndoToast from './components/UndoToast'
 import ErrorToast from './components/ErrorToast'
 import BulkActionBar from './components/BulkActionBar'
+import AppShell from './components/shell/AppShell'
 import { API_BASE, apiFetch } from './config'
+import { faceliftShellEnabled } from './config/featureFlags'
 import useChat from './hooks/useChat'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { TaskProvider, useTaskContext } from './contexts/TaskContext'
@@ -417,9 +419,12 @@ function AppRoot() {
 function AppInner() {
   const { user, handleLogin, socketRef } = useAuth()
   if (!user) return <Login onLogin={handleLogin} />
+  // Facelift feature flag — off by default. Toggle via:
+  //   localStorage.atriumFacelift = 'true'  (then reload)
+  const useFacelift = faceliftShellEnabled()
   return (
     <TaskProvider user={user} socketRef={socketRef}>
-      <AppContent />
+      {useFacelift ? <AppShell /> : <AppContent />}
     </TaskProvider>
   )
 }
