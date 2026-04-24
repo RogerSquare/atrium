@@ -14,6 +14,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTaskContext } from '../../contexts/TaskContext'
+import { API_BASE, apiFetch } from '../../config'
 import TopBar from './TopBar'
 import FilterBar from './FilterBar'
 import FocalZone from './FocalZone'
@@ -26,6 +27,7 @@ import HelpModal from '../HelpModal'
 import CreateProjectModal from '../CreateProjectModal'
 import CreateTaskModal from '../CreateTaskModal'
 import ArchivedProjectsModal from '../ArchivedProjectsModal'
+import PreviewPanel from '../PreviewPanel'
 import ErrorToast from '../ErrorToast'
 import UndoToast from '../UndoToast'
 
@@ -72,6 +74,8 @@ export default function AppShell() {
   const [showCreateTask, setShowCreateTask] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewServices, setPreviewServices] = useState([])
   // Narrow-viewport mode — master-detail doesn't fit below 768px, so DetailPane
   // switches to a full-screen overlay instead of sitting in its own grid column.
   const [narrow, setNarrow] = useState(() =>
@@ -90,6 +94,25 @@ export default function AppShell() {
     setActiveView(view)
     localStorage.setItem('taskBoardView', view)
   }, [])
+
+  // --- Preview services (background poll) --------------------------------
+  const fetchPreviewServices = useCallback(async () => {
+    try {
+      const res = await apiFetch(`${API_BASE}/api/services`)
+      if (res.ok) setPreviewServices(await res.json())
+    } catch { /* non-critical */ }
+  }, [])
+  useEffect(() => {
+    fetchPreviewServices()
+    const interval = setInterval(fetchPreviewServices, 30000)
+    return () => clearInterval(interval)
+  }, [fetchPreviewServices])
+  useEffect(() => {
+    if (!showPreview) return
+    fetchPreviewServices()
+    const interval = setInterval(fetchPreviewServices, 10000)
+    return () => clearInterval(interval)
+  }, [showPreview, fetchPreviewServices])
 
   // --- URL <-> selection round-trip -------------------------------------
   useEffect(() => {
@@ -194,6 +217,11 @@ export default function AppShell() {
         archivedCount={archivedProjects?.length || 0}
         onOpenSettings={() => setShowSettings(true)}
         onOpenHelp={() => setShowHelp(true)}
+        onTogglePreview={() => setShowPreview((v) => !v)}
+        previewOpen={showPreview}
+        previewRunningCount={
+          previewServices.filter((s) => s.status === 'running').length
+        }
       />
 
       <FilterBar
@@ -337,6 +365,14 @@ export default function AppShell() {
           archivedProjects={archivedProjects}
           onClose={() => setShowArchived(false)}
           onUnarchiveProject={(idOrName, displayName) => unarchiveProject(idOrName, displayName)}
+        />
+      )}
+      {showPreview && (
+        <PreviewPanel
+          services={previewServices}
+          onClose={() => setShowPreview(false)}
+          socket={socketRef?.current}
+          activeProject={activeProject}
         />
       )}
 
