@@ -5,6 +5,8 @@
 // module is the single place we wrap that contract so consumers don't each
 // re-implement it.
 
+import { useReducedMotion as _useReducedMotion } from 'framer-motion'
+
 export { motion, AnimatePresence, LayoutGroup, useReducedMotion } from 'framer-motion'
 
 // Standard motion durations (milliseconds). Mirror the CSS tokens in
@@ -33,9 +35,7 @@ export const MOTION_SPRINGS = {
 //   const transition = useMotionTransition({ duration: MOTION_DURATIONS.morph, ease: 'easeOut' })
 //   <motion.div animate={{ opacity: 1 }} transition={transition} />
 export function useMotionTransition(transition) {
-  // framer-motion's useReducedMotion hook reads the media query + respects
-  // user's system preference. Import lazily to keep the helper tree-shakeable.
-  // Consumers that need the hook should import it directly from './motion'.
-  // This helper is side-effect free so it can be called from render.
+  const reduced = _useReducedMotion()
+  if (reduced) return { duration: 0 }
   return transition
 }

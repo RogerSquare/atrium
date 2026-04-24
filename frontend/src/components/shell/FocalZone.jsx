@@ -1,12 +1,16 @@
-// Facelift FocalZone — Phase 2.
+// Facelift FocalZone — Phase 2 + Phase 7.
 //
 // The product's focal surface: Board / List / Changes switch here.
 // Receives filtered tasks + task-action props; forwards to the active view.
-// Phase 7 wraps this in AnimatePresence for a cross-fade between views.
+// Phase 7 wraps the active view in AnimatePresence for a cross-fade between
+// views. The crossfade is keyed on activeView so a new keyed motion.div
+// mounts each switch; AnimatePresence mode="wait" ensures the previous one
+// finishes exiting before the new one enters.
 
 import Board from '../Board'
 import ListView from '../ListView'
 import ChangesView from '../ChangesView'
+import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
 
 export default function FocalZone({
   activeView,
@@ -30,6 +34,8 @@ export default function FocalZone({
   recentlyUpdatedIds,
   githubLinks,
 }) {
+  const transition = useMotionTransition({ duration: MOTION_DURATIONS.viewFade, ease: 'easeOut' })
+
   if (loading) {
     return (
       <div
@@ -48,48 +54,59 @@ export default function FocalZone({
       className="overflow-y-auto custom-scrollbar"
       style={{ gridArea: 'focal', padding: 'var(--space-4)', minWidth: 0 }}
     >
-      {activeView === 'list' ? (
-        <ListView
-          tasks={tasks}
-          onSelectTask={onSelectTask}
-          onUpdateTask={onUpdateTask}
-          activeAgents={activeAgents}
-          taskViewers={taskViewers}
-          currentUser={currentUser}
-          selectable={selectable}
-          selectedIds={selectedIds}
-          onToggleSelect={onToggleSelect}
-          recentlyUpdatedIds={recentlyUpdatedIds}
-          githubLinks={githubLinks}
-        />
-      ) : activeView === 'changes' ? (
-        <ChangesView
-          tasks={tasks}
-          projects={projects}
-          activeProject={activeProject}
-          onSelectTask={onSelectTask}
-          recentlyUpdatedIds={recentlyUpdatedIds}
-        />
-      ) : (
-        <Board
-          tasks={tasks}
-          onUpdateTask={onUpdateTask}
-          onSelectTask={onSelectTask}
-          activeAgents={activeAgents}
-          onStartAgent={onStartAgent}
-          onStopAgent={onStopAgent}
-          taskViewers={taskViewers}
-          currentUser={currentUser}
-          selectable={selectable}
-          selectedIds={selectedIds}
-          onToggleSelect={onToggleSelect}
-          onShiftSelect={onShiftSelect}
-          onToggleSelectColumn={onToggleSelectColumn}
-          recentlyUpdatedIds={recentlyUpdatedIds}
-          onToggleBulkSelect={onToggleBulkSelect}
-          githubLinks={githubLinks}
-        />
-      )}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={activeView}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={transition}
+          style={{ height: '100%', minHeight: 0 }}
+        >
+          {activeView === 'list' ? (
+            <ListView
+              tasks={tasks}
+              onSelectTask={onSelectTask}
+              onUpdateTask={onUpdateTask}
+              activeAgents={activeAgents}
+              taskViewers={taskViewers}
+              currentUser={currentUser}
+              selectable={selectable}
+              selectedIds={selectedIds}
+              onToggleSelect={onToggleSelect}
+              recentlyUpdatedIds={recentlyUpdatedIds}
+              githubLinks={githubLinks}
+            />
+          ) : activeView === 'changes' ? (
+            <ChangesView
+              tasks={tasks}
+              projects={projects}
+              activeProject={activeProject}
+              onSelectTask={onSelectTask}
+              recentlyUpdatedIds={recentlyUpdatedIds}
+            />
+          ) : (
+            <Board
+              tasks={tasks}
+              onUpdateTask={onUpdateTask}
+              onSelectTask={onSelectTask}
+              activeAgents={activeAgents}
+              onStartAgent={onStartAgent}
+              onStopAgent={onStopAgent}
+              taskViewers={taskViewers}
+              currentUser={currentUser}
+              selectable={selectable}
+              selectedIds={selectedIds}
+              onToggleSelect={onToggleSelect}
+              onShiftSelect={onShiftSelect}
+              onToggleSelectColumn={onToggleSelectColumn}
+              recentlyUpdatedIds={recentlyUpdatedIds}
+              onToggleBulkSelect={onToggleBulkSelect}
+              githubLinks={githubLinks}
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   )
 }
