@@ -85,21 +85,6 @@ export default function TopBar({
             aria-pressed={previewOpen}
           >
             <Eye className="w-4 h-4" />
-            {previewRunningCount > 0 && (
-              <span
-                style={{
-                  position: 'absolute',
-                  top: '4px',
-                  right: '4px',
-                  width: '6px',
-                  height: '6px',
-                  borderRadius: '50%',
-                  background: 'var(--apple-green)',
-                  boxShadow: '0 0 6px var(--apple-green)',
-                }}
-                className="animate-gentle-pulse"
-              />
-            )}
           </button>
         )}
         <AvatarPopover
