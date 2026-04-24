@@ -1,10 +1,11 @@
 import { memo } from 'react'
-import { LayoutGrid, List, GitCommitHorizontal } from 'lucide-react'
+import { LayoutGrid, List, GitCommitHorizontal, Share2 } from 'lucide-react'
 
 const VIEWS = [
   { id: 'board', label: 'Board', icon: LayoutGrid },
   { id: 'list', label: 'List', icon: List },
   { id: 'changes', label: 'Changes', icon: GitCommitHorizontal },
+  { id: 'graph', label: 'Graph', icon: Share2 },
 ]
 
 function ViewSwitcher({ activeView, onChangeView }) {
@@ -19,15 +20,14 @@ function ViewSwitcher({ activeView, onChangeView }) {
           <button
             key={id}
             onClick={() => onChangeView(id)}
-            className="apple-segment apple-press flex items-center gap-1.5"
+            className="apple-segment apple-press flex items-center gap-1.5 facelift-pill"
             style={{
-              padding: '5px 12px',
+              padding: '0 12px',
               borderRadius: 'var(--radius-sm)',
               fontSize: 'var(--text-caption2)',
               fontWeight: 'var(--font-medium)',
               color: isActive ? 'var(--text-app)' : 'var(--text-muted)',
               background: isActive ? 'var(--bg-card)' : 'transparent',
-              boxShadow: isActive ? 'var(--shadow-sm)' : 'none',
             }}
             title={`${label} view`}
           >

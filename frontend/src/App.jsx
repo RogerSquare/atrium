@@ -21,7 +21,9 @@ import HelpModal from './components/HelpModal'
 import UndoToast from './components/UndoToast'
 import ErrorToast from './components/ErrorToast'
 import BulkActionBar from './components/BulkActionBar'
+import AppShell from './components/shell/AppShell'
 import { API_BASE, apiFetch } from './config'
+import { faceliftShellEnabled } from './config/featureFlags'
 import useChat from './hooks/useChat'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { TaskProvider, useTaskContext } from './contexts/TaskContext'
@@ -311,7 +313,7 @@ function AppContent() {
             <HelpCircle className="w-4 h-4" />
           </button>
 
-          <button onClick={() => setShowCreateTaskModal(true)} className="apple-press text-white whitespace-nowrap hidden sm:flex items-center gap-1.5" style={{ padding: '7px 16px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', background: 'var(--accent-app)', boxShadow: 'var(--shadow-sm)' }}>
+          <button onClick={() => setShowCreateTaskModal(true)} className="apple-press text-white whitespace-nowrap hidden sm:flex items-center gap-1.5" style={{ padding: '7px 16px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', background: 'var(--accent-app)' }}>
             <Plus className="w-4 h-4" /> New Task
           </button>
           {!showMobileSearch && (
@@ -396,7 +398,7 @@ function AppContent() {
             <button key={label} onClick={onClick} className="flex flex-col items-center gap-0.5 px-3 py-1 apple-press relative" style={{ minWidth: '50px' }}>
               <Icon className="w-[22px] h-[22px]" style={{ color: active ? 'var(--accent-app)' : 'var(--gray-1)' }} />
               <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: active ? 'var(--accent-app)' : 'var(--gray-1)' }}>{label}</span>
-              {badge > 0 && <span className="absolute top-0 right-1 min-w-[17px] h-[17px] flex items-center justify-center px-1 text-white" style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', borderRadius: 'var(--radius-full)', background: 'var(--apple-red)' }}>{badge}</span>}
+              {badge > 0 && <span className="absolute top-0 right-1 min-w-[17px] h-[17px] flex items-center justify-center px-1 text-white" style={{ fontSize: '10px', fontWeight: 'var(--font-semibold)', borderRadius: 'var(--radius-full)', background: 'var(--apple-red)' }}>{badge}</span>}
             </button>
           ))}
         </nav>
@@ -417,9 +419,12 @@ function AppRoot() {
 function AppInner() {
   const { user, handleLogin, socketRef } = useAuth()
   if (!user) return <Login onLogin={handleLogin} />
+  // Facelift feature flag — off by default. Toggle via:
+  //   localStorage.atriumFacelift = 'true'  (then reload)
+  const useFacelift = faceliftShellEnabled()
   return (
     <TaskProvider user={user} socketRef={socketRef}>
-      <AppContent />
+      {useFacelift ? <AppShell /> : <AppContent />}
     </TaskProvider>
   )
 }

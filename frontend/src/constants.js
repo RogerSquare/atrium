@@ -30,11 +30,14 @@ export const STATUS_COLOR = {
   done: 'var(--apple-green)',
 }
 
+// Minimalist lane: decorative multi-hue collapsed to monochrome.
+// `fullstack` keeps the accent blue (it's already the functional "interactive" color).
+// Other types drop to neutral — type info is carried by the text label, not by color.
 export const TYPE_STYLE = {
-  frontend: { color: 'var(--apple-teal)', bg: 'color-mix(in srgb, var(--apple-teal) 12%, transparent)' },
-  backend: { color: 'var(--apple-purple)', bg: 'color-mix(in srgb, var(--apple-purple) 12%, transparent)' },
-  fullstack: { color: 'var(--apple-blue)', bg: 'color-mix(in srgb, var(--apple-blue) 12%, transparent)' },
-  devops: { color: 'var(--apple-orange)', bg: 'color-mix(in srgb, var(--apple-orange) 12%, transparent)' },
+  frontend: { color: 'var(--text-muted)', bg: 'transparent' },
+  backend: { color: 'var(--text-muted)', bg: 'transparent' },
+  fullstack: { color: 'var(--accent-app)', bg: 'transparent' },
+  devops: { color: 'var(--text-muted)', bg: 'transparent' },
 }
 
 export const VIEWER_COLORS = ['#06b6d4', '#a78bfa', '#f472b6', '#fb923c', '#34d399', '#fbbf24', '#60a5fa']

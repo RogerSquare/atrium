@@ -9,7 +9,6 @@ const COLUMNS = [
   { id: 'draft', title: 'Draft' },
   { id: 'todo', title: 'To Do' },
   { id: 'in_progress', title: 'In Progress' },
-  { id: 'waiting_input', title: 'Waiting Input' },
   { id: 'review', title: 'Review' },
   { id: 'done', title: 'Done' }
 ]
@@ -235,7 +234,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                 style={{
                   minHeight: '44px',
                   background: isActive ? 'var(--bg-card)' : 'transparent',
-                  boxShadow: isActive ? 'var(--shadow-sm)' : 'none',
+                  border: isActive ? 'var(--border-hairline)' : '1px solid transparent',
                   color: col.isSafety ? 'var(--apple-red)' : isActive ? 'var(--text-app)' : 'var(--text-muted)',
                 }}
               >
@@ -245,7 +244,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                     minWidth: '18px',
                     height: '18px',
                     fontSize: 'var(--text-caption2)',
-                    fontWeight: 'var(--font-bold)',
+                    fontWeight: 'var(--font-semibold)',
                     borderRadius: 'var(--radius-full)',
                     display: 'flex',
                     alignItems: 'center',
@@ -268,9 +267,9 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
           className="flex flex-col gap-2 min-h-[200px]"
           style={{
             padding: 'var(--space-3)',
-            borderRadius: 'var(--radius-lg)',
+            borderRadius: 'var(--radius-md)',
             background: activeCol.isSafety ? 'color-mix(in srgb, var(--apple-red) 6%, transparent)' : 'var(--bg-secondary)',
-            boxShadow: 'var(--shadow-sm)',
+            border: 'var(--border-hairline)',
             transition: `background var(--duration-normal) var(--ease-default)`,
           }}
         >
@@ -293,10 +292,23 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
         {/* Left group: swimlanes + compact */}
         <div className="flex items-center gap-2">
           <Layers className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
-          <Select pill active={swimlaneBy !== 'none'} value={swimlaneBy} onChange={(e) => handleSwimlaneChange(e.target.value)}>
+          <Select
+            pill
+            active={swimlaneBy !== 'none'}
+            value={swimlaneBy}
+            onChange={(e) => handleSwimlaneChange(e.target.value)}
+            className="facelift-pill"
+            style={{ padding: '0 var(--space-2)' }}
+          >
             {SWIMLANE_OPTIONS.map(opt => <option key={opt.key} value={opt.key}>{opt.label}</option>)}
           </Select>
-          <Button variant={compactMode ? 'secondary' : 'ghost'} size="md" onClick={toggleCompact} title={compactMode ? 'Switch to full cards' : 'Switch to compact cards'}>
+          <Button
+            variant={compactMode ? 'secondary' : 'ghost'}
+            size="sm"
+            className="facelift-pill"
+            onClick={toggleCompact}
+            title={compactMode ? 'Switch to full cards' : 'Switch to compact cards'}
+          >
             {compactMode ? <LayoutGrid className="w-3.5 h-3.5" /> : <Rows3 className="w-3.5 h-3.5" />}
             {compactMode ? 'Full' : 'Compact'}
           </Button>
@@ -306,7 +318,9 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
         <div className="flex-1" />
         {onToggleBulkSelect && (
           <Button
-            variant={selectable ? 'secondary' : 'ghost'} size="md"
+            variant={selectable ? 'secondary' : 'ghost'}
+            size="sm"
+            className="facelift-pill"
             onClick={onToggleBulkSelect}
             title="Multi-select (Ctrl+Shift+A)"
             aria-label={selectable ? 'Exit multi-select mode' : 'Enter multi-select mode'}
@@ -359,7 +373,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
           {Array.from(swimlanes.entries()).map(([laneName, laneTasks]) => {
             const isCollapsed = collapsedLanes[laneName]
             return (
-              <div key={laneName} className="overflow-hidden" style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-secondary)', boxShadow: 'var(--shadow-sm)' }}>
+              <div key={laneName} className="overflow-hidden" style={{ borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)', border: 'var(--border-hairline)' }}>
                 <button
                   onClick={() => toggleLane(laneName)}
                   className="w-full flex items-center gap-2 text-left apple-press"
@@ -387,7 +401,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                           {/* Column label + count inside each lane */}
                           <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-2)', padding: '0 var(--space-2)' }}>
                             <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)' }}>{col.title}</span>
-                            <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '0 var(--space-2)', borderRadius: 'var(--radius-full)', minWidth: '20px', textAlign: 'center' }}>{colTasks.length}</span>
+                            <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '0 var(--space-2)', borderRadius: 'var(--radius-full)', minWidth: '20px', textAlign: 'center' }}>{colTasks.length}</span>
                           </div>
                           {renderDroppable(col, colTasks, `${col.id}__${laneName}`)}
                         </div>
@@ -408,10 +422,10 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                 key={col.id}
                 className="flex-1 min-w-[280px] flex flex-col"
                 style={{
-                  borderRadius: 'var(--radius-lg)',
+                  borderRadius: 'var(--radius-md)',
                   padding: 'var(--space-4)',
                   background: col.isSafety ? 'color-mix(in srgb, var(--apple-red) 6%, transparent)' : 'var(--bg-secondary)',
-                  boxShadow: 'var(--shadow-sm)',
+                  border: 'var(--border-hairline)',
                   transition: `background var(--duration-normal) var(--ease-default)`,
                 }}
               >
@@ -437,7 +451,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                     )}
                     <span style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: col.isSafety ? 'var(--apple-red)' : 'var(--text-muted)', letterSpacing: 'var(--tracking-wide)' }}>{col.title}</span>
                   </div>
-                  <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-full)', minWidth: '24px', textAlign: 'center' }}>
+                  <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-full)', minWidth: '24px', textAlign: 'center' }}>
                     {colTasks.length}
                   </span>
                 </div>

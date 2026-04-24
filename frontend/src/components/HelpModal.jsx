@@ -60,8 +60,8 @@ export default function HelpModal({ onClose }) {
         className="relative w-full sm:w-auto sm:max-w-3xl h-full sm:h-auto sm:max-h-[85vh] flex flex-col"
         style={{
           background: 'var(--bg-app)',
-          borderRadius: 'var(--radius-lg)',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+          borderRadius: 'var(--radius-md)',
+          boxShadow: 'var(--shadow-popover)',
         }}
         onClick={(e) => e.stopPropagation()}
       >

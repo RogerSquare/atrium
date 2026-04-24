@@ -40,15 +40,14 @@ export default function useTasks(user, socketRef) {
         setProjects(projectsData)
         setArchivedProjects(archivedData)
 
-        // Validate active project — if saved project was archived mid-session, fall back to 'All'
-        // rather than silently switching to something unrelated.
+        // Validate active project — only override if the saved project has
+        // been archived mid-session. Don't silently switch to 'folders[0]'
+        // on a transient-looking mismatch, that was stomping persisted
+        // selections when the API shape drifted or the project loaded late.
         setActiveProject(prev => {
-          const folders = projectsData.map(p => p.folder || p)
           const archivedFolders = archivedData.map(p => p.folder || p)
-          if (prev === 'All') return prev
-          if (folders.includes(prev)) return prev
-          if (archivedFolders.includes(prev)) return 'All'
-          return folders.length > 0 ? folders[0] : 'Root'
+          if (prev !== 'All' && archivedFolders.includes(prev)) return 'All'
+          return prev
         })
 
         // Deep-link: open task from URL query param on first load

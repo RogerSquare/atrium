@@ -146,7 +146,7 @@ export default function TerminalTab({ task }) {
         </div>
         <button
           onClick={handleStartAgent}
-          className="flex items-center gap-1.5 px-3 py-1 bg-app-accent hover:bg-app-accent-hover text-white text-xs font-bold rounded-lg transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1 bg-app-accent hover:bg-app-accent-hover text-white text-xs font-semibold rounded-lg transition-colors"
         >
           <Play className="w-3.5 h-3.5" />
           {isRunning ? 'Restart Agent' : 'Start Agent'}

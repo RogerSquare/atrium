@@ -29,7 +29,7 @@ const MOCK_TASKS_VARIANTS = [
 function Section({ title, children }) {
   return (
     <div style={{ marginBottom: '32px' }}>
-      <h2 style={{ fontSize: 'var(--text-title3)', fontWeight: 'var(--font-bold)', color: 'var(--text-app)', marginBottom: '12px', borderBottom: '1px solid var(--separator)', paddingBottom: '8px' }}>{title}</h2>
+      <h2 style={{ fontSize: 'var(--text-title3)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)', marginBottom: '12px', borderBottom: '1px solid var(--separator)', paddingBottom: '8px' }}>{title}</h2>
       {children}
     </div>
   )
@@ -55,13 +55,13 @@ export default function KitchenSink({ onClose, currentTheme, onSetTheme }) {
         className="custom-scrollbar"
         style={{
           width: '90vw', maxWidth: '1000px', maxHeight: '90vh', overflow: 'auto',
-          background: 'var(--bg-app)', borderRadius: 'var(--radius-lg)',
+          background: 'var(--bg-app)', borderRadius: 'var(--radius-md)',
           padding: '24px', position: 'relative',
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <h1 style={{ fontSize: 'var(--text-title2)', fontWeight: 'var(--font-bold)', color: 'var(--text-app)' }}>Kitchen Sink</h1>
+          <h1 style={{ fontSize: 'var(--text-title2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>Kitchen Sink</h1>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {THEMES.map(t => (
               <Button key={t} variant={currentTheme === t ? 'primary' : 'ghost'} size="sm" onClick={() => onSetTheme(t)}>
@@ -121,7 +121,7 @@ export default function KitchenSink({ onClose, currentTheme, onSetTheme }) {
           <Row label="Special">
             <Badge preset="accent">12</Badge>
             <Badge preset="muted">unassigned</Badge>
-            <Badge color="var(--apple-orange)" bg="color-mix(in srgb, var(--apple-orange) 10%, transparent)" className="flex items-center gap-1" style={{ padding: '3px 8px' }}>
+            <Badge color="var(--apple-orange)" bg="var(--fill-secondary)" className="flex items-center gap-1" style={{ padding: '3px 8px' }}>
               <Clock className="w-3 h-3" />Stale
             </Badge>
             <Badge color="var(--accent-app)" bg="color-mix(in srgb, var(--accent-app) 10%, transparent)" className="flex items-center gap-1" style={{ padding: '3px 8px' }}>

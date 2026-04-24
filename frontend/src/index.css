@@ -50,10 +50,8 @@
   --text-title1: 28px;
   --text-largeTitle: 34px;
 
-  --font-regular: 400;
   --font-medium: 500;
   --font-semibold: 600;
-  --font-bold: 700;
 
   --leading-tight: 1.2;
   --leading-body: 1.47;
@@ -64,11 +62,8 @@
   --tracking-wide: 0.01em;
 
   /* --- Corner Radii --- */
-  --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
   --radius-full: 9999px;
 
   /* --- Spacing (4px grid) --- */
@@ -91,6 +86,17 @@
   --duration-fast: 150ms;
   --duration-normal: 250ms;
   --duration-slow: 350ms;
+
+  /* --- Motion (facelift v1) --- */
+  /* Shared-element card -> detail pane morph */
+  --ease-morph: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-morph: 240ms;
+  /* Command palette open/close */
+  --duration-palette: 160ms;
+  /* View/page crossfade */
+  --duration-view-fade: 180ms;
+  /* Tab crossfade inside detail pane */
+  --duration-tab-fade: 140ms;
 
   /* --- Safe Area --- */
   --safe-top: env(safe-area-inset-top, 0px);
@@ -121,10 +127,9 @@
   --apple-pink: #FF375F; --apple-teal: #64D2FF;
   --gray-1: #8E8E93; --gray-2: #636366; --gray-3: #48484A;
   --gray-4: #3A3A3C; --gray-5: #2C2C2E; --gray-6: #1C1C1E;
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.35);
-  --shadow-lg: 0 12px 40px rgba(0,0,0,0.45);
-  --shadow-xl: 0 20px 60px rgba(0,0,0,0.5);
+  /* Minimalist lane (v2): single shadow for true overlays + hairline border token */
+  --shadow-popover: 0 12px 32px rgba(0,0,0,0.4);
+  --border-hairline: 1px solid var(--separator);
 }
 
 /* ============================================================
@@ -149,10 +154,9 @@
   --apple-pink: #FF2D55; --apple-teal: #5AC8FA;
   --gray-1: #8E8E93; --gray-2: #AEAEB2; --gray-3: #C7C7CC;
   --gray-4: #D1D1D6; --gray-5: #E5E5EA; --gray-6: #F2F2F7;
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
-  --shadow-lg: 0 12px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06);
-  --shadow-xl: 0 20px 60px rgba(0,0,0,0.16), 0 8px 20px rgba(0,0,0,0.08);
+  /* Minimalist lane (v2): single shadow for true overlays + hairline border token */
+  --shadow-popover: 0 12px 32px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06);
+  --border-hairline: 1px solid var(--separator);
 }
 
 /* ============================================================
@@ -177,10 +181,9 @@
   --apple-pink: #FF375F; --apple-teal: #64D2FF;
   --gray-1: #8E8E93; --gray-2: #636366; --gray-3: #48484A;
   --gray-4: #3A3A3C; --gray-5: #2C2C2E; --gray-6: #1C1C1E;
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.5);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
-  --shadow-lg: 0 12px 40px rgba(0,0,0,0.6);
-  --shadow-xl: 0 20px 60px rgba(0,0,0,0.7);
+  /* Minimalist lane (v2): single shadow for true overlays + hairline border token */
+  --shadow-popover: 0 12px 32px rgba(0,0,0,0.6);
+  --border-hairline: 1px solid var(--separator);
 }
 
 /* ============================================================
@@ -205,10 +208,9 @@
   --apple-pink: #d4205e; --apple-teal: #0d8a8a;
   --gray-1: #9a8b7a; --gray-2: #b8a996; --gray-3: #d1c4b2;
   --gray-4: #e0d5c7; --gray-5: #f0e8dc; --gray-6: #faf5ef;
-  --shadow-sm: 0 1px 3px rgba(100,70,30,0.06), 0 1px 2px rgba(100,70,30,0.04);
-  --shadow-md: 0 4px 12px rgba(100,70,30,0.08), 0 2px 4px rgba(100,70,30,0.04);
-  --shadow-lg: 0 12px 40px rgba(100,70,30,0.12), 0 4px 12px rgba(100,70,30,0.06);
-  --shadow-xl: 0 20px 60px rgba(100,70,30,0.16), 0 8px 20px rgba(100,70,30,0.08);
+  /* Minimalist lane (v2): single shadow for true overlays + hairline border token */
+  --shadow-popover: 0 12px 32px rgba(100,70,30,0.12), 0 4px 12px rgba(100,70,30,0.06);
+  --border-hairline: 1px solid var(--separator);
 }
 
 
@@ -332,13 +334,11 @@ select:focus-visible {
 
 /* Card hover lift — subtle elevation on hover */
 .apple-hover {
-  transition: transform var(--duration-fast) var(--ease-default),
-              box-shadow var(--duration-normal) var(--ease-default);
+  transition: transform var(--duration-fast) var(--ease-default);
 }
 
 .apple-hover:hover {
   transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
 }
 
 /* Segmented control — smooth transitions between states */
@@ -589,7 +589,7 @@ select:focus-visible {
 /* iOS-style grouped section container */
 .ios-group {
   background: var(--bg-secondary);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -668,7 +668,7 @@ select:focus-visible {
   /* Large title style (iOS navigation bar) */
   .mobile-large-title {
     font-size: var(--text-largeTitle);
-    font-weight: var(--font-bold);
+    font-weight: var(--font-semibold);
     letter-spacing: var(--tracking-tight);
     color: var(--text-app);
     padding: 0 var(--space-4);
@@ -717,6 +717,16 @@ select:focus-visible {
   .apple-scroll {
     scroll-behavior: auto !important;
   }
+
+  /* Facelift motion tokens collapse to 0 under reduced-motion.
+     Consumers reading these CSS vars get an instant transition.
+     framer-motion consumers should use useReducedMotion() to branch. */
+  :root {
+    --duration-morph: 0ms;
+    --duration-palette: 0ms;
+    --duration-view-fade: 0ms;
+    --duration-tab-fade: 0ms;
+  }
 }
 
 /* ============================================================
@@ -735,19 +745,18 @@ select:focus-visible {
 
 .font-medium { font-weight: var(--font-medium); }
 .font-semibold { font-weight: var(--font-semibold); }
-.font-bold { font-weight: var(--font-bold); }
 
 /* --- Surface / Card --- */
 .surface-card {
   background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-md);
+  border: var(--border-hairline);
 }
 
 .surface-secondary {
   background: var(--bg-secondary);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-md);
+  border: var(--border-hairline);
 }
 
 .surface-inset {
@@ -771,7 +780,7 @@ select:focus-visible {
 .pill { border-radius: var(--radius-full); }
 .rounded-sm { border-radius: var(--radius-sm); }
 .rounded-md { border-radius: var(--radius-md); }
-.rounded-lg { border-radius: var(--radius-lg); }
+.rounded-lg { border-radius: var(--radius-md); }
 
 /* --- Common interactive element base --- */
 .interactive-base {
@@ -808,4 +817,39 @@ select:focus-visible {
   padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
   background: color-mix(in srgb, var(--bg-card) 80%, transparent);
   border-top: 0.5px solid var(--separator);
+}
+
+/* --- Facelift pill — unified height for pill-shaped controls ---
+   Apply `.facelift-pill` to FilterBar pills, toolbar chips, view-switcher
+   segments, and the project anchor. Sets a fixed 28px height with
+   consistent vertical centering so native <select>, <input>, and
+   <button> elements line up on the same baseline. Horizontal padding
+   stays component-defined so text room is preserved. Display isn't
+   set here — consumers already handle that via `flex`/`inline-flex`
+   utility classes. */
+.facelift-pill {
+  height: 28px;
+  line-height: 1;
+  padding-top: 0;
+  padding-bottom: 0;
+  box-sizing: border-box;
+  align-items: center;
+}
+
+/* --- Command palette (cmdk) --- */
+[cmdk-item][data-selected='true'] {
+  background: color-mix(in srgb, var(--accent-app) 12%, transparent);
+}
+[cmdk-group-heading] {
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  font-size: var(--text-caption2);
+  font-weight: var(--font-semibold);
+  color: var(--text-tertiary);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+@media (max-width: 768px) {
+  .facelift-palette-overlay {
+    padding: 6vh 12px 12px !important;
+  }
 }

@@ -16,9 +16,9 @@ function Toast({ message, onDismiss, onOpenChat }) {
       style={{
         width: '320px',
         padding: '12px 16px',
-        borderRadius: 'var(--radius-lg)',
+        borderRadius: 'var(--radius-md)',
         background: 'var(--bg-card)',
-        boxShadow: 'var(--shadow-lg)',
+        boxShadow: 'var(--shadow-popover)',
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
         transition: `all var(--duration-fast) var(--ease-default)`,
@@ -34,7 +34,7 @@ function Toast({ message, onDismiss, onOpenChat }) {
       <button
         onClick={(e) => { e.stopPropagation(); onDismiss() }}
         className="shrink-0 apple-press"
-        style={{ padding: '4px', borderRadius: 'var(--radius-xs)', color: 'var(--text-tertiary)' }}
+        style={{ padding: '4px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)' }}
       >
         <X className="w-3.5 h-3.5" />
       </button>

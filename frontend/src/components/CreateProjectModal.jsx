@@ -16,8 +16,8 @@ export default function CreateProjectModal({ onClose, onCreateProject }) {
     <ModalOverlay onClose={onClose}>
       <div
         className="w-full h-full sm:h-auto sm:max-w-md flex flex-col overflow-hidden"
-        style={{ background: 'var(--bg-card)', borderRadius: '0', boxShadow: 'var(--shadow-xl)' }}
-        ref={el => { if (el && window.innerWidth >= 640) el.style.borderRadius = 'var(--radius-xl)' }}
+        style={{ background: 'var(--bg-card)', borderRadius: '0', boxShadow: 'var(--shadow-popover)' }}
+        ref={el => { if (el && window.innerWidth >= 640) el.style.borderRadius = 'var(--radius-md)' }}
       >
         <header className="shrink-0 flex justify-between items-center" style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '0.5px solid var(--separator)' }}>
           <div className="flex items-center gap-2">
@@ -61,7 +61,7 @@ export default function CreateProjectModal({ onClose, onCreateProject }) {
           <button type="button" onClick={onClose} className="apple-press" style={{ padding: '10px 20px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
             Cancel
           </button>
-          <button onClick={handleSubmit} disabled={!name.trim() || name.toLowerCase() === 'root'} className="apple-press text-white" style={{ padding: '10px 24px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-semibold)', background: 'var(--accent-app)', boxShadow: 'var(--shadow-sm)', border: 'none', cursor: 'pointer', opacity: (name.trim() && name.toLowerCase() !== 'root') ? 1 : 0.4 }}>
+          <button onClick={handleSubmit} disabled={!name.trim() || name.toLowerCase() === 'root'} className="apple-press text-white" style={{ padding: '10px 24px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-semibold)', background: 'var(--accent-app)', border: 'none', cursor: 'pointer', opacity: (name.trim() && name.toLowerCase() !== 'root') ? 1 : 0.4 }}>
             Create Project
           </button>
         </footer>

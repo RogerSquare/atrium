@@ -1024,19 +1024,19 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
       <div
         onClick={(e) => e.stopPropagation()}
         className="flex overflow-hidden animate-slide-in"
-        style={{ width: '95vw', height: '90vh', maxWidth: '1800px', background: 'var(--bg-app)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)' }}
+        style={{ width: '95vw', height: '90vh', maxWidth: '1800px', background: 'var(--bg-app)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)' }}
       >
         {/* Left: Design Chat */}
         <div className="flex flex-col" style={{ width: '420px', minWidth: '360px', borderRight: '0.5px solid var(--separator)' }}>
           {/* Header */}
           <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: '0.5px solid var(--separator)' }}>
             <Palette className="w-5 h-5" style={{ color: 'var(--accent-app)' }} />
-            <span style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-bold)', color: 'var(--text-app)' }}>Design Studio</span>
+            <span style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>Design Studio</span>
 
             {/* Mode toggle */}
             <div className="flex items-center gap-0.5 ml-2" style={{ background: 'var(--fill-secondary)', borderRadius: 'var(--radius-sm)', padding: '2px' }}>
-              <button onClick={() => setMode('refine')} className="apple-press" style={{ padding: '3px 8px', borderRadius: 'var(--radius-xs)', fontSize: '10px', fontWeight: 'var(--font-semibold)', color: mode === 'refine' ? 'var(--accent-app)' : 'var(--text-muted)', background: mode === 'refine' ? 'var(--bg-card)' : 'transparent' }}>Refine</button>
-              <button onClick={() => setMode('prototype')} className="apple-press" style={{ padding: '3px 8px', borderRadius: 'var(--radius-xs)', fontSize: '10px', fontWeight: 'var(--font-semibold)', color: mode === 'prototype' ? 'var(--apple-purple)' : 'var(--text-muted)', background: mode === 'prototype' || mode === 'implement' ? 'var(--bg-card)' : 'transparent' }}>Prototype</button>
+              <button onClick={() => setMode('refine')} className="apple-press" style={{ padding: '3px 8px', borderRadius: 'var(--radius-sm)', fontSize: '10px', fontWeight: 'var(--font-semibold)', color: mode === 'refine' ? 'var(--accent-app)' : 'var(--text-muted)', background: mode === 'refine' ? 'var(--bg-card)' : 'transparent' }}>Refine</button>
+              <button onClick={() => setMode('prototype')} className="apple-press" style={{ padding: '3px 8px', borderRadius: 'var(--radius-sm)', fontSize: '10px', fontWeight: 'var(--font-semibold)', color: mode === 'prototype' ? 'var(--apple-purple)' : 'var(--text-muted)', background: mode === 'prototype' || mode === 'implement' ? 'var(--bg-card)' : 'transparent' }}>Prototype</button>
             </div>
 
             <div className="flex-1" />
@@ -1069,7 +1069,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
                 <FolderOpen className="w-4 h-4" />
               </IconButton>
               {showSessionMenu && (
-                <div className="absolute right-0 top-full mt-1 z-30" style={{ background: 'var(--bg-card)', border: '1px solid var(--separator)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', minWidth: '200px', maxHeight: '250px', overflow: 'auto' }}>
+                <div className="absolute right-0 top-full mt-1 z-30" style={{ background: 'var(--bg-card)', border: '1px solid var(--separator)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)', minWidth: '200px', maxHeight: '250px', overflow: 'auto' }}>
                   {savedSessions.length === 0 ? (
                     <div style={{ padding: '12px 16px', fontSize: '11px', color: 'var(--text-tertiary)' }}>No saved designs</div>
                   ) : savedSessions.map(s => (
@@ -1102,7 +1102,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
 
           {/* Service selector */}
           <div className="px-4 py-2" style={{ borderBottom: '0.5px solid var(--separator)', background: 'var(--bg-secondary)' }}>
-            <div style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '4px' }}>Target Project</div>
+            <div style={{ fontSize: '10px', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '4px' }}>Target Project</div>
             <div className="flex gap-1 flex-wrap">
               {frontendServices.map(s => (
                 <button
@@ -1158,7 +1158,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
                 </div>
               ) : (
                 <>
-                  <div style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '8px' }}>Project Color Tokens</div>
+                  <div style={{ fontSize: '10px', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '8px' }}>Project Color Tokens</div>
                   <div className="flex flex-col gap-1">
                     {projectColors.map(c => {
                       // Check if this color has been modified
@@ -1211,7 +1211,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
                 <>
                   {/* Font family quick-switch */}
                   <div style={{ marginBottom: '12px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '6px' }}>Font Family</div>
+                    <div style={{ fontSize: '10px', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '6px' }}>Font Family</div>
                     <div className="flex flex-wrap gap-1">
                       {['Inter', 'Poppins', 'DM Sans', 'Plus Jakarta Sans', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Raleway', 'Nunito', 'Source Sans 3', 'IBM Plex Sans', 'Noto Sans', 'Work Sans', 'Outfit'].map(font => (
                         <button
@@ -1238,7 +1238,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
 
                   {/* Serif fonts */}
                   <div style={{ marginBottom: '12px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '6px' }}>Serif Fonts</div>
+                    <div style={{ fontSize: '10px', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '6px' }}>Serif Fonts</div>
                     <div className="flex flex-wrap gap-1">
                       {['Playfair Display', 'Lora', 'Merriweather', 'Source Serif 4', 'Libre Baskerville', 'EB Garamond'].map(font => (
                         <button
@@ -1258,7 +1258,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
 
                   {/* Mono fonts */}
                   <div style={{ marginBottom: '16px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '6px' }}>Monospace</div>
+                    <div style={{ fontSize: '10px', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '6px' }}>Monospace</div>
                     <div className="flex flex-wrap gap-1">
                       {['JetBrains Mono', 'Fira Code', 'Source Code Pro', 'IBM Plex Mono'].map(font => (
                         <button
@@ -1280,7 +1280,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
                   </div>
 
                   {/* Typography token sliders */}
-                  <div style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '8px' }}>Typography Tokens</div>
+                  <div style={{ fontSize: '10px', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '8px' }}>Typography Tokens</div>
                   <div className="flex flex-col gap-2">
                     {projectTypography.map(v => {
                       const override = appliedChanges.find(a => a.variable === v.variable)
@@ -1332,7 +1332,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
           {/* Quick-start: mood/adjectives (only before first message) */}
           {(messages.length === 0 || (mode === 'prototype' && !prototypeId)) && (
             <div className="px-4 py-3 overflow-y-auto" style={{ borderBottom: '0.5px solid var(--separator)', maxHeight: '280px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 'var(--font-bold)', color: 'var(--text-muted)', marginBottom: '8px' }}>How should it feel?</div>
+              <div style={{ fontSize: '11px', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)', marginBottom: '8px' }}>How should it feel?</div>
               <div className="flex flex-wrap gap-1.5 mb-3">
                 {ADJECTIVES.map(adj => (
                   <button
@@ -1350,7 +1350,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
                 ))}
               </div>
 
-              <div style={{ fontSize: '11px', fontWeight: 'var(--font-bold)', color: 'var(--text-muted)', marginBottom: '6px' }}>Or make it feel like...</div>
+              <div style={{ fontSize: '11px', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)', marginBottom: '6px' }}>Or make it feel like...</div>
               {[
                 { group: 'Productivity & Dev', ids: ['linear','notion','vercel','github','figma','raycast','arc','obsidian','slack','todoist'] },
                 { group: 'Design & Creative', ids: ['apple','dribbble','framer','canva'] },
@@ -1360,7 +1360,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
                 { group: 'Content & News', ids: ['medium','substack','nytimes'] },
               ].map(section => (
                 <div key={section.group} className="mb-2">
-                  <div style={{ fontSize: '9px', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '3px' }}>{section.group}</div>
+                  <div style={{ fontSize: '9px', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '3px' }}>{section.group}</div>
                   <div className="flex flex-wrap gap-1">
                     {section.ids.map(id => {
                       const app = REF_APPS.find(a => a.id === id)
@@ -1382,7 +1382,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
                 </div>
               ))}
 
-              <div style={{ fontSize: '11px', fontWeight: 'var(--font-bold)', color: 'var(--text-muted)', marginBottom: '6px' }}>Mood presets</div>
+              <div style={{ fontSize: '11px', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)', marginBottom: '6px' }}>Mood presets</div>
               <div className="flex flex-col gap-1">
                 {MOOD_PRESETS.map(mood => (
                   <button
@@ -1441,7 +1441,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
                   <div
                     style={{
                       display: 'inline-block', maxWidth: '90%', textAlign: 'left',
-                      padding: '10px 14px', borderRadius: 'var(--radius-lg)',
+                      padding: '10px 14px', borderRadius: 'var(--radius-md)',
                       fontSize: 'var(--text-footnote)', lineHeight: '1.5',
                       color: 'var(--text-app)',
                       background: msg.role === 'user' ? 'color-mix(in srgb, var(--accent-app) 15%, transparent)' : 'var(--bg-secondary)',
@@ -1457,7 +1457,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
                     <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
                     {msg.cssChanges && msg.cssChanges.length > 0 && (
                       <div className="mt-2 pt-2" style={{ borderTop: '0.5px solid var(--separator)' }}>
-                        <div style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: 'var(--accent-app)', marginBottom: '4px' }}>{msg.cssChanges.length} changes proposed</div>
+                        <div style={{ fontSize: '10px', fontWeight: 'var(--font-semibold)', color: 'var(--accent-app)', marginBottom: '4px' }}>{msg.cssChanges.length} changes proposed</div>
                         {msg.cssChanges.slice(0, 8).map((c, j) => {
                           const isColor = /color|bg|accent|text|fill|border/i.test(c.variable) && /^#|^rgb|^hsl|^var/i.test(c.value)
                           return (
@@ -1483,13 +1483,13 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
                     )}
                     {msg.styleInjection && (
                       <div className="mt-2 pt-2" style={{ borderTop: '0.5px solid var(--separator)' }}>
-                        <div style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: 'var(--apple-teal)', marginBottom: '4px' }}>Style rules injected (live preview)</div>
+                        <div style={{ fontSize: '10px', fontWeight: 'var(--font-semibold)', color: 'var(--apple-teal)', marginBottom: '4px' }}>Style rules injected (live preview)</div>
                         <pre style={{ fontSize: '9px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', maxHeight: '80px', overflow: 'auto' }}>{msg.styleInjection}</pre>
                       </div>
                     )}
                     {msg.fileChanges && msg.fileChanges.length > 0 && (
                       <div className="mt-2 pt-2" style={{ borderTop: '0.5px solid var(--separator)' }}>
-                        <div style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: 'var(--apple-purple)', marginBottom: '4px' }}>{msg.fileChanges.length} file changes proposed</div>
+                        <div style={{ fontSize: '10px', fontWeight: 'var(--font-semibold)', color: 'var(--apple-purple)', marginBottom: '4px' }}>{msg.fileChanges.length} file changes proposed</div>
                         {msg.fileChanges.map((c, j) => (
                           <div key={j} className="mb-1" style={{ fontSize: '10px' }}>
                             <span style={{ color: 'var(--apple-purple)', fontFamily: 'var(--font-mono)' }}>{c.file}</span>
@@ -1528,9 +1528,9 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
           {/* Input area */}
           {/* Implementation panel — shows when reviewing component changes */}
           {mode === 'implement' && implementPlan.length > 0 && implementIndex < implementPlan.length && (
-            <div className="px-4 py-3" style={{ borderTop: '0.5px solid var(--separator)', background: 'color-mix(in srgb, var(--apple-purple) 5%, var(--bg-secondary))' }}>
+            <div className="px-4 py-3" style={{ borderTop: '0.5px solid var(--separator)', background: 'var(--fill-secondary)' }}>
               <div className="flex items-center justify-between mb-2">
-                <span style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: 'var(--apple-purple)', textTransform: 'uppercase' }}>
+                <span style={{ fontSize: '10px', fontWeight: 'var(--font-semibold)', color: 'var(--apple-purple)', textTransform: 'uppercase' }}>
                   Component {implementIndex + 1}/{implementPlan.length}
                 </span>
                 <Badge color="var(--apple-purple)" bg="color-mix(in srgb, var(--apple-purple) 15%, transparent)" style={{ padding: '2px 6px', fontSize: '9px' }}>
@@ -1583,7 +1583,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
               <div>
                 {prototypeId && (
                   <div className="flex items-center gap-2 mb-2">
-                    <Badge color="var(--apple-purple)" bg="color-mix(in srgb, var(--apple-purple) 15%, transparent)" style={{ padding: '3px 8px' }}>Prototype active</Badge>
+                    <Badge color="var(--apple-purple)" bg="var(--fill-secondary)" style={{ padding: '3px 8px' }}>Prototype active</Badge>
                     <Button variant="ghost" size="sm" onClick={() => { setMode('refine'); setPrototypeId(null) }} style={{ fontSize: '10px' }}>Back to Live</Button>
                     <div className="flex-1" />
                     <Button variant="secondary" size="sm" onClick={handleStartImplementation} loading={protoLoading}>
@@ -1694,7 +1694,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
             {/* Selected element info */}
             {selectedElement && (
               <div className="flex items-center gap-1.5 px-2 py-1" style={{ background: 'color-mix(in srgb, var(--accent-app) 8%, transparent)', borderRadius: 'var(--radius-sm)', maxWidth: '300px' }}>
-                <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', fontWeight: 'var(--font-bold)', color: 'var(--accent-app)' }} className="truncate">{selectedElement.selector}</span>
+                <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', fontWeight: 'var(--font-semibold)', color: 'var(--accent-app)' }} className="truncate">{selectedElement.selector}</span>
                 <span style={{ fontSize: '9px', color: 'var(--text-tertiary)' }}>{selectedElement.dimensions?.width}x{selectedElement.dimensions?.height}</span>
                 <button onClick={() => setSelectedElement(null)} className="apple-press shrink-0" style={{ padding: '1px' }}>
                   <XCircle className="w-3 h-3" style={{ color: 'var(--text-tertiary)' }} />
@@ -1736,11 +1736,11 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
                   </>
                 )}
                 {styleInjection && (
-                  <Badge color="var(--apple-teal)" bg="color-mix(in srgb, var(--apple-teal) 15%, transparent)" style={{ padding: '3px 8px' }}>styles live</Badge>
+                  <Badge color="var(--apple-teal)" bg="var(--fill-secondary)" style={{ padding: '3px 8px' }}>styles live</Badge>
                 )}
                 {fileChanges.length > 0 && (
                   <>
-                    <Badge color="var(--apple-purple)" bg="color-mix(in srgb, var(--apple-purple) 15%, transparent)" style={{ padding: '3px 8px' }}>{fileChanges.length} file edits</Badge>
+                    <Badge color="var(--apple-purple)" bg="var(--fill-secondary)" style={{ padding: '3px 8px' }}>{fileChanges.length} file edits</Badge>
                     <Button variant="secondary" size="sm" onClick={handleApplyFiles}>
                       <Check className="w-3.5 h-3.5" /> Apply Files
                     </Button>
@@ -1756,7 +1756,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
                     <Download className="w-3.5 h-3.5" />
                   </IconButton>
                   {showExportMenu && (
-                    <div className="absolute right-0 top-full mt-1 z-30" style={{ background: 'var(--bg-card)', border: '1px solid var(--separator)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', minWidth: '160px' }}>
+                    <div className="absolute right-0 top-full mt-1 z-30" style={{ background: 'var(--bg-card)', border: '1px solid var(--separator)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)', minWidth: '160px' }}>
                       <button onClick={handleCopyCss} className="w-full text-left apple-press flex items-center gap-2 px-3 py-2" style={{ fontSize: '11px', color: 'var(--text-app)', borderBottom: '0.5px solid var(--separator)' }}>
                         {copied ? <ClipboardCheck className="w-3.5 h-3.5" style={{ color: 'var(--apple-green)' }} /> : <Copy className="w-3.5 h-3.5" />}
                         {copied ? 'Copied!' : 'Copy CSS to clipboard'}
@@ -1779,7 +1779,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
           {showChangesPanel && allChanges.length > 0 && (
             <div className="overflow-y-auto custom-scrollbar" style={{ maxHeight: '180px', borderBottom: '0.5px solid var(--separator)', background: 'var(--bg-secondary)', padding: '8px 12px' }}>
               <div className="flex items-center justify-between mb-2">
-                <span style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Active Changes ({appliedChanges.length}/{allChanges.length})</span>
+                <span style={{ fontSize: '10px', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Active Changes ({appliedChanges.length}/{allChanges.length})</span>
                 <button onClick={() => setDisabledChanges(new Set())} className="apple-press" style={{ fontSize: '9px', color: 'var(--accent-app)', fontWeight: 'var(--font-semibold)' }}>Enable All</button>
               </div>
               {allChanges.map((c, i) => {
@@ -1804,7 +1804,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
               })}
               {styleInjection && (
                 <div className="mt-2 pt-2" style={{ borderTop: '0.5px solid var(--separator)' }}>
-                  <div style={{ fontSize: '10px', fontWeight: 'var(--font-bold)', color: 'var(--apple-teal)', marginBottom: '4px' }}>Style Rules</div>
+                  <div style={{ fontSize: '10px', fontWeight: 'var(--font-semibold)', color: 'var(--apple-teal)', marginBottom: '4px' }}>Style Rules</div>
                   <pre style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{styleInjection}</pre>
                 </div>
               )}

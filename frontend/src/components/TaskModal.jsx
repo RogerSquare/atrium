@@ -283,13 +283,13 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
         style={{
           background: 'var(--bg-card)',
           borderRadius: '0',
-          boxShadow: 'var(--shadow-xl)',
+          boxShadow: 'var(--shadow-popover)',
         }}
         // Desktop: rounded sheet
-        ref={el => { if (el && window.innerWidth >= 640) el.style.borderRadius = 'var(--radius-xl)' }}
+        ref={el => { if (el && window.innerWidth >= 640) el.style.borderRadius = 'var(--radius-md)' }}
       >
         {/* Header */}
-        <header className="shrink-0 vibrancy-thin" style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '0.5px solid var(--separator)', background: 'color-mix(in srgb, var(--bg-card) 85%, transparent)' }}>
+        <header className="shrink-0" style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: 'var(--border-hairline)', background: 'var(--bg-card)' }}>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2 flex-wrap">
               {/* Category dropdown + editable task id */}
@@ -307,7 +307,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
                         style={{
                           fontFamily: 'var(--font-mono)',
                           fontSize: 'var(--text-caption2)',
-                          fontWeight: 700,
+                          fontWeight: 600,
                           color: cat ? cat.color : 'var(--text-tertiary)',
                           background: cat ? `color-mix(in srgb, ${cat.color} 14%, transparent)` : 'var(--fill-secondary)',
                           padding: 'var(--space-1) var(--space-2)',
@@ -336,7 +336,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
                               borderRadius: 'var(--radius-md)',
                               background: 'var(--bg-card)',
                               border: '1px solid var(--separator)',
-                              boxShadow: 'var(--shadow-lg)',
+                              boxShadow: 'var(--shadow-popover)',
                             }}
                           >
                             {CATEGORIES.map(c => (
@@ -468,7 +468,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
                         title={name}
                         color="white"
                         background={VIEWER_COLORS[i % VIEWER_COLORS.length]}
-                        style={{ border: '2px solid var(--bg-card)', fontWeight: 'var(--font-bold)' }}
+                        style={{ border: '2px solid var(--bg-card)', fontWeight: 'var(--font-semibold)' }}
                       />
                     ))}
                   </div>
@@ -586,7 +586,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
 
           {/* Content / History */}
           {modalTab === 'content' && (showHistory ? (
-            <div className="flex flex-col flex-1 overflow-hidden" style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-secondary)' }}>
+            <div className="flex flex-col flex-1 overflow-hidden" style={{ borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)' }}>
                <div className="flex flex-1 overflow-hidden">
                   <div className="w-1/3 overflow-y-auto custom-scrollbar" style={{ borderRight: '0.5px solid var(--separator)' }}>
                      <div style={{ padding: 'var(--space-4)', borderBottom: '0.5px solid var(--separator)' }}>
@@ -610,7 +610,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
                                         {i === 0 ? 'Latest' : `Version ${historyItems.length - i}`}
                                         {v.author && <span style={{ opacity: 0.5, marginLeft: 'var(--space-1)' }}>{v.author}</span>}
                                      </span>
-                                    <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-xs)' }}>
+                                    <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-sm)' }}>
                                        {(v.size / 1024).toFixed(1)} KB
                                     </span>
                                  </div>
@@ -636,7 +636,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
                                 onClick={() => handleRestore(selectedVersion.filename)}
                                 variant="primary"
                                 pill={false}
-                                style={{ padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-caption1)', boxShadow: 'var(--shadow-sm)' }}
+                                style={{ padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-caption1)' }}
                               >
                                 <RotateCcw className="w-3.5 h-3.5" /> Restore
                               </Button>
@@ -672,7 +672,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
               <ContinueButton task={task} onSelectTask={onClose} />
 
               {/* Dev Meta — grouped list */}
-              <div className="grid grid-cols-2 gap-4 mb-6" style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', background: 'var(--fill-secondary)' }}>
+              <div className="grid grid-cols-2 gap-4 mb-6" style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--fill-secondary)' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-1)' }}>Component</label>
                   <input type="text" placeholder="e.g. Auth Service" value={localComponent} onChange={(e) => { setLocalComponent(e.target.value); debouncedUpdate('component', e.target.value) }} disabled={showHistory} className="w-full outline-none bg-transparent disabled:opacity-50" style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-medium)', color: 'var(--text-app)', border: 'none', padding: 0 }} />
@@ -689,7 +689,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
                     value={editedContent}
                     onChange={(e) => setEditedContent(e.target.value)}
                     className="w-full flex-1 resize-none focus:outline-none"
-                    style={{ background: 'var(--fill-secondary)', color: 'var(--text-app)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-subhead)', border: 'none', boxShadow: '0 0 0 3px color-mix(in srgb, var(--accent-app) 20%, transparent)', minHeight: '200px' }}
+                    style={{ background: 'var(--fill-secondary)', color: 'var(--text-app)', borderRadius: 'var(--radius-md)', padding: 'var(--space-4)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-subhead)', border: 'none', boxShadow: '0 0 0 3px color-mix(in srgb, var(--accent-app) 20%, transparent)', minHeight: '200px' }}
                     placeholder="Task description (Markdown)..."
                   />
                 </div>
@@ -754,7 +754,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
                       </div>
 
                       {/* Lifecycle */}
-                      <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', background: 'var(--fill-secondary)' }}>
+                      <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--fill-secondary)' }}>
                         <div className="flex justify-between items-center" style={{ marginBottom: 'var(--space-3)' }}>
                           <span style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)' }}>Lifecycle</span>
                           {getLeadTime() && <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--accent-app)', background: 'color-mix(in srgb, var(--accent-app) 10%, transparent)', padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-full)' }}>Lead: {getLeadTime()}</span>}
@@ -781,7 +781,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
 
                       {/* Activity log */}
                       {task.activity_log && task.activity_log.length > 0 && (
-                        <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', background: 'var(--fill-secondary)' }}>
+                        <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--fill-secondary)' }}>
                           <span style={{ display: 'block', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)', marginBottom: 'var(--space-3)' }}>Activity</span>
                           <div className="space-y-2">
                             {task.activity_log.slice().reverse().map((log, i) => (
@@ -822,7 +822,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
                 onClick={handleAddComment}
                 disabled={!newComment.trim()}
                 aria-label="Send comment"
-                style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'var(--accent-app)', color: 'white', boxShadow: 'var(--shadow-sm)' }}
+                style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'var(--accent-app)', color: 'white' }}
               >
                 <Send className="w-[18px] h-[18px]" />
               </IconButton>
@@ -843,7 +843,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
               variant="primary"
               pill={false}
               onClick={handleSaveEdit}
-              style={{ padding: 'var(--space-2) var(--space-6)', fontSize: 'var(--text-subhead)', boxShadow: 'var(--shadow-sm)' }}
+              style={{ padding: 'var(--space-2) var(--space-6)', fontSize: 'var(--text-subhead)' }}
             >
               Save Changes
             </Button>
@@ -905,7 +905,7 @@ function GitHubLinkFields({ task, onUpdateTask }) {
                 <button
                   onClick={() => { setBranch(''); saveBranch('') }}
                   className="apple-press"
-                  style={{ padding: 'var(--space-1)', fontSize: 'var(--text-caption2)', color: 'var(--apple-red)', borderRadius: 'var(--radius-xs)' }}
+                  style={{ padding: 'var(--space-1)', fontSize: 'var(--text-caption2)', color: 'var(--apple-red)', borderRadius: 'var(--radius-sm)' }}
                   title="Clear override (fall back to convention)"
                 >
                   <X className="w-2.5 h-2.5" />
@@ -931,7 +931,7 @@ function GitHubLinkFields({ task, onUpdateTask }) {
                 <button
                   onClick={() => { setPrUrl(''); savePrUrl('') }}
                   className="apple-press"
-                  style={{ padding: 'var(--space-1)', fontSize: 'var(--text-caption2)', color: 'var(--apple-red)', borderRadius: 'var(--radius-xs)' }}
+                  style={{ padding: 'var(--space-1)', fontSize: 'var(--text-caption2)', color: 'var(--apple-red)', borderRadius: 'var(--radius-sm)' }}
                   title="Clear PR URL"
                 >
                   <X className="w-2.5 h-2.5" />

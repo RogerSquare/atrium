@@ -46,7 +46,7 @@ const Checkbox = forwardRef(({ checked, indeterminate, disabled, error, onChange
         style={{
           width: '16px',
           height: '16px',
-          borderRadius: 'var(--radius-xs)',
+          borderRadius: 'var(--radius-sm)',
           border: `1px solid ${borderColor}`,
           background: bg,
           transition: `background var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default)`,

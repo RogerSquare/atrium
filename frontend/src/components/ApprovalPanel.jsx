@@ -65,7 +65,7 @@ export default function ApprovalPanel({ task, socket, onTaskChanged }) {
   const resolved = approvals.filter(a => a.response)
 
   return (
-    <div style={{ marginBottom: 'var(--space-5)', padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', background: pending.length ? 'color-mix(in srgb, var(--apple-yellow) 8%, var(--fill-secondary))' : 'var(--fill-secondary)', border: pending.length ? '1px solid color-mix(in srgb, var(--apple-yellow) 40%, transparent)' : '0.5px solid var(--separator)' }}>
+    <div style={{ marginBottom: 'var(--space-5)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: pending.length ? 'color-mix(in srgb, var(--apple-yellow) 8%, var(--fill-secondary))' : 'var(--fill-secondary)', border: pending.length ? '1px solid color-mix(in srgb, var(--apple-yellow) 40%, transparent)' : '0.5px solid var(--separator)' }}>
       <div className="flex items-center gap-2" style={{ marginBottom: 'var(--space-3)' }}>
         <HelpCircle className="w-4 h-4" style={{ color: pending.length ? 'var(--apple-yellow)' : 'var(--text-muted)' }} />
         <span style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>

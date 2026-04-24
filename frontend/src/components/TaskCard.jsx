@@ -66,10 +66,12 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
           padding: 'var(--space-2) var(--space-3)',
           borderRadius: 'var(--radius-md)',
           background: 'var(--bg-card)',
+          border: 'var(--border-hairline)',
           borderLeft: `3px solid ${priorityColor}`,
-          boxShadow: isDragging ? 'var(--shadow-xl)' : selected ? `0 0 0 2px color-mix(in srgb, var(--accent-app) 40%, transparent)` : 'var(--shadow-sm)',
+          outline: selected || isDragging ? '2px solid var(--accent-app)' : 'none',
+          outlineOffset: '-2px',
           transform: isDragging ? 'scale(1.02)' : 'none',
-          transition: `box-shadow var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-spring)`,
+          transition: `outline-color var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-spring)`,
           opacity: justUpdated ? 0.8 : 1,
         }}
         title={`${task.id} — ${task.title}\nPriority: ${task.priority} | Type: ${task.type || 'fullstack'}`}
@@ -110,12 +112,18 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
       className="apple-hover cursor-pointer relative flex flex-col focus-visible:outline-none"
       style={{
         background: 'var(--bg-card)',
-        borderRadius: 'var(--radius-lg)',
+        borderRadius: 'var(--radius-md)',
         padding: 'var(--space-4)',
+        border: 'var(--border-hairline)',
         borderLeft: `3px solid ${priorityColor}`,
-        boxShadow: isDragging ? 'var(--shadow-xl)' : selected ? `0 0 0 2px color-mix(in srgb, var(--accent-app) 40%, transparent), var(--shadow-md)` : justUpdated ? `0 0 0 1px color-mix(in srgb, var(--accent-app) 30%, transparent), var(--shadow-md)` : 'var(--shadow-sm)',
+        outline: selected || isDragging
+          ? '2px solid var(--accent-app)'
+          : justUpdated
+            ? '1px solid color-mix(in srgb, var(--accent-app) 50%, transparent)'
+            : 'none',
+        outlineOffset: '-2px',
         transform: isDragging ? 'scale(1.02)' : 'none',
-        transition: `box-shadow var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-spring)`,
+        transition: `outline-color var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-spring)`,
       }}
     >
       {/* Header: ID + Type + Actions */}
@@ -207,13 +215,16 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
           {task.priority || 'Medium'}
         </Badge>
         {task.assignee && (
-          <div className="flex items-center gap-1.5" style={{ padding: 'var(--space-1) var(--space-3)', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>
-            <Avatar size="xs" alt={task.assignee} color="white" background="var(--gray-2)" />
-            <span className="truncate max-w-[80px]">{task.assignee}</span>
+          <Badge
+            preset="muted"
+            className="flex items-center gap-1"
+            style={{ padding: '2px 8px', color: 'var(--text-app)' }}
+          >
+            <span className="truncate max-w-[100px]">{task.assignee}</span>
             {task.status === 'in_progress' && (
-              <span className="animate-gentle-pulse" style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--apple-green)', boxShadow: '0 0 5px var(--apple-green)' }} />
+              <span className="animate-gentle-pulse" style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--apple-green)' }} />
             )}
-          </div>
+          </Badge>
         )}
 
         {task.due_date && (() => {
@@ -232,7 +243,7 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
           </Badge>
         )}
         {isStale && (
-          <Badge color="var(--apple-orange)" bg="color-mix(in srgb, var(--apple-orange) 10%, transparent)" className="flex items-center gap-1" style={{ padding: 'var(--space-1) var(--space-2)' }}>
+          <Badge color="var(--apple-orange)" bg="var(--fill-secondary)" className="flex items-center gap-1" style={{ padding: 'var(--space-1) var(--space-2)' }}>
             <Clock className="w-3 h-3" />Stale
           </Badge>
         )}

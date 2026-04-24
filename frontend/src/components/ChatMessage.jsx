@@ -25,7 +25,7 @@ export default function ChatMessage({ message, currentUser, onReact }) {
   if (isSystem) {
     return (
       <div className="flex justify-center" style={{ margin: '8px 0' }}>
-        <span style={{ fontSize: 'var(--text-caption1)', color: 'var(--text-tertiary)', fontStyle: 'italic', background: 'var(--fill-secondary)', padding: '4px 14px', borderRadius: 'var(--radius-full)' }}>
+        <span style={{ fontSize: 'var(--text-caption1)', color: 'var(--text-tertiary)', fontStyle: 'italic', background: 'var(--fill-secondary)', padding: '4px 14px', borderRadius: 'var(--radius-md)' }}>
           {message.content}
         </span>
       </div>
@@ -44,7 +44,7 @@ export default function ChatMessage({ message, currentUser, onReact }) {
         {/* Bubble */}
         <div
           style={{
-            borderRadius: isGif ? 'var(--radius-lg)' : '18px',
+            borderRadius: isGif ? 'var(--radius-md)' : '18px',
             ...(isGif ? { padding: '4px' } : isOwn ? {
               background: 'var(--accent-app)',
               color: 'white',
@@ -62,7 +62,7 @@ export default function ChatMessage({ message, currentUser, onReact }) {
           }}
         >
           {isGif ? (
-            <img src={message.content} alt="GIF" style={{ maxWidth: '220px', borderRadius: 'var(--radius-lg)' }} loading="lazy" />
+            <img src={message.content} alt="GIF" style={{ maxWidth: '220px', borderRadius: 'var(--radius-md)' }} loading="lazy" />
           ) : (
             message.content
           )}
@@ -78,7 +78,7 @@ export default function ChatMessage({ message, currentUser, onReact }) {
               padding: '4px',
               borderRadius: '50%',
               background: 'var(--bg-card)',
-              boxShadow: 'var(--shadow-sm)',
+              boxShadow: 'var(--shadow-popover)',
               color: 'var(--text-tertiary)',
               transition: `opacity var(--duration-fast) var(--ease-default)`,
             }}
@@ -91,7 +91,7 @@ export default function ChatMessage({ message, currentUser, onReact }) {
         {showPicker && (
           <div
             className={`absolute ${isOwn ? 'right-0' : 'left-0'} -top-10 flex gap-0.5 z-10`}
-            style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)', borderRadius: 'var(--radius-full)', padding: '4px 6px' }}
+            style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-popover)', borderRadius: 'var(--radius-md)', padding: '4px 6px' }}
           >
             {REACTION_EMOJIS.map(emoji => (
               <button
@@ -122,7 +122,7 @@ export default function ChatMessage({ message, currentUser, onReact }) {
                 className="apple-press flex items-center gap-0.5"
                 style={{
                   padding: '2px 8px',
-                  borderRadius: 'var(--radius-full)',
+                  borderRadius: 'var(--radius-md)',
                   fontSize: 'var(--text-caption1)',
                   background: iMine ? 'color-mix(in srgb, var(--accent-app) 12%, transparent)' : 'var(--fill-secondary)',
                   color: iMine ? 'var(--accent-app)' : 'var(--text-muted)',
@@ -130,7 +130,7 @@ export default function ChatMessage({ message, currentUser, onReact }) {
                 }}
               >
                 <span>{emoji}</span>
-                <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)' }}>{users.length}</span>
+                <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)' }}>{users.length}</span>
               </button>
             )
           })}

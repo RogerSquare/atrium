@@ -26,7 +26,7 @@ function SidebarSection({ title, collapsed: sectionCollapsed, onToggle, badge, c
         {sectionCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
         <span className="flex-1 text-left uppercase" style={{ fontSize: 'var(--text-caption2)' }}>{title}</span>
         {badge > 0 && (
-          <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: 'white', background: 'var(--accent-app)', borderRadius: 'var(--radius-full)', minWidth: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 var(--space-1)' }}>{badge}</span>
+          <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'white', background: 'var(--accent-app)', borderRadius: 'var(--radius-full)', minWidth: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 var(--space-1)' }}>{badge}</span>
         )}
       </button>
       {!sectionCollapsed && <div style={{ padding: `0 var(--space-2) var(--space-2)` }}>{children}</div>}
@@ -204,7 +204,7 @@ function Sidebar({
                 >
                   <Folder className="w-4 h-4 shrink-0" style={{ color: isActive ? 'var(--accent-app)' : 'var(--text-tertiary)' }} />
                   <span className="truncate flex-1">{folder === 'Root' ? 'Unassigned' : projName}</span>
-                  <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: isActive ? 'var(--accent-app)' : 'var(--text-tertiary)', background: isActive ? 'color-mix(in srgb, var(--accent-app) 12%, transparent)' : 'var(--fill-secondary)', padding: '0 var(--space-2)', borderRadius: 'var(--radius-full)', minWidth: '18px', textAlign: 'center', flexShrink: 0 }}>{count}</span>
+                  <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: isActive ? 'var(--accent-app)' : 'var(--text-tertiary)', background: isActive ? 'color-mix(in srgb, var(--accent-app) 12%, transparent)' : 'var(--fill-secondary)', padding: '0 var(--space-2)', borderRadius: 'var(--radius-full)', minWidth: '18px', textAlign: 'center', flexShrink: 0 }}>{count}</span>
                 </button>
                 {folder !== 'Root' && isActive && (
                   <IconButton
@@ -245,7 +245,7 @@ function Sidebar({
                         borderRadius: 'var(--radius-md)',
                         background: 'var(--bg-card)',
                         border: '1px solid var(--separator)',
-                        boxShadow: 'var(--shadow-lg)',
+                        boxShadow: 'var(--shadow-popover)',
                       }}
                     >
                       <Button
@@ -316,7 +316,7 @@ function Sidebar({
               padding: 'var(--space-2)',
               fontSize: 'var(--text-caption1)',
               color: filterStale ? 'var(--apple-orange)' : undefined,
-              background: filterStale ? 'color-mix(in srgb, var(--apple-orange) 10%, transparent)' : undefined,
+              background: filterStale ? 'var(--fill-secondary)' : undefined,
             }}
           >
             <AlertCircle className="w-4 h-4 shrink-0" />
@@ -395,7 +395,7 @@ function Sidebar({
             {/* Progress */}
             <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-2)' }}>
               <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-muted)' }}>Progress</span>
-              <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: 'var(--text-app)' }}>{donePercent}%</span>
+              <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>{donePercent}%</span>
             </div>
             <div className="flex overflow-hidden" style={{ height: '4px', borderRadius: 'var(--radius-full)', background: 'var(--fill-primary)', marginBottom: 'var(--space-2)' }}>
               {counts.done > 0 && <div style={{ width: `${(counts.done / total) * 100}%`, background: 'var(--apple-green)', transition: `width var(--duration-slow) var(--ease-out)` }} />}
@@ -429,7 +429,7 @@ function Sidebar({
                     <div key={svc.id} className="flex items-center gap-2" style={{ padding: 'var(--space-1) 0' }}>
                       <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: running ? 'var(--apple-green)' : 'var(--apple-red)', boxShadow: running ? '0 0 6px var(--apple-green)' : 'none', flexShrink: 0 }} />
                       <span className="truncate" style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-app)' }}>{svc.name}</span>
-                      <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '0 var(--space-2)', borderRadius: 'var(--radius-full)', flexShrink: 0 }}>:{svc.port}</span>
+                      <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '0 var(--space-2)', borderRadius: 'var(--radius-full)', flexShrink: 0 }}>:{svc.port}</span>
                       <div className="flex-1" />
                       <IconButton
                         size="sm"
@@ -483,7 +483,7 @@ function Sidebar({
           >
             <MessageCircle className="w-4 h-4 shrink-0" /> Chat
             {chatUnread > 0 && (
-              <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-bold)', color: 'white', background: 'var(--apple-red)', borderRadius: 'var(--radius-full)', minWidth: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 var(--space-1)', marginLeft: 'auto' }}>{chatUnread}</span>
+              <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'white', background: 'var(--apple-red)', borderRadius: 'var(--radius-full)', minWidth: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 var(--space-1)', marginLeft: 'auto' }}>{chatUnread}</span>
             )}
           </Button>
           <Button

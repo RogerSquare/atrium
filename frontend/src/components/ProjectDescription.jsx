@@ -34,7 +34,7 @@ export default function ProjectDescription({ projectName }) {
   if (!projectName || projectName === 'All' || projectName === 'Root') return null
 
   return (
-    <div className="h-full animate-fade-in" style={{ background: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+    <div className="h-full animate-fade-in" style={{ background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: 'var(--border-hairline)', overflow: 'hidden' }}>
       <header className="flex justify-between items-center" style={{ padding: '12px 16px', borderBottom: '0.5px solid var(--separator)' }}>
         <div className="flex items-center gap-2">
           <div style={{ padding: '6px', borderRadius: 'var(--radius-sm)', background: 'color-mix(in srgb, var(--accent-app) 12%, transparent)' }}>
@@ -46,15 +46,15 @@ export default function ProjectDescription({ projectName }) {
         </div>
         <div className="flex gap-1">
           {!isEditing ? (
-            <button onClick={() => setIsEditing(true)} className="apple-press" style={{ padding: '6px', borderRadius: 'var(--radius-xs)', color: 'var(--text-tertiary)' }} title="Edit">
+            <button onClick={() => setIsEditing(true)} className="apple-press" style={{ padding: '6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)' }} title="Edit">
               <Pencil className="w-3.5 h-3.5" />
             </button>
           ) : (
             <>
-              <button onClick={() => setIsEditing(false)} className="apple-press" style={{ padding: '6px', borderRadius: 'var(--radius-xs)', color: 'var(--apple-red)' }} title="Cancel">
+              <button onClick={() => setIsEditing(false)} className="apple-press" style={{ padding: '6px', borderRadius: 'var(--radius-sm)', color: 'var(--apple-red)' }} title="Cancel">
                 <X className="w-3.5 h-3.5" />
               </button>
-              <button onClick={handleSave} className="apple-press" style={{ padding: '6px', borderRadius: 'var(--radius-xs)', color: 'var(--apple-green)' }} title="Save">
+              <button onClick={handleSave} className="apple-press" style={{ padding: '6px', borderRadius: 'var(--radius-sm)', color: 'var(--apple-green)' }} title="Save">
                 <Check className="w-3.5 h-3.5" />
               </button>
             </>

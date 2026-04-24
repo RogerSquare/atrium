@@ -1,12 +1,66 @@
 # Atrium Frontend — Ubiquitous Language (Visual Design)
 
-_Updated 2026-04-23_
+_Updated 2026-04-23 (v3 — adds layout & information-architecture vocabulary)_
 
-**Purpose**: Give you vocabulary to put a *name* on what feels off in the UI. When you see something that bugs you but can't articulate why, skim this file — odds are the word is here. This file covers the *visual language* of the UI (design system, composition, polish). It's a sibling to the root `UBIQUITOUS_LANGUAGE.md`, which covers the task-board *domain*.
+**Purpose**: Give you vocabulary to put a *name* on what feels off in the UI. When you see something that bugs you but can't articulate why, skim this file — odds are the word is here. This file covers the *visual language* of the UI (design system, composition, polish, and layout). It's a sibling to the root `UBIQUITOUS_LANGUAGE.md`, which covers the task-board *domain*.
 
-Anchored to what Atrium actually has: Tailwind v4 with `@theme` tokens, Apple HIG-inspired type + color + spacing scales in `src/index.css`, primitives in `src/components/ui/` (Button, Badge, Card, Select, IconButton), and feature components (TaskCard, Sidebar, Board, etc.) that consume them.
+Anchored to what Atrium actually has: Tailwind v4 with `@theme` tokens, Apple HIG-inspired type + color + spacing scales in `src/index.css`, primitives in `src/components/ui/` (Button, Badge, Card, Select, IconButton, Input, Checkbox, Avatar, ButtonGroup), and feature components (TaskCard, Sidebar, Board, etc.) that consume them.
+
+Three axes to separate when talking about UI issues:
+1. **Layout / IA** — where things live on the page, which zone owns which responsibility (this section)
+2. **Aesthetic lane** — the overall visual philosophy (maximalist vs minimalist, below)
+3. **Execution within a lane** — drift, rhythm, polish (also below)
+
+These are independent. You can have a beautifully-executed maximalist UI with a terrible layout, or a pristine minimalist UI that's hard to navigate. Name which axis a complaint is about before you act on it.
 
 ---
+
+## Layout & information architecture
+
+Where things live on the page, in what zones, in what priority. Distinct from the aesthetic lane — you can change layout without changing style, and vice versa.
+
+| Term | Definition | Aliases to avoid |
+|---|---|---|
+| **Information architecture (IA)** | The skeleton of how content and actions are organized on a screen — which region owns what responsibility | Layout (too specific) |
+| **Zone** | A named region of the page with a single responsibility (nav zone, focal zone, detail zone, status zone) | Section (too vague), panel |
+| **Focal zone** | The region that carries the primary content — the reason the user opened this screen | Main area |
+| **Peripheral zone** | Supporting regions around the focal zone — nav, status, metadata, secondary actions | Sidebars (too specific) |
+| **Anchor** | A fixed reference element that orients the user across states (logo in top-left, avatar in top-right) | Landmark |
+| **Reading gravity** | Where the eye is pulled first when a screen loads — should land on the focal zone | Attention |
+| **Layout pattern** | A named arrangement of zones — e.g. single-column, split-pane, sidebar-left, master-detail, canvas-and-rail, command-palette-centric | Template |
+| **Master-detail** | Layout pattern where a list of items is paired with a detail view of one selected item (GitHub issue list + selected issue) | Split view (ambiguous) |
+| **Split-pane** | Two side-by-side zones of roughly equal weight — different from master-detail which has weight asymmetry | Two-column |
+| **Command surface** | Where users initiate actions — toolbar, floating button, command palette, inline hover menu, keyboard shortcut | Actions |
+| **Navigation pattern** | How users move between views — tabs, sidebar nav, breadcrumb, command palette, back-forward | Menu |
+| **Top-level nav** | Navigation that switches the entire focal zone (switching projects, switching views) | Main menu |
+| **In-context nav** | Navigation that changes something inside the current focal zone (switching tabs inside a task modal) | Sub-menu |
+| **Density gradient** | Different zones carry different visual densities — dense lists in peripheral, airy focus in focal | Density mix |
+| **Information scent** | Visual cues that tell the user what's behind a click before they click (icon + label + count) | Affordance (different concept) |
+
+## Redesign scopes
+
+Three different "redesigns" get confused. Name the scope before starting.
+
+| Term | Definition | Scope | Example |
+|---|---|---|---|
+| **Style refresh** | Change the visual vocabulary inside the existing layout — colors, shapes, weights, shadows | Just styling | PRs #27–#32 (refinement) |
+| **Aesthetic pivot** | Change the aesthetic lane — maximalist → minimalist, tactile → flat. Same components, same layout, different look | Styling + primitives | PRs #33–#40 (minimalist lane) |
+| **Facelift** | Rearrange zones, change command surfaces, rethink navigation. Same functionality, different composition | Layout + IA | (this task) |
+| **Full rebuild** | Change functionality too — new screens, removed features, new interaction models | All of the above + behavior | Not what we're doing |
+
+## Aesthetic lane
+
+The overall visual philosophy chosen for the product. Lanes differ in their answer to "how much visual weight should chrome have?" — there is no single correct answer, but mixing lanes within one product reads as incoherent.
+
+| Term | Definition | Aliases to avoid |
+|---|---|---|
+| **Aesthetic lane** | The overall visual philosophy — governs all layering decisions below (color, elevation, border weight, decoration density) | Look-and-feel, theme |
+| **Maximalist lane** | Chrome is tactile — shadows, color-mix fills, pill shapes, gradients, vibrancy. Atrium's current lane (Apple HIG-flavored) | Rich, decorated |
+| **Minimalist lane** | Chrome is restrained — hairline borders, flat rectangles, monochrome palette, sparse color. GitHub's board/issue UIs live here | Flat, plain |
+| **Data-first** | Layout optimized for scanning many rows of content (dense lists, small chrome) | Dense |
+| **Chrome-first** | Layout optimized for showcasing a few elements (breathing room, prominent chrome) | Hero-ed |
+| **Restraint** | Deliberate reduction of visual elements, color, or decoration — a *discipline*, not an absence | Minimalism (too broad) |
+| **Subtractive design** | A design pass that removes elements rather than adding them | Stripping |
 
 ## Visual hierarchy
 
@@ -57,6 +111,9 @@ How text is shaped.
 | **Contrast (ratio)** | Luminance ratio between foreground and background — WCAG AA requires 4.5:1 for body text, 3:1 for large text | Visibility |
 | **Accent** | The single hue that marks interactive / active state (Atrium: Apple blue) | Highlight |
 | **Surface** | A background layer — Atrium has `bg`, `bg-secondary`, `bg-tertiary`, `bg-card` | Fill (too vague) |
+| **Monochrome palette** | Grayscale + one accent (minimalist lane default); contrasts with Atrium's current multi-hue Apple palette | Black-and-white |
+| **Decorative color** | Color applied for warmth/variety without a functional role — the first thing to cut in subtractive design | Theming |
+| **Functional color** | Color that encodes state (red = error, green = success, blue = interactive) — preserved even in restraint | Semantic color |
 
 ## Elevation & depth
 
@@ -66,6 +123,22 @@ How text is shaped.
 | **Shadow** | The visual treatment that conveys elevation | Drop-shadow |
 | **Layer** | A horizontal plane in the z-stack (base, card, modal, tooltip, toast) | Z-level |
 | **Backdrop** | The dimmed/blurred layer behind a modal that visually demotes the content beneath | Overlay |
+| **Flatness** | The opposite of elevation — rectangles with no shadow; structure defined by borders instead | — |
+| **Chrome** | The visual surround around content — toolbars, borders, frames, tabs. "Heavy chrome" = prominent surround; "light chrome" = hairlines | — |
+| **Hairline border** | A 0.5px or 1px border used to separate regions without adding visual weight (minimalist lane's substitute for shadow) | Divider, line |
+| **Border weight** | Thickness of a border: hairline (0.5px), thin (1px), medium (2px), thick (3px+). Defines chrome presence | — |
+| **Vibrancy** | Translucent background with backdrop blur — a maximalist effect (Atrium currently uses this on modal headers) | Glass, frosted |
+
+## Shape & decoration
+
+| Term | Definition | Aliases to avoid |
+|---|---|---|
+| **Pill** | Rounded-full shape (radius: 9999px) — tactile, maximalist. Atrium currently uses pills for badges, filter buttons, assignee chips | Rounded |
+| **Rounded rectangle** | Moderate radius (~4–8px) — minimalist lane's default shape for chips, buttons, cards | — |
+| **Sharp rectangle** | Zero or near-zero radius — most restrained; used for dense data rows | Square |
+| **Decoration density** | Count of visual flourishes per element (dots, gradients, fills, borders). High = maximalist; low = minimalist | Chrome density |
+| **Variance** | How visually distinct two items in a set appear — high variance (pill vs rectangle in same row) reads as inconsistent | Variety |
+| **Uniformity** | Low variance — sibling elements look *the same* (same shape, same chrome, same density) | Consistency (too vague) |
 
 ## Component taxonomy
 
@@ -147,11 +220,26 @@ What separates "works" from "feels crafted."
 > **You**: "It's missing polish."
 > **Me**: "Most common gap is missing **states** (focus, empty, loading, error), not missing animation. I'd audit states before touching micro-interactions."
 
+> **You**: "I want it cleaner — more uniform, like GitHub."
+> **Me**: "That's a **redesign**, not a **refinement** — switching from the **maximalist lane** (Atrium's current pills + shadows + vibrancy) to the **minimalist lane** (hairline borders, flat rectangles, monochrome). Different scope, different plan, different risk. Want me to spec that as its own task?"
+
+> **You**: "Are shadows just out?"
+> **Me**: "In the minimalist lane, yes — **flatness** plus **hairline borders** replaces **elevation** as the way to convey layers. **Functional color** (red for error, green for success) stays; **decorative color** goes."
+
+> **You**: "It still looks the same — I wanted a completely new look."
+> **Me**: "That's usually a **facelift**, not another **aesthetic pivot**. We changed the style vocabulary in the last pass but kept the **layout pattern** (sidebar + board + right-hand task modal). What's missing is rearranging **zones** — moving the **command surface**, changing the **focal zone**'s weight, possibly switching to a **master-detail** pattern. Want me to scope that as its own task?"
+
 ## Flagged ambiguities
 
 - **"Card"** is overloaded in this repo: `src/components/ui/Card.jsx` is a **Primitive**; `src/components/TaskCard.jsx` is a **Feature component**. When you say "the card," say which tier you mean or say "**task card**" vs "the card primitive."
-- **"Refinement"** is what you reached for in natural language; it actually decomposes into **Rhythm**, **Drift**, **States**, and **Polish**. Prefer the specific term — "fix token drift in TaskCard" is actionable; "make the UI more refined" is not.
-- **"Padding"** and **"Spacing"** are used interchangeably but shouldn't be. **Padding** is inside a box; **spacing** is between boxes. Mixing them in conversation hides whether you mean a layout issue or a component issue.
+- **"Refinement"** vs **"Redesign"** is the most load-bearing distinction in this file. **Refinement** stays inside the current **aesthetic lane** and fixes drift/rhythm/polish (what PRs #27–#32 did). **Redesign** switches lanes — different shadows, different shapes, different palette. Name which one before starting work.
+- **"Clean"** is the most overloaded word used for UI. Decompose into: (a) **uniformity** (low variance between siblings), (b) **flatness** (no shadows), (c) **restraint** (less decorative color), (d) **data-first** (dense, small chrome), (e) **spatial clarity** (IA that makes the reading path obvious — focal zone easy to find, command surface predictable). The first four are style; (e) is layout. The 2026-04-23 "still looks the same" feedback was really about (e), not (a–d).
+- **"Redesign"** is now overloaded three ways: **Style refresh** (colors/shapes), **Aesthetic pivot** (lane switch), **Facelift** (layout / IA rework). Pick one before starting — the work shapes are very different.
+- **"Facelift"** vs **"Redesign"** — colloquially people use them interchangeably but in this glossary a **Facelift** specifically touches layout / IA / composition, not style. A facelift can ship on top of an existing aesthetic lane or alongside a lane switch.
+- **"Uniform"** vs **"Consistent"**: **Consistency** = using the same tokens everywhere (what refinement gave us). **Uniformity** = sibling elements looking visibly identical (fewer pill-vs-rectangle contrasts, fewer one-off fills). They are orthogonal — a consistent UI can still feel non-uniform.
+- **"GitHub-like"** as a reference means: **minimalist lane** + **hairline borders** + **monochrome palette** + **data-first density** + **rounded rectangles, not pills**. Always unpack before using.
+- **"Refined"** is used in both lanes but means different things. Maximalist refined = Apple's craft (precise easing, optical alignment); minimalist refined = GitHub/Linear's discipline (no wasted pixel, consistent hairlines). Pick the lane first.
+- **"Padding"** and **"Spacing"** are used interchangeably but shouldn't be. **Padding** is inside a box; **spacing** is between boxes. Mixing them hides whether you mean a layout issue or a component issue.
 - **"Apple-style"** is used as shorthand for the token system but Apple HIG is a full philosophy (**optical alignment**, **rhythm**, **restraint in color**, **precise easing**). "Using the Apple tokens" ≠ "looks Apple-like."
 - **"Sidebar"** means both the left nav in `Sidebar.jsx` and occasionally the right task detail panel in `TaskModal`. Prefer "**left nav**" and "**task detail panel**."
 - **"Modal"** is used for any overlay; technically an overlay without a **backdrop** is a popover, not a modal.
