@@ -16,6 +16,7 @@ import DetailComments from '../detail/DetailComments'
 import DetailActivity from '../detail/DetailActivity'
 import DetailAI from '../detail/DetailAI'
 import DetailAgentLog from '../detail/DetailAgentLog'
+import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
 
 const TABS = [
   { id: 'description', label: 'Description', icon: FileText },
@@ -72,12 +73,19 @@ export default function DetailPane({
     try { localStorage.setItem(WIDTH_STORAGE_KEY, String(width)) } catch {}
   }
 
+  const morphTransition = useMotionTransition({ duration: MOTION_DURATIONS.morph, ease: [0.2, 0.8, 0.2, 1] })
+  const tabTransition = useMotionTransition({ duration: MOTION_DURATIONS.tabFade, ease: 'easeOut' })
+
   if (!task) return null
 
   const agentRunning = activeAgents?.some((a) => a.taskId === task.id)
 
   return (
-    <aside
+    <motion.aside
+      initial={{ opacity: 0, x: 24 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 24 }}
+      transition={morphTransition}
       style={{
         gridArea: 'detail',
         borderLeft: 'var(--border-hairline)',
@@ -188,37 +196,47 @@ export default function DetailPane({
         })}
       </nav>
 
-      {/* Tab content */}
+      {/* Tab content — AnimatePresence crossfades between panels */}
       <div
-        className="flex-1 overflow-y-auto custom-scrollbar min-h-0"
+        className="flex-1 overflow-y-auto custom-scrollbar min-h-0 relative"
         style={{ padding: 'var(--space-4)' }}
         role="tabpanel"
       >
-        {activeTab === 'description' && (
-          <DetailDescription task={task} onUpdateTask={onUpdateTask} />
-        )}
-        {activeTab === 'comments' && (
-          <DetailComments task={task} currentUser={currentUser} onUpdateTask={onUpdateTask} />
-        )}
-        {activeTab === 'activity' && (
-          <DetailActivity task={task} />
-        )}
-        {activeTab === 'ai' && (
-          <DetailAI task={task} currentUser={currentUser} aiChatEnabled={aiChatEnabled} />
-        )}
-        {activeTab === 'agent' && (
-          <DetailAgentLog
-            task={task}
-            socket={socket}
-            agentRunning={agentRunning}
-            onStartAgent={onStartAgent}
-            onStopAgent={onStopAgent}
-            currentUser={currentUser}
-            agentsEnabled={agentsEnabled}
-            canRunAgents={canRunAgents}
-          />
-        )}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={tabTransition}
+          >
+            {activeTab === 'description' && (
+              <DetailDescription task={task} onUpdateTask={onUpdateTask} />
+            )}
+            {activeTab === 'comments' && (
+              <DetailComments task={task} currentUser={currentUser} onUpdateTask={onUpdateTask} />
+            )}
+            {activeTab === 'activity' && (
+              <DetailActivity task={task} />
+            )}
+            {activeTab === 'ai' && (
+              <DetailAI task={task} currentUser={currentUser} aiChatEnabled={aiChatEnabled} />
+            )}
+            {activeTab === 'agent' && (
+              <DetailAgentLog
+                task={task}
+                socket={socket}
+                agentRunning={agentRunning}
+                onStartAgent={onStartAgent}
+                onStopAgent={onStopAgent}
+                currentUser={currentUser}
+                agentsEnabled={agentsEnabled}
+                canRunAgents={canRunAgents}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
-    </aside>
+    </motion.aside>
   )
 }

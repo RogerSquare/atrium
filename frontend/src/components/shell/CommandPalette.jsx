@@ -11,6 +11,7 @@ import {
   AlertCircle, X, Sun, Moon, Settings as SettingsIcon, HelpCircle,
   LogOut, LayoutGrid, List, GitBranch,
 } from 'lucide-react'
+import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
 
 const TYPE_OPTIONS = ['frontend', 'backend', 'fullstack', 'devops']
 const PRIORITY_OPTIONS = ['high', 'medium', 'low']
@@ -58,25 +59,47 @@ export default function CommandPalette({
     fn?.()
   }
 
+  // Escape closes the palette when it's open. (Cmd+K toggle handled above.)
+  useEffect(() => {
+    if (!open) return
+    const handler = (e) => { if (e.key === 'Escape') onOpenChange(false) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [open, onOpenChange])
+
+  const backdropTransition = useMotionTransition({ duration: MOTION_DURATIONS.palette, ease: 'easeOut' })
+  const panelTransition = useMotionTransition({ duration: MOTION_DURATIONS.palette, ease: [0.2, 0.8, 0.2, 1] })
+
   return (
-    <Command.Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      label="Command palette"
-      shouldFilter
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 100,
-        display: open ? 'flex' : 'none',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        padding: '12vh 16px 16px',
-        background: 'color-mix(in srgb, var(--bg-app) 60%, transparent)',
-        backdropFilter: 'blur(6px)',
-      }}
-    >
-      <div
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          role="dialog"
+          aria-label="Command palette"
+          aria-modal="true"
+          onClick={() => onOpenChange(false)}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={backdropTransition}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100,
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            padding: '12vh 16px 16px',
+            background: 'color-mix(in srgb, var(--bg-app) 60%, transparent)',
+            backdropFilter: 'blur(6px)',
+          }}
+        >
+      <motion.div
+        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.96, y: -8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: -8 }}
+        transition={panelTransition}
         style={{
           width: '100%',
           maxWidth: '560px',
@@ -90,6 +113,7 @@ export default function CommandPalette({
           maxHeight: '70vh',
         }}
       >
+        <Command label="Command palette" shouldFilter>
         <Command.Input
           placeholder="Type a command or search…"
           style={{
@@ -192,8 +216,11 @@ export default function CommandPalette({
             <Item value="logout sign out" onSelect={run(onLogout)} icon={<LogOut className="w-3.5 h-3.5" />} label="Log out" danger />
           </Group>
         </Command.List>
-      </div>
-    </Command.Dialog>
+        </Command>
+      </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }
 

@@ -19,6 +19,7 @@ import FilterBar from './FilterBar'
 import FocalZone from './FocalZone'
 import DetailPane from './DetailPane'
 import CommandPalette from './CommandPalette'
+import { AnimatePresence } from '../../lib/motion'
 import TaskModal from '../TaskModal'
 import Settings from '../Settings'
 import HelpModal from '../HelpModal'
@@ -230,23 +231,26 @@ export default function AppShell() {
         githubLinks={githubLinks}
       />
 
-      {detailOpen && (
-        <DetailPane
-          task={selectedTask}
-          currentUser={user}
-          onClose={() => selectTask(null)}
-          onUpdateTask={undoRedo.updateTaskWithUndo}
-          activeAgents={activeAgents}
-          onStartAgent={handleStartAgent}
-          onStopAgent={handleStopAgent}
-          socket={socketRef?.current}
-          agentsEnabled={agentsEnabled}
-          canRunAgents={user?.can_run_agents !== false}
-          aiChatEnabled={aiChatEnabled}
-          width={detailWidth}
-          onWidthChange={setDetailWidth}
-        />
-      )}
+      <AnimatePresence initial={false}>
+        {detailOpen && (
+          <DetailPane
+            key="detail-pane"
+            task={selectedTask}
+            currentUser={user}
+            onClose={() => selectTask(null)}
+            onUpdateTask={undoRedo.updateTaskWithUndo}
+            activeAgents={activeAgents}
+            onStartAgent={handleStartAgent}
+            onStopAgent={handleStopAgent}
+            socket={socketRef?.current}
+            agentsEnabled={agentsEnabled}
+            canRunAgents={user?.can_run_agents !== false}
+            aiChatEnabled={aiChatEnabled}
+            width={detailWidth}
+            onWidthChange={setDetailWidth}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Focus modal — opt-in via Cmd+Shift+Enter */}
       {focusModal && selectedTask && (
