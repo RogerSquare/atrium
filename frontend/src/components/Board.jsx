@@ -293,10 +293,23 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
         {/* Left group: swimlanes + compact */}
         <div className="flex items-center gap-2">
           <Layers className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
-          <Select pill active={swimlaneBy !== 'none'} value={swimlaneBy} onChange={(e) => handleSwimlaneChange(e.target.value)}>
+          <Select
+            pill
+            active={swimlaneBy !== 'none'}
+            value={swimlaneBy}
+            onChange={(e) => handleSwimlaneChange(e.target.value)}
+            className="facelift-pill"
+            style={{ padding: '0 var(--space-2)' }}
+          >
             {SWIMLANE_OPTIONS.map(opt => <option key={opt.key} value={opt.key}>{opt.label}</option>)}
           </Select>
-          <Button variant={compactMode ? 'secondary' : 'ghost'} size="md" onClick={toggleCompact} title={compactMode ? 'Switch to full cards' : 'Switch to compact cards'}>
+          <Button
+            variant={compactMode ? 'secondary' : 'ghost'}
+            size="sm"
+            className="facelift-pill"
+            onClick={toggleCompact}
+            title={compactMode ? 'Switch to full cards' : 'Switch to compact cards'}
+          >
             {compactMode ? <LayoutGrid className="w-3.5 h-3.5" /> : <Rows3 className="w-3.5 h-3.5" />}
             {compactMode ? 'Full' : 'Compact'}
           </Button>
@@ -306,7 +319,9 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
         <div className="flex-1" />
         {onToggleBulkSelect && (
           <Button
-            variant={selectable ? 'secondary' : 'ghost'} size="md"
+            variant={selectable ? 'secondary' : 'ghost'}
+            size="sm"
+            className="facelift-pill"
             onClick={onToggleBulkSelect}
             title="Multi-select (Ctrl+Shift+A)"
             aria-label={selectable ? 'Exit multi-select mode' : 'Enter multi-select mode'}
