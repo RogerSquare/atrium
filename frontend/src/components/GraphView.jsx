@@ -18,21 +18,29 @@
 // Layout positions come from radialLayout(); reactflow does the rest.
 // Pan + zoom + minimap + reset are reactflow built-ins.
 
-import { memo, useMemo, useState, useCallback } from 'react'
+import { memo, useMemo, useState, useCallback, useEffect } from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
   Controls,
   MiniMap,
+  useReactFlow,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import { buildModel, pickRoot } from './viz/graphModel'
+import { buildModel, pickRoot, detectComponents } from './viz/graphModel'
 import { radialLayout } from './viz/layouts/radial'
+import { tiledLayout } from './viz/layouts/tiled'
 import { CATEGORY_COLOR, categoryColor } from './viz/categoryColors'
 import TaskNode, { NODE_BOX } from './viz/TaskNode'
 import { buildEdges, edgeTypes } from './viz/edges'
+import OverviewBackButton from './viz/OverviewBackButton'
 import './GraphView.css'
+
+// Tiled layout takes over once the project is large enough to have meaningful
+// disjoint sub-graphs. For Atrium today (292 nodes, ~20 components) this
+// triggers; for Loom (49 nodes, denser) it stays on radial.
+const TILED_NODE_THRESHOLD = 150
 
 const nodeTypes = { task: TaskNode }
 
@@ -47,15 +55,32 @@ function nodeRadiusFor(childCount, maxChildCount) {
 
 function GraphCanvas({ tasks, onSelectTask }) {
   const [hoveredId, setHoveredId] = useState(null)
+  const [focusedComponentId, setFocusedComponentId] = useState(null)
+  const reactFlow = useReactFlow()
 
   const model = useMemo(() => {
     if (!tasks || tasks.length === 0) return null
     const m = buildModel(tasks)
     const { byId, parentEdges, depEdges, outDegree, neighbors } = m
     const rootId = pickRoot(byId, outDegree)
-    const positions = radialLayout(m, rootId)
+    const components = detectComponents(byId, neighbors, outDegree)
+    const useTiled = byId.size > TILED_NODE_THRESHOLD && components.length > 1
+    const positions = useTiled
+      ? tiledLayout(m, rootId, components)
+      : radialLayout(m, rootId)
     const maxChildren = Math.max(1, ...Array.from(outDegree.values()))
-    return { byId, positions, parentEdges, depEdges, outDegree, neighbors, rootId, maxChildren }
+    return {
+      byId,
+      positions,
+      parentEdges,
+      depEdges,
+      outDegree,
+      neighbors,
+      rootId,
+      maxChildren,
+      components,
+      strategy: useTiled ? 'tiled' : 'radial',
+    }
   }, [tasks])
 
   const baseNodes = useMemo(() => {
@@ -108,6 +133,45 @@ function GraphCanvas({ tasks, onSelectTask }) {
     },
     [model, onSelectTask],
   )
+  const onNodeDoubleClick = useCallback(
+    (_, node) => {
+      if (!model || model.strategy !== 'tiled') return
+      const comp = model.components?.find((c) => c.nodeIds.includes(node.id))
+      if (comp) setFocusedComponentId(comp.rootId)
+    },
+    [model],
+  )
+
+  // Drive reactflow's viewport from focus state. When focused, fit to the
+  // selected component's nodes; when unfocused, fit the whole canvas.
+  useEffect(() => {
+    if (!model) return
+    const padding = 0.15
+    const duration = 350
+    if (focusedComponentId) {
+      const comp = model.components?.find((c) => c.rootId === focusedComponentId)
+      if (comp) {
+        reactFlow.fitView({
+          nodes: comp.nodeIds.map((id) => ({ id })),
+          padding,
+          duration,
+        })
+      }
+    } else {
+      reactFlow.fitView({ padding, duration })
+    }
+  }, [focusedComponentId, model, reactFlow])
+
+  // Esc clears the focus. Listen on the window so the keybind works even
+  // when the canvas isn't focused.
+  useEffect(() => {
+    if (!focusedComponentId) return
+    const onKey = (e) => {
+      if (e.key === 'Escape') setFocusedComponentId(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [focusedComponentId])
 
   if (!model) {
     return (
@@ -121,32 +185,38 @@ function GraphCanvas({ tasks, onSelectTask }) {
   }
 
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      onNodeMouseEnter={onNodeMouseEnter}
-      onNodeMouseLeave={onNodeMouseLeave}
-      onNodeClick={onNodeClick}
-      fitView
-      fitViewOptions={{ padding: 0.15 }}
-      minZoom={0.15}
-      maxZoom={5}
-      panOnDrag
-      zoomOnScroll
-      nodesDraggable={false}
-      nodesConnectable={false}
-      proOptions={{ hideAttribution: false }}
-    >
-      <Controls showInteractive={false} />
-      <MiniMap
-        pannable
-        zoomable
-        nodeColor={(n) => categoryColor(n.id)}
-        maskColor="rgba(0, 0, 0, 0.05)"
-      />
-    </ReactFlow>
+    <>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        onNodeMouseEnter={onNodeMouseEnter}
+        onNodeMouseLeave={onNodeMouseLeave}
+        onNodeClick={onNodeClick}
+        onNodeDoubleClick={onNodeDoubleClick}
+        fitView
+        fitViewOptions={{ padding: 0.15 }}
+        minZoom={0.15}
+        maxZoom={5}
+        panOnDrag
+        zoomOnScroll
+        nodesDraggable={false}
+        nodesConnectable={false}
+        proOptions={{ hideAttribution: false }}
+      >
+        <Controls showInteractive={false} />
+        <MiniMap
+          pannable
+          zoomable
+          nodeColor={(n) => categoryColor(n.id)}
+          maskColor="rgba(0, 0, 0, 0.05)"
+        />
+      </ReactFlow>
+      {focusedComponentId && (
+        <OverviewBackButton onClick={() => setFocusedComponentId(null)} />
+      )}
+    </>
   )
 }
 
