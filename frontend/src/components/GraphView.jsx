@@ -31,8 +31,10 @@ import '@xyflow/react/dist/style.css'
 import { buildModel, pickRoot, detectComponents } from './viz/graphModel'
 import { radialLayout } from './viz/layouts/radial'
 import { tiledLayout } from './viz/layouts/tiled'
+import { packOrphans } from './viz/layouts/orphans'
 import { CATEGORY_COLOR, categoryColor } from './viz/categoryColors'
 import TaskNode, { NODE_BOX } from './viz/TaskNode'
+import OrphanRegion from './viz/OrphanRegion'
 import { buildEdges, edgeTypes } from './viz/edges'
 import OverviewBackButton from './viz/OverviewBackButton'
 import './GraphView.css'
@@ -42,7 +44,15 @@ import './GraphView.css'
 // triggers; for Loom (49 nodes, denser) it stays on radial.
 const TILED_NODE_THRESHOLD = 150
 
-const nodeTypes = { task: TaskNode }
+// Gap between the main layout's right edge and the orphan region.
+const ORPHAN_REGION_GUTTER = 160
+
+const ORPHAN_REGION_NODE_ID = '__orphan-region__'
+
+const nodeTypes = {
+  task: TaskNode,
+  orphanRegion: OrphanRegion,
+}
 
 // Mirror v1's log-scale radius so a 20-child hub doesn't dwarf a 2-child node.
 function nodeRadiusFor(childCount, maxChildCount) {
@@ -64,10 +74,69 @@ function GraphCanvas({ tasks, onSelectTask }) {
     const { byId, parentEdges, depEdges, outDegree, neighbors } = m
     const rootId = pickRoot(byId, outDegree)
     const components = detectComponents(byId, neighbors, outDegree)
-    const useTiled = byId.size > TILED_NODE_THRESHOLD && components.length > 1
-    const positions = useTiled
-      ? tiledLayout(m, rootId, components)
+
+    // Orphans are single-node components with no edges in either direction.
+    // detectComponents already isolates them as size-1 entries; we just need
+    // to confirm there's no neighbor presence (a 2-node parent_task pair
+    // would also be size-1-per-component if we ran this wrong, but neighbors
+    // would have entries — so the check is correct).
+    const orphanIdSet = new Set()
+    const connectedComponents = []
+    for (const c of components) {
+      if (c.nodeIds.length === 1 && !neighbors.has(c.rootId)) {
+        orphanIdSet.add(c.rootId)
+      } else {
+        connectedComponents.push(c)
+      }
+    }
+    const orphanIds = [...orphanIdSet]
+
+    const useTiled =
+      byId.size > TILED_NODE_THRESHOLD && connectedComponents.length > 1
+
+    let positions = useTiled
+      ? tiledLayout(m, rootId, connectedComponents)
       : radialLayout(m, rootId)
+
+    // The radial layout drops unreachable nodes (other components, orphans)
+    // onto a single outer ring. Strip orphan placements from there so we
+    // can re-place them inside the dedicated region below; secondary
+    // connected components on the ring stay untouched.
+    if (!useTiled && orphanIdSet.size > 0) {
+      for (const id of orphanIds) positions.delete(id)
+    }
+
+    // Compute the bounding box of the connected layout so we know where to
+    // park the orphan region (to its right, with a gutter).
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const { x, y } of positions.values()) {
+      if (x < minX) minX = x
+      if (y < minY) minY = y
+      if (x > maxX) maxX = x
+      if (y > maxY) maxY = y
+    }
+    if (!isFinite(minX)) {
+      // Edge case: project is 100% orphans — anchor the region at origin.
+      minX = 0; minY = 0; maxX = 0; maxY = 0
+    }
+
+    const orphanResult = packOrphans(orphanIds)
+    let orphanRegion = null
+    if (orphanResult.region) {
+      const offsetX = maxX + ORPHAN_REGION_GUTTER
+      const offsetY = minY
+      for (const [id, p] of orphanResult.positions) {
+        positions.set(id, { x: p.x + offsetX, y: p.y + offsetY })
+      }
+      orphanRegion = {
+        x: offsetX,
+        y: offsetY,
+        width: orphanResult.region.width,
+        height: orphanResult.region.height,
+        count: orphanResult.region.count,
+      }
+    }
+
     const maxChildren = Math.max(1, ...Array.from(outDegree.values()))
     return {
       byId,
@@ -79,26 +148,57 @@ function GraphCanvas({ tasks, onSelectTask }) {
       rootId,
       maxChildren,
       components,
+      connectedComponents,
+      orphanIds,
+      orphanIdSet,
+      orphanRegion,
       strategy: useTiled ? 'tiled' : 'radial',
     }
   }, [tasks])
 
   const baseNodes = useMemo(() => {
     if (!model) return []
-    const { byId, positions, outDegree, rootId, maxChildren } = model
+    const { byId, positions, outDegree, rootId, maxChildren, orphanIdSet, orphanRegion } = model
     const nodes = []
+
+    // Synthetic backdrop FIRST — reactflow renders nodes in array order, so
+    // anything later in the array sits on top. Pointer events are off and
+    // the node is non-selectable so clicks/hover pass through to tasks.
+    if (orphanRegion) {
+      nodes.push({
+        id: ORPHAN_REGION_NODE_ID,
+        type: 'orphanRegion',
+        position: { x: orphanRegion.x, y: orphanRegion.y },
+        data: {
+          width: orphanRegion.width,
+          height: orphanRegion.height,
+          count: orphanRegion.count,
+        },
+        draggable: false,
+        selectable: false,
+      })
+    }
+
     for (const [id, { x, y }] of positions.entries()) {
       const task = byId.get(id)
       if (!task) continue
+      const isOrphan = orphanIdSet.has(id)
       const childCount = outDegree.get(id) || 0
       const radius = nodeRadiusFor(childCount, maxChildren)
       nodes.push({
         id,
         type: 'task',
         // Reactflow positions by top-left; offset to center the NODE_BOX
-        // wrapper on the radial coordinate.
+        // wrapper on the layout coordinate.
         position: { x: x - NODE_BOX / 2, y: y - NODE_BOX / 2 },
-        data: { task, radius, isRoot: id === rootId, isHovered: false, dim: false },
+        data: {
+          task,
+          radius,
+          isRoot: id === rootId,
+          isHovered: false,
+          dim: false,
+          isOrphan,
+        },
         draggable: false,
         selectable: true,
       })
@@ -111,9 +211,10 @@ function GraphCanvas({ tasks, onSelectTask }) {
     if (!model || !hoveredId) return baseNodes
     const adj = model.neighbors.get(hoveredId) || new Set()
     return baseNodes.map((n) => {
+      // Synthetic decorations (orphan region) don't participate in hover.
+      if (n.type !== 'task') return n
       const isHovered = n.id === hoveredId
       const dim = !isHovered && !adj.has(n.id)
-      // Skip object churn when nothing changed — keeps memo stable.
       if (!isHovered && !dim) return n
       return { ...n, data: { ...n.data, isHovered, dim } }
     })
