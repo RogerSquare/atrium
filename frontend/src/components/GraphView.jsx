@@ -37,7 +37,12 @@ import TaskNode, { NODE_BOX } from './viz/TaskNode'
 import OrphanRegion from './viz/OrphanRegion'
 import { buildEdges, edgeTypes } from './viz/edges'
 import OverviewBackButton from './viz/OverviewBackButton'
+import WorkOverlayToggle from './viz/WorkOverlayToggle'
 import './GraphView.css'
+
+// Tasks untouched for this many days fade in the work overlay.
+const STALE_AFTER_DAYS = 30
+const STALE_AFTER_MS = STALE_AFTER_DAYS * 24 * 60 * 60 * 1000
 
 // Tiled layout takes over once the project is large enough to have meaningful
 // disjoint sub-graphs. For Atrium today (292 nodes, ~20 components) this
@@ -63,9 +68,10 @@ function nodeRadiusFor(childCount, maxChildCount) {
   return MIN + t * (MAX - MIN)
 }
 
-function GraphCanvas({ tasks, onSelectTask }) {
+function GraphCanvas({ tasks, onSelectTask, githubLinks }) {
   const [hoveredId, setHoveredId] = useState(null)
   const [focusedComponentId, setFocusedComponentId] = useState(null)
+  const [overlayEnabled, setOverlayEnabled] = useState(false)
   const reactFlow = useReactFlow()
 
   const model = useMemo(() => {
@@ -206,19 +212,46 @@ function GraphCanvas({ tasks, onSelectTask }) {
     return nodes
   }, [model])
 
-  // Layer hover state on top of base nodes without rebuilding the layout.
+  // Per-task work-overlay data — status/prState/isStale. Computed once and
+  // selectively projected into node data only when overlayEnabled. Keeps
+  // base layout memos stable on toggle.
+  const overlayData = useMemo(() => {
+    const map = new Map()
+    if (!tasks) return map
+    const now = Date.now()
+    for (const t of tasks) {
+      let lastTime = null
+      if (Array.isArray(t.activity_log) && t.activity_log.length > 0) {
+        const ts = t.activity_log[t.activity_log.length - 1]?.timestamp
+        if (ts) lastTime = new Date(ts).getTime()
+      }
+      if (!lastTime) {
+        const fallback = t.started_at || t.created_at
+        if (fallback) lastTime = new Date(fallback).getTime()
+      }
+      const isStale = lastTime ? now - lastTime > STALE_AFTER_MS : false
+      const prState = githubLinks?.[t.id]?.pr_state || null
+      map.set(t.id, { status: t.status, prState, isStale })
+    }
+    return map
+  }, [tasks, githubLinks])
+
+  // Layer hover + overlay state on top of base nodes without rebuilding the layout.
   const nodes = useMemo(() => {
-    if (!model || !hoveredId) return baseNodes
-    const adj = model.neighbors.get(hoveredId) || new Set()
+    if (!model) return baseNodes
+    if (!hoveredId && !overlayEnabled) return baseNodes
+
+    const adj = hoveredId ? model.neighbors.get(hoveredId) || new Set() : null
     return baseNodes.map((n) => {
-      // Synthetic decorations (orphan region) don't participate in hover.
+      // Synthetic decorations (orphan region) don't participate in hover/overlay.
       if (n.type !== 'task') return n
-      const isHovered = n.id === hoveredId
-      const dim = !isHovered && !adj.has(n.id)
-      if (!isHovered && !dim) return n
-      return { ...n, data: { ...n.data, isHovered, dim } }
+      const isHovered = adj ? n.id === hoveredId : false
+      const dim = adj ? !isHovered && !adj.has(n.id) : false
+      const overlay = overlayEnabled ? overlayData.get(n.id) || null : null
+      if (!isHovered && !dim && !overlay) return n
+      return { ...n, data: { ...n.data, isHovered, dim, overlay } }
     })
-  }, [baseNodes, hoveredId, model])
+  }, [baseNodes, hoveredId, model, overlayEnabled, overlayData])
 
   const edges = useMemo(() => {
     if (!model) return []
@@ -317,11 +350,15 @@ function GraphCanvas({ tasks, onSelectTask }) {
       {focusedComponentId && (
         <OverviewBackButton onClick={() => setFocusedComponentId(null)} />
       )}
+      <WorkOverlayToggle
+        active={overlayEnabled}
+        onToggle={() => setOverlayEnabled((v) => !v)}
+      />
     </>
   )
 }
 
-function GraphView({ tasks, onSelectTask }) {
+function GraphView({ tasks, onSelectTask, githubLinks }) {
   return (
     <div
       className="w-full h-full relative"
@@ -334,7 +371,11 @@ function GraphView({ tasks, onSelectTask }) {
       }}
     >
       <ReactFlowProvider>
-        <GraphCanvas tasks={tasks} onSelectTask={onSelectTask} />
+        <GraphCanvas
+          tasks={tasks}
+          onSelectTask={onSelectTask}
+          githubLinks={githubLinks}
+        />
       </ReactFlowProvider>
 
       <div

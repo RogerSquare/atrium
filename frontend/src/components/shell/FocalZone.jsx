@@ -87,7 +87,7 @@ export default function FocalZone({
               recentlyUpdatedIds={recentlyUpdatedIds}
             />
           ) : activeView === 'graph' ? (
-            <GraphView tasks={tasks} onSelectTask={onSelectTask} />
+            <GraphView tasks={tasks} onSelectTask={onSelectTask} githubLinks={githubLinks} />
           ) : (
             <Board
               tasks={tasks}
