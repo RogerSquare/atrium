@@ -14,12 +14,19 @@ import { categoryColor } from './categoryColors'
 export const NODE_BOX = 48  // max-diameter wrapper, room for stroke
 
 function TaskNode({ data }) {
-  const { task, radius, isRoot, isHovered, dim } = data
+  const { task, radius, isRoot, isHovered, dim, isOrphan } = data
   const fill = categoryColor(task.id)
+
+  // Orphans render uniformly small with a dashed stroke — visually flagged
+  // as "no relationships yet" without being hidden. Cap radius regardless
+  // of what the layout asked for.
+  const effectiveRadius = isOrphan ? 7 : radius
 
   // Stroke widens for the canvas anchor and on hover, matching v1.
   const strokeColor = isRoot || isHovered ? 'var(--text-app)' : 'var(--bg-card)'
-  const strokeWidth = isRoot ? 2.5 : isHovered ? 2 : 1.5
+  const baseStrokeWidth = isRoot ? 2.5 : isHovered ? 2 : 1.5
+  const strokeWidth = isOrphan ? 1 : baseStrokeWidth
+  const strokeDasharray = isOrphan ? '2 2' : undefined
 
   return (
     <div
@@ -58,10 +65,12 @@ function TaskNode({ data }) {
         <circle
           cx={NODE_BOX / 2}
           cy={NODE_BOX / 2}
-          r={radius}
+          r={effectiveRadius}
           fill={fill}
           stroke={strokeColor}
           strokeWidth={strokeWidth}
+          strokeDasharray={strokeDasharray}
+          opacity={isOrphan ? 0.85 : 1}
         />
       </svg>
 
