@@ -325,6 +325,8 @@ To optimize development, follow these architectural rules:
 ## Phased Tasks (STRICT):
 Non-trivial work should be split into three sequential phases via the `phase-research` / `phase-plan` / `phase-implement` tag. The goal: no agent jumps from "I read the description" to "I'm writing code" without an explicit research and plan step in between. Use the `phase-research`, `phase-plan`, and `phase-implement` templates from `backend/templates/`.
 
+**For UI redesigns and refactors specifically**, invoke the `redesign-intake` skill at the start of `phase-research` (skill lives at `.claude/skills/redesign-intake/SKILL.md`). It produces a single intake document with a Design Direction section (external reference research with provenance-flagged tokens) and a Preservation Contract section (literal + implicit + uniqueness affordance survey). The contract closes the knowledge-gap failure mode where requestors forget to mention features they assume will keep working — the `BulkActionBar` and per-project Archive regressions during the recent facelift are the canonical failure cases this skill is built to catch.
+
 **When you are assigned a task with tag `phase-research`:**
 - Do NOT make an implementation plan.
 - Do NOT write any code.

@@ -33,8 +33,9 @@ backend/design-sessions/
 backend/settings.json
 backend/services.json
 
-# Claude Code local config
-.claude/
+# Claude Code local config — ignore everything by default but track project-shared skills
+.claude/*
+!.claude/skills/
 
 # Backups
 source_backups/
