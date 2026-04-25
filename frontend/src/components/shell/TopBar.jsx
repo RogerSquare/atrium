@@ -22,6 +22,7 @@ export default function TopBar({
   onSetActiveProject,
   onCreateProject,
   onOpenArchived,
+  onArchiveProject,
   archivedCount,
   // Avatar popover
   onOpenSettings,
@@ -48,6 +49,7 @@ export default function TopBar({
           onSetActiveProject={onSetActiveProject}
           onCreateProject={onCreateProject}
           onOpenArchived={onOpenArchived}
+          onArchiveProject={onArchiveProject}
           archivedCount={archivedCount}
         />
       </div>

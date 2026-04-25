@@ -28,6 +28,7 @@ import HelpModal from '../HelpModal'
 import CreateProjectModal from '../CreateProjectModal'
 import CreateTaskModal from '../CreateTaskModal'
 import ArchivedProjectsModal from '../ArchivedProjectsModal'
+import BulkActionBar from '../BulkActionBar'
 import PreviewPanel from '../PreviewPanel'
 import ErrorToast from '../ErrorToast'
 import UndoToast from '../UndoToast'
@@ -62,6 +63,8 @@ export default function AppShell() {
     activeAgents, taskViewers, handleStartAgent, handleStopAgent,
     undoRedo, bulkSelectMode, setBulkSelectMode, selectedTaskIds,
     toggleSelectTask, shiftSelectTask, toggleSelectColumn,
+    selectAllVisible, deselectAll, exitBulkMode,
+    handleBatchUpdate, handleBatchDelete, batchLoading,
     recentlyUpdatedIds, githubLinks, errorToast, setErrorToast,
     agentsEnabled, aiChatEnabled,
   } = ctx
@@ -215,6 +218,7 @@ export default function AppShell() {
         onSetActiveProject={setActiveProject}
         onCreateProject={() => setShowCreateProject(true)}
         onOpenArchived={() => setShowArchived(true)}
+        onArchiveProject={handleArchiveProject}
         archivedCount={archivedProjects?.length || 0}
         onOpenSettings={() => setShowSettings(true)}
         onOpenHelp={() => setShowHelp(true)}
@@ -266,6 +270,22 @@ export default function AppShell() {
         }
         recentlyUpdatedIds={recentlyUpdatedIds}
         githubLinks={githubLinks}
+        topSlot={
+          bulkSelectMode && selectedTaskIds.length > 0 ? (
+            <BulkActionBar
+              selectedIds={selectedTaskIds}
+              totalVisible={filteredTasks.length}
+              onSelectAll={selectAllVisible}
+              onDeselectAll={deselectAll}
+              onExit={exitBulkMode}
+              onBatchUpdate={handleBatchUpdate}
+              onBatchDelete={handleBatchDelete}
+              uniqueAssignees={uniqueAssignees}
+              currentUser={user?.username}
+              loading={batchLoading}
+            />
+          ) : null
+        }
       />
 
       <AnimatePresence initial={false}>
