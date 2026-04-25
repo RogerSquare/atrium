@@ -3,7 +3,7 @@
 // Update the date below whenever you materially edit the content.
 
 export const HELP_CONTENT = `# Atrium — Quick Reference
-_Updated 2026-04-23 (v3)_
+_Updated 2026-04-25 (v4)_
 
 Atrium is a task board for collaborating with AI agents. Tasks are stored as markdown files on disk; the web UI is a live view on top. Most everyday work falls into two flows: **managing tasks in the web UI** (here) or **running an agent from the terminal** (Claude Code prompts, below).
 
@@ -78,6 +78,16 @@ Non-trivial work splits into three sequential phases via tags:
 
 After a research or plan task lands in **review**, the next phase is spawned automatically via \`atrium_continue_task\`, which injects the prior phase's content into the new task.
 
+### UI redesigns and refactors (\`redesign-intake\` skill)
+
+When a \`phase-research\` task is tagged \`ui\` / \`redesign\` / \`refactor\`, the agent invokes the **redesign-intake** skill before touching the codebase. It produces a single intake document with two halves you confirm in one pass:
+
+- **Design Direction** — external research over 3-5 reference products (portfolios, design systems, brand guidelines). Pulls palette, typography, motion, and *smaller identity* tokens (border radii, hover states, focus rings, empty/loading states, etc.). Every value is flagged \`[token]\` (first-party / published) or \`[best-guess]\` (screenshot-derived) so speculation never ships as canon. If you have no references in mind, the skill suggests some appropriate to the project's domain.
+
+- **Preservation Contract** — three-pass affordance survey of the files being redesigned: **literal** (every \`onClick\` / keyboard binding / aria-label / callback prop), **implicit** (what's MISSING that's a regression risk — keybinds that *would* be expected, mixed control vocabularies, missing empty/loading/error states, unlabeled controls), and **uniqueness** (affordances visually unlike their siblings — the kind of detail vanilla refactors silently regularize). Each entry comes back to you for an explicit \`preserved\` / \`replaced\` / \`dropped\` / \`moved\` decision.
+
+This closes the failure mode where features get silently dropped during a refactor — the requestor never had to enumerate them, the agent surfaces them. Lives at \`.claude/skills/redesign-intake/\` in the repo; pairs with a future \`parity-check-audit\` skill that verifies post-implement that the contract was honored.
+
 ### Test-Driven Development (opt-in)
 
 Tag any implement-phase task \`tdd\` to make the agent follow red-green-refactor: write one failing test, make it pass, refactor at green, repeat. Best for pure functions and clearly-specified behavior. Skip for docs, config, or visual UI tweaks — those have no meaningful test surface.
@@ -120,6 +130,20 @@ Spawn the next phase after a research or plan task is in review.
 
 \`\`\`text
 Use the atrium skill. Task <task-id> is in review. Spawn the next phase via atrium_continue_task.
+\`\`\`
+
+### Brief a UI redesign before planning
+
+When you want to redesign a screen / component but aren't sure what aesthetic to target, or you want to make sure no existing affordances slip through during the refactor. Produces a single intake document — Design Direction (with provenance-flagged tokens) + Preservation Contract (literal + implicit + uniqueness affordance survey) — that you confirm in one pass.
+
+\`\`\`text
+Use the atrium skill. I want to redesign <area / file path>. Run the redesign-intake skill on it. I have no inspirations in mind — suggest some.
+\`\`\`
+
+If you have inspirations, name them in the prompt and the skill will research those instead of suggesting its own:
+
+\`\`\`text
+Use the atrium skill. I want to redesign <area>. Run redesign-intake. Reference Linear and Vercel for the design direction.
 \`\`\`
 
 ### Respond to a mid-run approval
