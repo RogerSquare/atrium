@@ -38,6 +38,7 @@ import OrphanRegion from './viz/OrphanRegion'
 import { buildEdges, edgeTypes } from './viz/edges'
 import OverviewBackButton from './viz/OverviewBackButton'
 import WorkOverlayToggle from './viz/WorkOverlayToggle'
+import GraphSearch from './viz/GraphSearch'
 import './GraphView.css'
 
 // Tasks untouched for this many days fade in the work overlay.
@@ -72,6 +73,7 @@ function GraphCanvas({ tasks, onSelectTask, githubLinks }) {
   const [hoveredId, setHoveredId] = useState(null)
   const [focusedComponentId, setFocusedComponentId] = useState(null)
   const [overlayEnabled, setOverlayEnabled] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const reactFlow = useReactFlow()
 
   const model = useMemo(() => {
@@ -297,15 +299,54 @@ function GraphCanvas({ tasks, onSelectTask, githubLinks }) {
   }, [focusedComponentId, model, reactFlow])
 
   // Esc clears the focus. Listen on the window so the keybind works even
-  // when the canvas isn't focused.
+  // when the canvas isn't focused. The search modal also handles Esc;
+  // gate this on !searchOpen so closing search doesn't also un-focus.
   useEffect(() => {
     if (!focusedComponentId) return
     const onKey = (e) => {
+      if (searchOpen) return
       if (e.key === 'Escape') setFocusedComponentId(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [focusedComponentId])
+  }, [focusedComponentId, searchOpen])
+
+  // Cmd+K (Mac) / Ctrl+K opens search from anywhere on the page.
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const onSearchSelect = useCallback(
+    (task) => {
+      if (!model) return
+      // In tiled mode, prefer switching focused component so the user
+      // sees the matched node in context. The fitView effect handles
+      // the rest. In radial mode, fitView directly on the node since
+      // the whole connected layout is already on one canvas.
+      if (model.strategy === 'tiled') {
+        const comp = model.components?.find((c) =>
+          c.nodeIds.includes(task.id),
+        )
+        if (comp) {
+          setFocusedComponentId(comp.rootId)
+          return
+        }
+      }
+      reactFlow.fitView({
+        nodes: [{ id: task.id }],
+        padding: 0.5,
+        duration: 350,
+      })
+    },
+    [model, reactFlow],
+  )
 
   if (!model) {
     return (
@@ -353,6 +394,12 @@ function GraphCanvas({ tasks, onSelectTask, githubLinks }) {
       <WorkOverlayToggle
         active={overlayEnabled}
         onToggle={() => setOverlayEnabled((v) => !v)}
+      />
+      <GraphSearch
+        open={searchOpen}
+        tasks={tasks}
+        onClose={() => setSearchOpen(false)}
+        onSelect={onSearchSelect}
       />
     </>
   )
