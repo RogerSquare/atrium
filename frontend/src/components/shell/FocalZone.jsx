@@ -34,6 +34,7 @@ export default function FocalZone({
   onToggleBulkSelect,
   recentlyUpdatedIds,
   githubLinks,
+  topSlot,
 }) {
   const transition = useMotionTransition({ duration: MOTION_DURATIONS.viewFade, ease: 'easeOut' })
 
@@ -55,6 +56,7 @@ export default function FocalZone({
       className="overflow-y-auto custom-scrollbar"
       style={{ gridArea: 'focal', padding: 'var(--space-4)', minWidth: 0 }}
     >
+      {topSlot}
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={activeView}

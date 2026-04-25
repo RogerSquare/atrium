@@ -15,6 +15,7 @@ export default function ProjectAnchor({
   onSetActiveProject,
   onCreateProject,
   onOpenArchived,
+  onArchiveProject,
   archivedCount,
 }) {
   const [open, setOpen] = useState(false)
@@ -145,8 +146,10 @@ export default function ProjectAnchor({
               const display = folder === 'Root' ? 'Unassigned' : name
               const isActive = activeProject === folder
               const count = tasks?.filter((t) => t.project === folder).length ?? 0
+              // Root cannot be archived per backend rules; non-Root only.
+              const canArchive = folder !== 'Root' && !!onArchiveProject
               return (
-                <li key={folder}>
+                <li key={folder} className="relative group">
                   <button
                     role="option"
                     aria-selected={isActive}
@@ -154,6 +157,7 @@ export default function ProjectAnchor({
                     className="apple-press w-full flex items-center gap-2 text-left"
                     style={{
                       padding: 'var(--space-2)',
+                      paddingRight: canArchive ? 'calc(var(--space-2) + 28px)' : 'var(--space-2)',
                       borderRadius: 'var(--radius-sm)',
                       background: isActive ? 'var(--fill-secondary)' : 'transparent',
                       border: 'none',
@@ -174,6 +178,36 @@ export default function ProjectAnchor({
                       {count}
                     </span>
                   </button>
+                  {canArchive && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setOpen(false)
+                        onArchiveProject(folder, display)
+                      }}
+                      className="apple-press opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                      title={`Archive "${display}"`}
+                      aria-label={`Archive "${display}"`}
+                      style={{
+                        position: 'absolute',
+                        top: '50%',
+                        right: 'var(--space-1)',
+                        transform: 'translateY(-50%)',
+                        width: 22,
+                        height: 22,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: 'var(--radius-sm)',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--text-tertiary)',
+                      }}
+                    >
+                      <Archive className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </li>
               )
             })}
