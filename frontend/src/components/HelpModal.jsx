@@ -16,9 +16,38 @@ function extractText(node) {
   return ''
 }
 
+// Slugify heading text for in-modal anchor ids. Used by h2/h3 renderers below.
+function slugify(node) {
+  return extractText(node)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+// Conservative kbd-chip allowlist. An inline `<code>` token renders as a
+// `<kbd className="kbd-chip">` when it contains `+` (any modifier chord) OR
+// is exactly one of these standalone keys. Anything else falls through to
+// regular inline code styling — avoids mis-chipping short identifiers like
+// `id`, `key`, `task`, or task IDs like `feat-auth-001`.
+const KBD_KEYS = new Set([
+  '?', '/', 'Esc', 'Tab', 'Enter', 'Space',
+  'Shift', 'Ctrl', 'Cmd', 'Opt', 'Alt',
+  '↑', '↓', '←', '→',
+])
+function isKbd(text) {
+  if (!text || text.length > 16) return false
+  if (text.includes('+')) return true
+  return KBD_KEYS.has(text)
+}
+
 function CodeBlockWithCopy({ children, ...props }) {
   const [copied, setCopied] = useState(false)
   const code = extractText(children).trim()
+
+  // Pull the fenced language off the inner <code>'s className, e.g.
+  // "language-bash" -> "bash". null when the fence has no language.
+  const inner = Array.isArray(children) ? children.find((c) => c?.props) : children
+  const lang = inner?.props?.className?.match(/language-(\w+)/)?.[1] ?? null
 
   const onCopy = async () => {
     try {
@@ -34,6 +63,7 @@ function CodeBlockWithCopy({ children, ...props }) {
 
   return (
     <div className="relative group">
+      {lang && <span className="code-lang-tag">{lang}</span>}
       <pre {...props}>{children}</pre>
       <button
         type="button"
@@ -51,6 +81,22 @@ function CodeBlockWithCopy({ children, ...props }) {
       </button>
     </div>
   )
+}
+
+// ReactMarkdown component overrides — extends inline `<code>` to chip-render
+// keyboard shortcuts, gives h2/h3 stable anchor ids for deep-linking, and
+// keeps the existing pre+Copy treatment.
+const MARKDOWN_COMPONENTS = {
+  pre: CodeBlockWithCopy,
+  code: ({ className, children, ...props }) => {
+    const text = typeof children === 'string' ? children : extractText(children)
+    if (!className && isKbd(text.trim())) {
+      return <kbd className="kbd-chip">{text.trim()}</kbd>
+    }
+    return <code className={className} {...props}>{children}</code>
+  },
+  h2: ({ children, ...props }) => <h2 id={slugify(children)} {...props}>{children}</h2>,
+  h3: ({ children, ...props }) => <h3 id={slugify(children)} {...props}>{children}</h3>,
 }
 
 export default function HelpModal({ onClose }) {
@@ -101,7 +147,7 @@ export default function HelpModal({ onClose }) {
           <div className="prose prose-sm max-w-none prose-pre:bg-app-bg prose-pre:border prose-pre:border-app-border prose-p:text-app-text/90 prose-li:text-app-text/90 prose-headings:text-app-text prose-strong:text-app-text prose-a:text-app-accent prose-code:text-app-accent prose-code:bg-app-bg prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-blockquote:border-app-accent prose-blockquote:bg-app-bg/50 prose-hr:border-app-border">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
-              components={{ pre: CodeBlockWithCopy }}
+              components={MARKDOWN_COMPONENTS}
             >
               {HELP_CONTENT}
             </ReactMarkdown>
