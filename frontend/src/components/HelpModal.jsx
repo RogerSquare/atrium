@@ -130,7 +130,7 @@ export default function HelpModal({ onClose }) {
   }
 
   return (
-    <ModalOverlay onClose={onClose}>
+    <ModalOverlay onClose={onClose} titleId="help-modal-title">
       <div
         className="font-help relative w-full sm:w-auto sm:max-w-3xl h-full sm:h-auto sm:max-h-[85vh] flex flex-col"
         style={{

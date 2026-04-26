@@ -14,6 +14,8 @@ export const HELP_TABS = [
 
 export const HELP_CONTENT_WEB_UI = `Atrium is a task board for collaborating with AI agents. Tasks are stored as markdown files on disk; the web UI is a live view on top. Most everyday work falls into two flows: **managing tasks here in the web UI**, or **running an agent from the terminal** (see the Terminal prompts tab).
 
+> Press \`?\` anywhere to open this panel.
+
 ### The 5-status lifecycle
 
 Every task moves through these statuses in order. The board has a column per status.

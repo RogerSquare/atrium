@@ -965,7 +965,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
 
   // --- Desktop: modal with ModalOverlay ---
   return (
-    <ModalOverlay onClose={handleClose}>
+    <ModalOverlay onClose={handleClose} titleId="settings-modal-title">
       {/* Generated-token display — nested modal, shown once */}
       {generatedToken && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={() => setGeneratedToken(null)}>
@@ -1000,7 +1000,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
       <div className="overflow-hidden flex flex-col" style={{ width: '960px', height: '620px', background: 'var(--bg-card)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)' }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <header className="shrink-0 flex justify-between items-center" style={{ padding: '12px 20px', borderBottom: 'var(--border-hairline)', background: 'var(--bg-card)' }}>
-          <h2 style={{ fontSize: 'var(--text-title3)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>Settings</h2>
+          <h2 id="settings-modal-title" style={{ fontSize: 'var(--text-title3)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>Settings</h2>
           <div className="flex items-center gap-2">
             {message && <span style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: message.includes('saved') || message.includes('Saved') || message.includes('changed') || message.includes('cleared') || message.includes('Deleted') ? 'var(--apple-green)' : 'var(--apple-red)' }}>{message}</span>}
             <button onClick={handleClose} className="apple-press" style={{ padding: '8px', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }}>

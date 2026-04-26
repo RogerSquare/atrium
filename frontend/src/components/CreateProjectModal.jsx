@@ -13,7 +13,7 @@ export default function CreateProjectModal({ onClose, onCreateProject }) {
   }
 
   return (
-    <ModalOverlay onClose={onClose}>
+    <ModalOverlay onClose={onClose} titleId="create-project-title">
       <div
         className="w-full h-full sm:h-auto sm:max-w-md flex flex-col overflow-hidden"
         style={{ background: 'var(--bg-card)', borderRadius: '0', boxShadow: 'var(--shadow-popover)' }}
@@ -22,7 +22,7 @@ export default function CreateProjectModal({ onClose, onCreateProject }) {
         <header className="shrink-0 flex justify-between items-center" style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '0.5px solid var(--separator)' }}>
           <div className="flex items-center gap-2">
             <Folder className="w-5 h-5" style={{ color: 'var(--accent-app)' }} />
-            <h2 style={{ fontSize: 'var(--text-title3)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>New Project</h2>
+            <h2 id="create-project-title" style={{ fontSize: 'var(--text-title3)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>New Project</h2>
           </div>
           <button onClick={onClose} className="apple-press" style={{ padding: '8px', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }}>
             <X className="w-[18px] h-[18px]" />

@@ -14,7 +14,7 @@ function formatDate(iso) {
 function ArchivedProjectsModal({ archivedProjects, onClose, onUnarchiveProject }) {
   const sorted = [...archivedProjects].sort((a, b) => (a.name || a).localeCompare(b.name || b))
   return (
-    <ModalOverlay onClose={onClose}>
+    <ModalOverlay onClose={onClose} titleId="archived-projects-title">
       <div
         onClick={(e) => e.stopPropagation()}
         className="w-full sm:w-[540px] sm:max-w-[92vw] sm:max-h-[80vh] h-full sm:h-auto flex flex-col"
@@ -31,7 +31,7 @@ function ArchivedProjectsModal({ archivedProjects, onClose, onUnarchiveProject }
         >
           <Archive className="w-5 h-5" style={{ color: 'var(--text-tertiary)' }} />
           <div className="flex-1 min-w-0">
-            <h2 style={{ fontSize: 'var(--text-title3)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>
+            <h2 id="archived-projects-title" style={{ fontSize: 'var(--text-title3)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>
               Archived Projects
             </h2>
             <p style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
