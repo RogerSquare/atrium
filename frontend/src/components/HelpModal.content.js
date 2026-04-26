@@ -1,11 +1,11 @@
 // Help content for the Atrium Help modal.
 // Edit this file to update what users see — the modal renders HELP_CONTENT via ReactMarkdown.
-// Update the date below whenever you materially edit the content.
+// Bump VERSION_STAMP whenever you materially edit the content.
 
-export const HELP_CONTENT = `# Atrium — Quick Reference
-_Updated 2026-04-23 (v3)_
+export const VERSION_STAMP = 'Updated 2026-04-26 (v4)'
+export const SOURCE_URL = 'https://github.com/RogerSquare/atrium/blob/main/CLAUDE.md'
 
-Atrium is a task board for collaborating with AI agents. Tasks are stored as markdown files on disk; the web UI is a live view on top. Most everyday work falls into two flows: **managing tasks in the web UI** (here) or **running an agent from the terminal** (Claude Code prompts, below).
+export const HELP_CONTENT = `Atrium is a task board for collaborating with AI agents. Tasks are stored as markdown files on disk; the web UI is a live view on top. Most everyday work falls into two flows: **managing tasks in the web UI** (here) or **running an agent from the terminal** (Claude Code prompts, below).
 
 ---
 

@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Copy, Check, X, HelpCircle } from 'lucide-react'
 import ModalOverlay from './ModalOverlay'
-import { HELP_CONTENT } from './HelpModal.content'
+import { HELP_CONTENT, VERSION_STAMP, SOURCE_URL } from './HelpModal.content'
 
 // Recursively extract plain text from a ReactMarkdown code-block's children.
 // ReactMarkdown v10 passes a <code> React element as children of <pre>;
@@ -39,7 +39,7 @@ function CodeBlockWithCopy({ children, ...props }) {
         type="button"
         onClick={onCopy}
         aria-label={copied ? 'Copied' : 'Copy to clipboard'}
-        className="absolute top-2 right-2 md:opacity-0 md:group-hover:opacity-100 transition-opacity apple-press"
+        className="absolute top-2 right-2 opacity-50 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity apple-press"
         style={{
           padding: '6px',
           borderRadius: 'var(--radius-sm)',
@@ -57,7 +57,7 @@ export default function HelpModal({ onClose }) {
   return (
     <ModalOverlay onClose={onClose}>
       <div
-        className="relative w-full sm:w-auto sm:max-w-3xl h-full sm:h-auto sm:max-h-[85vh] flex flex-col"
+        className="font-help relative w-full sm:w-auto sm:max-w-3xl h-full sm:h-auto sm:max-h-[85vh] flex flex-col"
         style={{
           background: 'var(--bg-app)',
           borderRadius: 'var(--radius-md)',
@@ -68,14 +68,16 @@ export default function HelpModal({ onClose }) {
         {/* Header */}
         <div
           className="flex items-center justify-between shrink-0"
-          style={{ padding: '16px 20px', borderBottom: '0.5px solid var(--separator)' }}
+          style={{ padding: '16px 24px', borderBottom: '0.5px solid var(--separator)' }}
         >
           <div className="flex items-center gap-2">
             <HelpCircle className="w-5 h-5" style={{ color: 'var(--accent-app)' }} />
             <h2
+              id="help-modal-title"
               style={{
-                fontSize: 'var(--text-subhead)',
-                fontWeight: 'var(--font-semibold)',
+                fontSize: 'var(--text-h2-modal)',
+                fontWeight: 'var(--weight-h2-modal)',
+                lineHeight: 'var(--leading-h2-modal)',
                 color: 'var(--text-app)',
                 margin: 0,
               }}
@@ -104,6 +106,26 @@ export default function HelpModal({ onClose }) {
               {HELP_CONTENT}
             </ReactMarkdown>
           </div>
+        </div>
+
+        {/* Footer */}
+        <div
+          className="flex items-center justify-between shrink-0 gap-3"
+          style={{
+            padding: '12px 24px',
+            borderTop: '0.5px solid var(--separator)',
+            fontSize: 'var(--text-caption1)',
+          }}
+        >
+          <span style={{ color: 'var(--text-tertiary)' }}>{VERSION_STAMP}</span>
+          <a
+            href={SOURCE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: 'var(--accent-app)', whiteSpace: 'nowrap' }}
+          >
+            View source &#8599;
+          </a>
         </div>
       </div>
     </ModalOverlay>
