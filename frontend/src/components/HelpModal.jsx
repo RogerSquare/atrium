@@ -1,9 +1,15 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Copy, Check, X, HelpCircle } from 'lucide-react'
 import ModalOverlay from './ModalOverlay'
-import { HELP_CONTENT, VERSION_STAMP, SOURCE_URL } from './HelpModal.content'
+import {
+  HELP_CONTENT_WEB_UI,
+  HELP_CONTENT_TERMINAL,
+  HELP_TABS,
+  VERSION_STAMP,
+  SOURCE_URL,
+} from './HelpModal.content'
 
 // Recursively extract plain text from a ReactMarkdown code-block's children.
 // ReactMarkdown v10 passes a <code> React element as children of <pre>;
@@ -99,7 +105,30 @@ const MARKDOWN_COMPONENTS = {
   h3: ({ children, ...props }) => <h3 id={slugify(children)} {...props}>{children}</h3>,
 }
 
+const CONTENT_BY_TAB = {
+  'web-ui': HELP_CONTENT_WEB_UI,
+  terminal: HELP_CONTENT_TERMINAL,
+}
+
 export default function HelpModal({ onClose }) {
+  const [activeTab, setActiveTab] = useState(HELP_TABS[0].id)
+  const bodyRef = useRef(null)
+
+  // Reset scroll on tab change so users always start at the top of the new tab.
+  useEffect(() => {
+    if (bodyRef.current) bodyRef.current.scrollTop = 0
+  }, [activeTab])
+
+  const onTablistKeyDown = (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+    e.preventDefault()
+    const idx = HELP_TABS.findIndex((t) => t.id === activeTab)
+    const next = e.key === 'ArrowRight'
+      ? (idx + 1) % HELP_TABS.length
+      : (idx - 1 + HELP_TABS.length) % HELP_TABS.length
+    setActiveTab(HELP_TABS[next].id)
+  }
+
   return (
     <ModalOverlay onClose={onClose}>
       <div
@@ -142,14 +171,65 @@ export default function HelpModal({ onClose }) {
           </button>
         </div>
 
+        {/* Tab strip */}
+        <div
+          role="tablist"
+          aria-label="Help sections"
+          onKeyDown={onTablistKeyDown}
+          className="shrink-0 flex"
+          style={{
+            padding: '0 24px',
+            borderBottom: '0.5px solid var(--separator)',
+            gap: '4px',
+          }}
+        >
+          {HELP_TABS.map((tab) => {
+            const active = tab.id === activeTab
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                id={`help-tab-${tab.id}`}
+                aria-selected={active}
+                aria-controls="help-tabpanel"
+                tabIndex={active ? 0 : -1}
+                onClick={() => setActiveTab(tab.id)}
+                className="apple-press"
+                style={{
+                  padding: '10px 12px',
+                  fontSize: 'var(--text-footnote)',
+                  fontWeight: active ? 'var(--font-semibold)' : 'var(--font-medium)',
+                  color: active ? 'var(--text-app)' : 'var(--text-muted)',
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: active ? '2px solid var(--accent-app)' : '2px solid transparent',
+                  marginBottom: '-0.5px',
+                  cursor: 'pointer',
+                  transition: 'color var(--duration-fast) var(--ease-default)',
+                }}
+              >
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
+
         {/* Body */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar" style={{ padding: '20px 24px' }}>
+        <div
+          ref={bodyRef}
+          id="help-tabpanel"
+          role="tabpanel"
+          aria-labelledby={`help-tab-${activeTab}`}
+          className="flex-1 overflow-y-auto custom-scrollbar"
+          style={{ padding: '20px 24px' }}
+        >
           <div className="prose prose-sm max-w-none prose-pre:bg-app-bg prose-pre:border prose-pre:border-app-border prose-p:text-app-text/90 prose-li:text-app-text/90 prose-headings:text-app-text prose-strong:text-app-text prose-a:text-app-accent prose-code:text-app-accent prose-code:bg-app-bg prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-blockquote:border-app-accent prose-blockquote:bg-app-bg/50 prose-hr:border-app-border">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={MARKDOWN_COMPONENTS}
             >
-              {HELP_CONTENT}
+              {CONTENT_BY_TAB[activeTab]}
             </ReactMarkdown>
           </div>
         </div>
