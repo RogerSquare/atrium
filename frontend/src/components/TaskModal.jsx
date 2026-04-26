@@ -277,7 +277,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
   const PRIORITY_COLOR = { high: 'var(--apple-red)', medium: 'var(--apple-orange)', low: 'var(--apple-green)' }
 
   return (
-    <ModalOverlay onClose={onClose}>
+    <ModalOverlay onClose={onClose} ariaLabel="Task detail">
       <div
         className="w-full h-full sm:w-[900px] sm:h-[85vh] sm:max-w-[95vw] flex flex-col overflow-hidden"
         style={{

@@ -251,7 +251,7 @@ export default function PreviewPanel({ services, onClose, socket, activeProject 
   }
 
   return (
-    <ModalOverlay onClose={onClose}>
+    <ModalOverlay onClose={onClose} ariaLabel="Preview pane">
       <div
         ref={containerRef}
         onClick={(e) => e.stopPropagation()}

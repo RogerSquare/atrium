@@ -1020,7 +1020,7 @@ export default function DesignStudio({ onClose, services, activeProject, user, s
   }, [draggingWidth])
 
   return (
-    <ModalOverlay onClose={onClose}>
+    <ModalOverlay onClose={onClose} ariaLabel="Design Studio">
       <div
         onClick={(e) => e.stopPropagation()}
         className="flex overflow-hidden animate-slide-in"

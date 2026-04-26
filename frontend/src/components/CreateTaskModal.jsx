@@ -48,7 +48,7 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
   }
 
   return (
-    <ModalOverlay onClose={onClose}>
+    <ModalOverlay onClose={onClose} titleId="create-task-title">
       <div
         className="w-full h-full sm:h-auto sm:max-w-2xl flex flex-col overflow-hidden"
         style={{ background: 'var(--bg-card)', borderRadius: '0', boxShadow: 'var(--shadow-popover)' }}
@@ -56,7 +56,7 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
       >
         {/* Header */}
         <header className="shrink-0 flex justify-between items-center" style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '0.5px solid var(--separator)' }}>
-          <h2 style={{ fontSize: 'var(--text-title3)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>New Task</h2>
+          <h2 id="create-task-title" style={{ fontSize: 'var(--text-title3)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>New Task</h2>
           <IconButton onClick={onClose} title="Close" aria-label="Close">
             <X className="w-[18px] h-[18px]" />
           </IconButton>

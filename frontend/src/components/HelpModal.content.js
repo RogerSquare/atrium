@@ -1,15 +1,20 @@
 // Help content for the Atrium Help modal.
-// Edit this file to update what users see — the modal renders HELP_CONTENT via ReactMarkdown.
-// Update the date below whenever you materially edit the content.
+// Edit either constant to update what users see — the modal renders the
+// active tab's content via ReactMarkdown.
+// Bump VERSION_STAMP whenever you materially edit anything.
 
-export const HELP_CONTENT = `# Atrium — Quick Reference
-_Updated 2026-04-23 (v3)_
+export const VERSION_STAMP = 'Updated 2026-04-26 (v4)'
+export const SOURCE_URL = 'https://github.com/RogerSquare/atrium/blob/main/CLAUDE.md'
 
-Atrium is a task board for collaborating with AI agents. Tasks are stored as markdown files on disk; the web UI is a live view on top. Most everyday work falls into two flows: **managing tasks in the web UI** (here) or **running an agent from the terminal** (Claude Code prompts, below).
+// Tab definitions. Order matters — first tab is the default open state.
+export const HELP_TABS = [
+  { id: 'web-ui', label: 'Web UI' },
+  { id: 'terminal', label: 'Terminal prompts' },
+]
 
----
+export const HELP_CONTENT_WEB_UI = `Atrium is a task board for collaborating with AI agents. Tasks are stored as markdown files on disk; the web UI is a live view on top. Most everyday work falls into two flows: **managing tasks here in the web UI**, or **running an agent from the terminal** (see the Terminal prompts tab).
 
-## Using the web UI
+> Press \`?\` anywhere to open this panel.
 
 ### The 5-status lifecycle
 
@@ -85,12 +90,9 @@ Tag any implement-phase task \`tdd\` to make the agent follow red-green-refactor
 ### Filters
 
 The sidebar has filters for project, assignee, type (frontend/backend/fullstack/devops), priority, today-only, and stale. The active filter count is shown next to the filter icon — click **Reset** to clear everything.
+`
 
----
-
-## Prompts for Claude Code terminal
-
-Copy any of these into a fresh Claude Code chat. The Atrium skill auto-loads when a message mentions "atrium", "task", or "project". If you start your prompt with \`Use the atrium skill.\` it's guaranteed to load.
+export const HELP_CONTENT_TERMINAL = `Copy any of these into a fresh Claude Code chat. The Atrium skill auto-loads when a message mentions "atrium", "task", or "project". If you start your prompt with \`Use the atrium skill.\` it's guaranteed to load.
 
 ### Start a new initiative
 

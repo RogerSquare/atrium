@@ -50,7 +50,7 @@ export default function KitchenSink({ onClose, currentTheme, onSetTheme }) {
   const noop = () => {}
 
   return (
-    <ModalOverlay onClose={onClose}>
+    <ModalOverlay onClose={onClose} titleId="kitchen-sink-title">
       <div
         className="custom-scrollbar"
         style={{
@@ -61,7 +61,7 @@ export default function KitchenSink({ onClose, currentTheme, onSetTheme }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <h1 style={{ fontSize: 'var(--text-title2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>Kitchen Sink</h1>
+          <h1 id="kitchen-sink-title" style={{ fontSize: 'var(--text-title2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>Kitchen Sink</h1>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {THEMES.map(t => (
               <Button key={t} variant={currentTheme === t ? 'primary' : 'ghost'} size="sm" onClick={() => onSetTheme(t)}>

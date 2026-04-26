@@ -2,6 +2,19 @@
 @plugin "@tailwindcss/typography";
 
 /* ============================================================
+   FONT FACE — InterVariable (self-hosted, scoped to .font-help)
+   Variable font, weights 100-900 covered by a single woff2.
+   Asset lives at frontend/public/fonts/InterVariable.woff2
+   ============================================================ */
+@font-face {
+  font-family: 'InterVariable';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/InterVariable.woff2') format('woff2');
+}
+
+/* ============================================================
    APPLE HIG DESIGN TOKENS
    ============================================================ */
 
@@ -60,6 +73,20 @@
   --tracking-tight: -0.02em;
   --tracking-normal: 0em;
   --tracking-wide: 0.01em;
+
+  /* --- Help-modal type scale (Linear-derived; modal-only) --- */
+  --text-h2-modal: 20px;
+  --leading-h2-modal: 1.33;
+  --weight-h2-modal: 590;
+
+  /* --- kbd-chip + code-lang-tag (theme-derivative; used inside .font-help) --- */
+  --kbd-bg: var(--bg-tertiary);
+  --kbd-border: var(--border-app);
+  --kbd-text: var(--text-app);
+  --code-lang-text: var(--text-tertiary);
+
+  /* --- Accent focus ring (theme-tracking; replaces browser default in .font-help) --- */
+  --accent-focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent-app) 40%, transparent);
 
   /* --- Corner Radii --- */
   --radius-sm: 6px;
@@ -852,4 +879,48 @@ select:focus-visible {
   .facelift-palette-overlay {
     padding: 6vh 12px 12px !important;
   }
+}
+
+/* ============================================================
+   HELP MODAL — scoped Inter Variable + utility chips
+   .font-help applies to the help modal root only; the rest of
+   the app keeps the global --font-sans (-apple-system).
+   ============================================================ */
+.font-help {
+  font-family: 'InterVariable', var(--font-sans);
+  font-feature-settings: 'cv11', 'ss01';
+  font-optical-sizing: auto;
+}
+
+.font-help :focus-visible {
+  outline: none;
+  box-shadow: var(--accent-focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+.kbd-chip {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--kbd-border);
+  background: var(--kbd-bg);
+  color: var(--kbd-text);
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+
+.code-lang-tag {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--code-lang-text);
+  text-transform: lowercase;
+  letter-spacing: var(--tracking-wide);
+  pointer-events: none;
 }

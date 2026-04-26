@@ -170,6 +170,22 @@ export default function AppShell() {
     return () => window.removeEventListener('keydown', handler)
   }, [selectedTask, focusModal, selectTask])
 
+  // Help shortcut: `?` opens the help modal. Suppressed inside text inputs and
+  // when any modal is already open (ModalOverlay marks body.modal-open).
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key !== '?') return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const t = document.activeElement
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      if (document.body.classList.contains('modal-open')) return
+      e.preventDefault()
+      setShowHelp(true)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   useEffect(() => { if (!selectedTask) setFocusModal(false) }, [selectedTask])
 
   const detailOpen = Boolean(selectedTask) && !focusModal

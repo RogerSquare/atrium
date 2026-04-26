@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 
-export default function ModalOverlay({ onClose, children }) {
+export default function ModalOverlay({ onClose, children, titleId, ariaLabel }) {
   const overlayRef = useRef(null)
   const contentRef = useRef(null)
 
@@ -64,6 +64,8 @@ export default function ModalOverlay({ onClose, children }) {
       onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId || undefined}
+      aria-label={!titleId ? (ariaLabel || 'Dialog') : undefined}
       className="fixed inset-0 flex justify-center items-end sm:items-center z-50 p-0 sm:p-6 animate-fade-in"
       style={{
         background: 'rgba(0, 0, 0, 0.4)',
