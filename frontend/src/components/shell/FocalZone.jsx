@@ -10,7 +10,6 @@
 import Board from '../Board'
 import ListView from '../ListView'
 import ChangesView from '../ChangesView'
-import GraphView from '../GraphView'
 import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
 
 export default function FocalZone({
@@ -88,8 +87,6 @@ export default function FocalZone({
               onSelectTask={onSelectTask}
               recentlyUpdatedIds={recentlyUpdatedIds}
             />
-          ) : activeView === 'graph' ? (
-            <GraphView tasks={tasks} onSelectTask={onSelectTask} githubLinks={githubLinks} />
           ) : (
             <Board
               tasks={tasks}
