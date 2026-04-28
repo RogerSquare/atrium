@@ -1,11 +1,10 @@
 import { memo } from 'react'
-import { LayoutGrid, List, GitCommitHorizontal, Share2 } from 'lucide-react'
+import { LayoutGrid, List, GitCommitHorizontal } from 'lucide-react'
 
 const VIEWS = [
   { id: 'board', label: 'Board', icon: LayoutGrid },
   { id: 'list', label: 'List', icon: List },
   { id: 'changes', label: 'Changes', icon: GitCommitHorizontal },
-  { id: 'graph', label: 'Graph', icon: Share2 },
 ]
 
 function ViewSwitcher({ activeView, onChangeView }) {

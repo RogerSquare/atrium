@@ -9,7 +9,7 @@ import { Command } from 'cmdk'
 import {
   Folder, FolderPlus, Plus, Filter as FilterIcon, UserCircle2, Clock,
   AlertCircle, X, Sun, Moon, Settings as SettingsIcon, HelpCircle,
-  LogOut, LayoutGrid, List, GitBranch, Share2,
+  LogOut, LayoutGrid, List, GitBranch,
 } from 'lucide-react'
 import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
 
@@ -167,7 +167,6 @@ export default function CommandPalette({
             <Item value="view board" onSelect={run(() => onChangeView?.('board'))} icon={<LayoutGrid className="w-3.5 h-3.5" />} label="Switch to Board" />
             <Item value="view list" onSelect={run(() => onChangeView?.('list'))} icon={<List className="w-3.5 h-3.5" />} label="Switch to List" />
             <Item value="view changes" onSelect={run(() => onChangeView?.('changes'))} icon={<GitBranch className="w-3.5 h-3.5" />} label="Switch to Changes" />
-            <Item value="view graph dependencies" onSelect={run(() => onChangeView?.('graph'))} icon={<Share2 className="w-3.5 h-3.5" />} label="Switch to Graph" />
           </Group>
 
           <Group heading="Create">
