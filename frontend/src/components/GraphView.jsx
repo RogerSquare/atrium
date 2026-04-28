@@ -229,69 +229,117 @@ function GraphCanvas({ tasks, onSelectTask, githubLinks }) {
     return () => clearTimeout(t)
   }, [model, livePositions, reactFlow])
 
-  const baseNodes = useMemo(() => {
-    if (!model) return []
-    const { byId, outDegree, rootId, maxChildren, orphanIdSet, orphanRegion } = model
-    // Merge live (sim-driven) positions on top of static (model) positions.
-    // The simulation excludes orphans, so livePositions is missing entries
-    // for them — falling through to model.positions keeps them parked in the
-    // orphan region.
-    let positions
-    if (livePositions) {
-      positions = new Map(model.positions)
-      for (const [id, p] of livePositions) positions.set(id, p)
-    } else {
-      positions = model.positions
-    }
-    const nodes = []
-
-    // Synthetic backdrop FIRST — reactflow renders nodes in array order, so
-    // anything later in the array sits on top. Pointer events are off and
-    // the node is non-selectable so clicks/hover pass through to tasks.
-    if (orphanRegion) {
-      nodes.push({
-        id: ORPHAN_REGION_NODE_ID,
-        type: 'orphanRegion',
-        position: { x: orphanRegion.x, y: orphanRegion.y },
-        data: {
-          width: orphanRegion.width,
-          height: orphanRegion.height,
-          count: orphanRegion.count,
-        },
-        draggable: false,
-        selectable: false,
-      })
-    }
-
-    for (const [id, { x, y }] of positions.entries()) {
+  // Stable per-id `data` map. Recomputed only when model rebuilds, NOT on
+  // every sim tick. Lets TaskNode's memo skip re-renders when only position
+  // changes — the data prop ref stays identical across ticks.
+  const stableNodeData = useMemo(() => {
+    if (!model) return new Map()
+    const { byId, outDegree, rootId, maxChildren, orphanIdSet } = model
+    const map = new Map()
+    for (const id of byId.keys()) {
       const task = byId.get(id)
       if (!task) continue
       const isOrphan = orphanIdSet.has(id)
       const childCount = outDegree.get(id) || 0
       const radius = nodeRadiusFor(childCount, maxChildren)
-      nodes.push({
-        id,
-        type: 'task',
-        // Reactflow positions by top-left; offset to center the NODE_BOX
-        // wrapper on the layout coordinate.
-        position: { x: x - NODE_BOX / 2, y: y - NODE_BOX / 2 },
-        data: {
-          task,
-          radius,
-          isRoot: id === rootId,
-          isHovered: false,
-          dim: false,
-          isOrphan,
-        },
-        // Phase 3 (ui-graph-polish-001): flip drag on for task nodes so the
-        // user can grab a node and feel the simulation respond. Orphans
-        // stay non-draggable since they aren't in the simulation.
-        draggable: !isOrphan,
-        selectable: true,
+      map.set(id, {
+        task,
+        radius,
+        isRoot: id === rootId,
+        isHovered: false,
+        dim: false,
+        isOrphan,
       })
     }
-    return nodes
-  }, [model, livePositions])
+    return map
+  }, [model])
+
+  // Cache of node-wrapper objects keyed by id. Mutated across renders so we
+  // can return the SAME ref for nodes whose position hasn't moved more than
+  // POSITION_EPSILON pixels since last tick — reactflow's reconciler then
+  // skips them entirely (no diff, no DOM update). At alpha-target most
+  // nodes barely move, so this is the difference between reconciling 700
+  // nodes per tick and reconciling ~50.
+  const nodeCacheRef = useRef(new Map())
+  const POSITION_EPSILON = 0.5
+
+  const baseNodes = useMemo(() => {
+    if (!model) {
+      nodeCacheRef.current = new Map()
+      return []
+    }
+    const { byId, orphanRegion } = model
+    const cache = nodeCacheRef.current
+    const next = []
+
+    // Synthetic backdrop. Static once placed; cached by id.
+    if (orphanRegion) {
+      let backdrop = cache.get(ORPHAN_REGION_NODE_ID)
+      if (
+        !backdrop ||
+        backdrop.position.x !== orphanRegion.x ||
+        backdrop.position.y !== orphanRegion.y ||
+        backdrop.data.width !== orphanRegion.width ||
+        backdrop.data.height !== orphanRegion.height ||
+        backdrop.data.count !== orphanRegion.count
+      ) {
+        backdrop = {
+          id: ORPHAN_REGION_NODE_ID,
+          type: 'orphanRegion',
+          position: { x: orphanRegion.x, y: orphanRegion.y },
+          data: {
+            width: orphanRegion.width,
+            height: orphanRegion.height,
+            count: orphanRegion.count,
+          },
+          draggable: false,
+          selectable: false,
+        }
+        cache.set(ORPHAN_REGION_NODE_ID, backdrop)
+      }
+      next.push(backdrop)
+    }
+
+    for (const id of byId.keys()) {
+      const data = stableNodeData.get(id)
+      if (!data) continue
+      const p = livePositions?.get(id) ?? model.positions.get(id)
+      if (!p) continue
+      const x = p.x - NODE_BOX / 2
+      const y = p.y - NODE_BOX / 2
+
+      const cached = cache.get(id)
+      if (
+        cached &&
+        cached.data === data &&
+        Math.abs(cached.position.x - x) < POSITION_EPSILON &&
+        Math.abs(cached.position.y - y) < POSITION_EPSILON
+      ) {
+        // Reuse the cached node ref — reactflow reconciler will skip it.
+        next.push(cached)
+        continue
+      }
+      const node = {
+        id,
+        type: 'task',
+        position: { x, y },
+        data,
+        draggable: !data.isOrphan,
+        selectable: true,
+      }
+      cache.set(id, node)
+      next.push(node)
+    }
+
+    // Drop cache entries for ids no longer in the model so it doesn't grow
+    // unbounded across project switches.
+    for (const id of cache.keys()) {
+      if (id === ORPHAN_REGION_NODE_ID) continue
+      if (!byId.has(id)) cache.delete(id)
+    }
+
+    return next
+  }, [model, livePositions, stableNodeData])
 
   // Per-task work-overlay data — status/prState/isStale. Computed once and
   // selectively projected into node data only when overlayEnabled. Keeps
