@@ -581,7 +581,7 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
           // Constant icon size so the badge is legible on the smallest
           // (priority=low, size 7) dots without dominating the largest
           // (priority=high, size 14) ones.
-          drawGitBranchIcon(ctx, bn.x, bn.y, 14, '#0e0f12')
+          drawGitBranchIcon(ctx, bn.x, bn.y, 14, '#dde1ea')
         }
       })
     }
