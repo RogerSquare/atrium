@@ -287,20 +287,21 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
 
     // Edges
     const edges = []
-    // Hub springs (drives clustering) — invisible-ish
+    // Hub springs (drives clustering) — invisible-ish.
+    // Lengths bumped (hub 60→110, parent 50→100, depends intra 70→140, cross 240→340)
+    // so dots have more room and the task-ID labels under them stop overlapping.
     for (const t of visibleTasks) {
       const projName = t.project || 'Root'
       edges.push({
         id: `hub:${t.id}`,
         from: `__hub:${projName}`,
         to: t.id,
-        length: 60,
+        length: 110,
         color: { color: '#3a4150', opacity: showHubs ? 0.10 : 0 },
         width: 0.5,
         smooth: false,
       })
     }
-    // parent_task edges
     for (const t of visibleTasks) {
       if (t.parent_task && visibleIds.has(t.parent_task)) {
         edges.push({
@@ -309,11 +310,10 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
           to: t.id,
           arrows: 'to',
           color: { color: '#4a5060', opacity: 0.7 },
-          length: 50,
+          length: 100,
         })
       }
     }
-    // depends_on edges
     const taskById = new Map(visibleTasks.map(t => [t.id, t]))
     for (const t of visibleTasks) {
       if (Array.isArray(t.depends_on)) {
@@ -328,7 +328,7 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
             arrows: 'to',
             dashes: true,
             color: { color: isCross ? '#c2932a' : '#5a6072', opacity: 0.55 },
-            length: isCross ? 240 : 70,
+            length: isCross ? 340 : 140,
           })
         }
       }
@@ -372,14 +372,20 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
         enabled: true,
         solver: 'repulsion',
         repulsion: {
-          nodeDistance: 120,
+          // Wider nodeDistance + longer springs give labels room to breathe.
+          nodeDistance: 200,
           centralGravity: 0.05,
-          springLength: 120,
+          springLength: 200,
           springConstant: 0.05,
-          damping: 0.55,
+          // Lower damping → motion lingers longer; perpetual Brownian impulses
+          // from the rAF loop keep the system from coasting to a stop.
+          damping: 0.4,
         },
         maxVelocity: 50,
-        minVelocity: 0.75,
+        // Very low minVelocity prevents vis-network's auto-pause. Combined
+        // with per-frame Brownian impulses (see custom rAF loop below) the
+        // engine never reaches its "stable" condition, so motion is continuous.
+        minVelocity: 0.01,
         timestep: 0.35,
         stabilization: { enabled: true, iterations: 200, fit: true },
       },
@@ -421,54 +427,92 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
     }
   }, [graphData, onSelectTask])
 
-  // --- Custom hub physics loop -------------------------------------------
-  // Hubs are `physics: false` in vis-network. This loop computes hub-on-hub
-  // forces only — attraction + repulsion → equilibrium distance.
+  // --- Custom hub physics + perpetual task motion ------------------------
+  // Two roles for this rAF loop:
+  //
+  //   1. Hub-on-hub physics. Hubs are `physics: false` in vis-network so
+  //      task spring forces don't pull them. Their motion comes entirely
+  //      from this loop: linear attraction + inverse-square repulsion → an
+  //      equilibrium distance, no merging.
+  //
+  //   2. Brownian impulses on tasks. vis-network auto-pauses physics once
+  //      every node's velocity is below `minVelocity` — that's why the
+  //      graph used to freeze. Adding a tiny random velocity to each task
+  //      every frame keeps the system above the threshold so the engine
+  //      never stops simulating, and the natural damping means the random
+  //      noise reads as gentle drift rather than jitter.
   useEffect(() => {
     let raf
     const ATTR = 0.0008
     const REP = 30000
-    const MASS = 100
-    const DECAY = 0.7
+    const HUB_MASS = 100
+    const HUB_DECAY = 0.7
+    // Magnitude of per-frame random impulse on tasks. Small enough that
+    // each impulse is sub-pixel; the cumulative effect is gentle drift.
+    const BROWNIAN = 0.08
 
     const tick = () => {
       const net = networkRef.current
       const hubs = hubListRef.current
-      if (net && hubs && hubs.length > 0 && net.body && net.body.nodes) {
-        let anyMotion = false
-        for (let i = 0; i < hubs.length; i++) {
-          const aId = hubs[i].id
-          if (draggedRef.current.has(aId)) continue
-          const a = net.body.nodes[aId]
-          if (!a) continue
-          let fx = 0, fy = 0
-          for (let j = 0; j < hubs.length; j++) {
-            if (i === j) continue
-            const b = net.body.nodes[hubs[j].id]
-            if (!b) continue
-            const dx = b.x - a.x
-            const dy = b.y - a.y
-            const r2 = dx * dx + dy * dy + 100
-            const r = Math.sqrt(r2)
-            const F = ATTR * r - REP / r2
-            fx += (dx / r) * F
-            fy += (dy / r) * F
+      if (net && net.body && net.body.nodes) {
+        const bodyNodes = net.body.nodes
+
+        // Hub physics
+        if (hubs && hubs.length > 0) {
+          let anyMotion = false
+          for (let i = 0; i < hubs.length; i++) {
+            const aId = hubs[i].id
+            if (draggedRef.current.has(aId)) continue
+            const a = bodyNodes[aId]
+            if (!a) continue
+            let fx = 0, fy = 0
+            for (let j = 0; j < hubs.length; j++) {
+              if (i === j) continue
+              const b = bodyNodes[hubs[j].id]
+              if (!b) continue
+              const dx = b.x - a.x
+              const dy = b.y - a.y
+              const r2 = dx * dx + dy * dy + 100
+              const r = Math.sqrt(r2)
+              const F = ATTR * r - REP / r2
+              fx += (dx / r) * F
+              fy += (dy / r) * F
+            }
+            const v = hubVelocitiesRef.current[aId] || (hubVelocitiesRef.current[aId] = { vx: 0, vy: 0 })
+            v.vx = (v.vx + fx / HUB_MASS) * HUB_DECAY
+            v.vy = (v.vy + fy / HUB_MASS) * HUB_DECAY
+            const speed2 = v.vx * v.vx + v.vy * v.vy
+            if (speed2 > 25) {
+              const s = 5 / Math.sqrt(speed2)
+              v.vx *= s; v.vy *= s
+            }
+            if (speed2 > 0.0004) {
+              a.x += v.vx
+              a.y += v.vy
+              anyMotion = true
+            }
           }
-          const v = hubVelocitiesRef.current[aId] || (hubVelocitiesRef.current[aId] = { vx: 0, vy: 0 })
-          v.vx = (v.vx + fx / MASS) * DECAY
-          v.vy = (v.vy + fy / MASS) * DECAY
-          const speed2 = v.vx * v.vx + v.vy * v.vy
-          if (speed2 > 25) {
-            const s = 5 / Math.sqrt(speed2)
-            v.vx *= s; v.vy *= s
-          }
-          if (speed2 > 0.0004) {
-            a.x += v.vx
-            a.y += v.vy
-            anyMotion = true
+          if (anyMotion) net.redraw()
+        }
+
+        // Brownian impulses on tasks. Walks the physics body's index of
+        // simulated node ids — skips hubs (they have physics:false so they
+        // aren't in this index anyway) and skips dragged nodes so a drag
+        // isn't fighting against random noise.
+        const phys = net.physics && net.physics.physicsBody
+        const indices = phys && phys.physicsNodeIndices
+        if (indices) {
+          for (let i = 0; i < indices.length; i++) {
+            const id = indices[i]
+            if (draggedRef.current.has(id)) continue
+            const n = bodyNodes[id]
+            if (!n) continue
+            // Tiny random velocity nudge keeps the engine above minVelocity
+            // and causes sub-pixel drift through the spring/damping system.
+            n.vx += (Math.random() - 0.5) * BROWNIAN
+            n.vy += (Math.random() - 0.5) * BROWNIAN
           }
         }
-        if (anyMotion) net.redraw()
       }
       raf = requestAnimationFrame(tick)
     }
