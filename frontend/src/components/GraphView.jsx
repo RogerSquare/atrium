@@ -158,6 +158,13 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
   )
   const [timeScope, setTimeScope] = useState('all')
   const [showHubs, setShowHubs] = useState(true)
+  const [springLength, setSpringLength] = useState(500)
+  // Mirrored in a ref so the build effect can read the latest value without
+  // taking a useEffect dependency on it (which would re-create the network
+  // on every slider tick). Sync happens in an effect so we don't write the
+  // ref during render.
+  const springLengthRef = useRef(500)
+  useEffect(() => { springLengthRef.current = springLength }, [springLength])
 
   // --- Refs ---------------------------------------------------------------
   const containerRef = useRef(null)
@@ -287,16 +294,22 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
 
     // Edges
     const edges = []
-    // Hub springs (drives clustering) — invisible-ish.
-    // Lengths bumped (hub 60→110, parent 50→100, depends intra 70→140, cross 240→340)
-    // so dots have more room and the task-ID labels under them stop overlapping.
+    // Edges store a relative `_factor` instead of an absolute length; the
+    // springLength effect (below) applies `springLength × _factor` via
+    // DataSet.update() so the slider can re-tune layout without rebuilding
+    // the network. Factors hand-tuned for visual hierarchy:
+    //   hub→task   1.00 — the "spring length" the user controls directly
+    //   parent     0.85 — slightly tighter than hub springs
+    //   depends    1.20 — a bit looser, so deps don't crowd parents
+    //   depends    2.80 — cross-project deps stretch across hubs without
+    //                     pulling clusters together
     for (const t of visibleTasks) {
       const projName = t.project || 'Root'
       edges.push({
         id: `hub:${t.id}`,
         from: `__hub:${projName}`,
         to: t.id,
-        length: 110,
+        _factor: 1.0,
         color: { color: '#3a4150', opacity: showHubs ? 0.10 : 0 },
         width: 0.5,
         smooth: false,
@@ -310,7 +323,7 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
           to: t.id,
           arrows: 'to',
           color: { color: '#4a5060', opacity: 0.7 },
-          length: 100,
+          _factor: 0.85,
         })
       }
     }
@@ -328,7 +341,7 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
             arrows: 'to',
             dashes: true,
             color: { color: isCross ? '#c2932a' : '#5a6072', opacity: 0.55 },
-            length: isCross ? 340 : 140,
+            _factor: isCross ? 2.8 : 1.2,
           })
         }
       }
@@ -346,9 +359,16 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
   useEffect(() => {
     if (!containerRef.current) return
 
+    // Edges arrive with a `_factor` only — apply the current springLength to
+    // each one before handing them to DataSet, so the network is born at the
+    // user's chosen scale instead of the factor-1 default of 1px.
+    const sl = springLengthRef.current
+    const edgesWithLength = graphData.edges.map(e =>
+      typeof e._factor === 'number' ? { ...e, length: sl * e._factor } : e
+    )
     const data = {
       nodes: new DataSet(graphData.nodes),
-      edges: new DataSet(graphData.edges),
+      edges: new DataSet(edgesWithLength),
     }
     datasetRef.current = data
     hubListRef.current = graphData.hubs.map(h => ({ id: h.id, hubX: h.x, hubY: h.y }))
@@ -372,10 +392,11 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
         enabled: true,
         solver: 'repulsion',
         repulsion: {
-          // Wider nodeDistance + longer springs give labels room to breathe.
-          nodeDistance: 200,
+          // springLength + nodeDistance scale with the slider state. A live
+          // effect (below) calls setOptions when the user drags the slider.
+          nodeDistance: sl * 1.5,
           centralGravity: 0.05,
-          springLength: 200,
+          springLength: sl,
           springConstant: 0.05,
           // Lower damping → motion lingers longer; perpetual Brownian impulses
           // from the rAF loop keep the system from coasting to a stop.
@@ -426,6 +447,31 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
       }
     }
   }, [graphData, onSelectTask])
+
+  // --- Live spring-length updates ----------------------------------------
+  // Avoid rebuilding the network on every slider tick: walk the existing
+  // edge DataSet, scale each edge's `length` by its `_factor`, then push
+  // new repulsion params via setOptions. Both ops are O(edges) and fast.
+  useEffect(() => {
+    const data = datasetRef.current
+    const net = networkRef.current
+    if (!data || !net) return
+    const updates = []
+    data.edges.forEach(e => {
+      if (typeof e._factor === 'number') {
+        updates.push({ id: e.id, length: springLength * e._factor })
+      }
+    })
+    if (updates.length > 0) data.edges.update(updates)
+    net.setOptions({
+      physics: {
+        repulsion: {
+          springLength,
+          nodeDistance: springLength * 1.5,
+        },
+      },
+    })
+  }, [springLength])
 
   // --- Custom hub physics + perpetual task motion ------------------------
   // Two roles for this rAF loop:
@@ -639,6 +685,25 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
               style={{ accentColor: 'var(--accent-app)' }}
             />
           </label>
+          <label
+            className="flex items-center justify-between"
+            style={{ padding: '4px 0' }}
+            title="Spring rest length — controls how spread out clusters are. Bigger = more breathing room for task ID labels."
+          >
+            <span style={{ color: 'var(--text-muted)' }}>Spring length</span>
+            <span style={{ color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--text-caption2)' }}>
+              {springLength}
+            </span>
+          </label>
+          <input
+            type="range"
+            min="100"
+            max="1500"
+            step="25"
+            value={springLength}
+            onChange={e => setSpringLength(Number(e.target.value))}
+            style={{ width: '100%', accentColor: 'var(--accent-app)' }}
+          />
         </FilterSection>
 
         {/* Reset */}
