@@ -46,17 +46,32 @@ const TIME_SCOPES = [
   { value: '1m',  label: 'Last month', days: 30 },
 ]
 
-// Deterministic tag → palette slot. `phase-research` always lands on the same
-// color regardless of which tasks happen to use it.
-const TAG_PALETTE = [
-  '#6ea8ff','#57c785','#f5b04a','#ef6b6b','#b48cff','#3ed4d0',
-  '#f06292','#9ccc65','#ff8a65','#26c6da','#ffca28','#ec407a',
-  '#7e57c2','#66bb6a','#ab47bc','#5c6bc0','#26a69a','#d4e157',
-  '#ff7043','#8d6e63','#42a5f5','#78909c',
-]
-const UNTAGGED_COLOR = '#4a5060'
+// Category-prefix color scheme — matches the Changes view (ChangesView.jsx
+// CATEGORY_STYLE) so the same task has the same color across views. Resolved
+// from CSS variables at draw time so theme switches stay in sync.
+const CATEGORY_COLOR = {
+  bug:    'var(--apple-red)',
+  feat:   'var(--apple-blue)',
+  ui:     'var(--apple-teal)',
+  opt:    'var(--apple-orange)',
+  devops: 'var(--apple-purple)',
+  comp:   'var(--gray-1)',
+  mobile: 'var(--apple-pink)',
+}
+const OTHER_CATEGORY_COLOR = 'var(--gray-1)'
+const CATEGORY_LABELS = ['feat', 'bug', 'ui', 'opt', 'devops', 'comp', 'mobile']
 
-// FNV-1a 32-bit hash. Used for both tag→color and task-id→position-offset.
+function categoryOf(taskId) {
+  if (!taskId) return null
+  const prefix = taskId.split('-')[0]?.toLowerCase()
+  return CATEGORY_COLOR[prefix] ? prefix : null
+}
+function colorForTask(taskId) {
+  const cat = categoryOf(taskId)
+  return cat ? CATEGORY_COLOR[cat] : OTHER_CATEGORY_COLOR
+}
+
+// FNV-1a 32-bit hash — used for task-id → deterministic position offset.
 function fnv1a(str) {
   let h = 2166136261
   for (let i = 0; i < str.length; i++) {
@@ -64,12 +79,6 @@ function fnv1a(str) {
     h = Math.imul(h, 16777619)
   }
   return h >>> 0
-}
-function hashTag(tag) {
-  return fnv1a(tag) % TAG_PALETTE.length
-}
-function colorForTag(tag) {
-  return tag ? TAG_PALETTE[hashTag(tag)] : UNTAGGED_COLOR
 }
 
 // Deterministic task-id → seed offset around its hub. Same task always lands in
@@ -168,6 +177,14 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
 
     // Place hubs evenly on a circle. Radius scales with project count so
     // clusters don't overlap when there are many projects.
+    // Hub color palette — neutral grays + one accent for visual distinction
+    // between projects, but deliberately not category-encoded (categories are
+    // for tasks, project hubs just need to be tellable apart).
+    const HUB_PALETTE = [
+      'var(--apple-blue)', 'var(--apple-purple)', 'var(--apple-teal)',
+      'var(--apple-orange)', 'var(--apple-pink)', 'var(--apple-green)',
+      'var(--apple-red)', 'var(--gray-1)',
+    ]
     const projList = []
     let i = 0
     const N = byProject.size
@@ -175,9 +192,7 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
     for (const [name, projTasks] of byProject) {
       const angle = N === 0 ? 0 : (i / N) * Math.PI * 2
       const matchedProject = projects.find(p => (p.folder || p.name) === name)
-      // For project hub color use a stable hash of the name so it survives
-      // rename/reorder without flicker.
-      const hubColor = TAG_PALETTE[Math.abs(hashTag(name)) % TAG_PALETTE.length]
+      const hubColor = HUB_PALETTE[fnv1a(name) % HUB_PALETTE.length]
       projList.push({
         name,
         displayName: matchedProject?.name || name,
@@ -197,20 +212,29 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
       const off = seededOffset(t.id || '')
       const offR = off.radius
       const offA = off.angle
-      const firstTag = Array.isArray(t.tags) && t.tags.length ? t.tags[0] : null
-      const fill = colorForTag(firstTag)
+      const fill = colorForTask(t.id)
       const border = STATUS_BORDER_COLOR[t.status] || '#3a4150'
       const size = t.priority === 'high' ? 14 : t.priority === 'medium' ? 10 : 7
       return {
         id: t.id,
-        label: '',  // labels off by default for perf at scale
+        label: t.id || '',
         size,
         shape: 'dot',
         x: proj ? proj.hubX + Math.cos(offA) * offR : 0,
         y: proj ? proj.hubY + Math.sin(offA) * offR : 0,
         color: { background: fill, border, highlight: { background: fill, border: '#ffffff' } },
         borderWidth: 2,
-        font: { color: '#dde1ea', size: 11, face: 'system-ui, sans-serif', strokeColor: '#0e0f12', strokeWidth: 2 },
+        // `vadjust` pushes the label below the dot; combined with `scaling.label.drawThreshold`
+        // (set on the network options) labels stay readable when zoomed in but fade out at
+        // overview zoom levels so they don't visually clutter the cluster shapes.
+        font: {
+          color: '#dde1ea',
+          size: 11,
+          face: 'system-ui, sans-serif',
+          strokeColor: '#0e0f12',
+          strokeWidth: 2,
+          vadjust: 8,
+        },
         _task: t,
       }
     })
@@ -304,7 +328,15 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
     hubListRef.current = graphData.hubs.map(h => ({ id: h.id, hubX: h.x, hubY: h.y }))
 
     const options = {
-      nodes: { shape: 'dot' },
+      nodes: {
+        shape: 'dot',
+        // Label scaling: at default zoom the user sees colored dots; zooming in
+        // reveals task IDs underneath. drawThreshold is the minimum on-screen
+        // font px below which the label isn't rendered, so overview is clean.
+        scaling: {
+          label: { enabled: true, min: 8, max: 22, drawThreshold: 7, maxVisible: 22 },
+        },
+      },
       edges: {
         width: 0.5,
         smooth: false,
@@ -457,6 +489,28 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
           fontSize: 'var(--text-caption1)',
         }}
       >
+        {/* Category legend (color key) */}
+        <FilterSection title="Category (color)">
+          <div className="flex flex-wrap" style={{ gap: 'var(--space-1)' }}>
+            {CATEGORY_LABELS.map(cat => (
+              <span
+                key={cat}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '2px 6px',
+                  fontSize: 'var(--text-caption2)',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: CATEGORY_COLOR[cat] }} />
+                {cat}
+              </span>
+            ))}
+          </div>
+        </FilterSection>
+
         {/* Time scope */}
         <FilterSection icon={Calendar} title="Time scope">
           <div className="flex flex-col gap-1">
@@ -520,7 +574,6 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
             <div className="flex flex-wrap" style={{ gap: 'var(--space-1)' }}>
               {tagFrequency.map(([tag, count]) => {
                 const active = filterTags.includes(tag)
-                const color = colorForTag(tag)
                 return (
                   <button
                     key={tag}
@@ -530,8 +583,8 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
                     style={{
                       padding: '3px 8px',
                       borderRadius: 'var(--radius-sm)',
-                      border: `1px solid ${active ? color : 'var(--separator)'}`,
-                      background: active ? `color-mix(in srgb, ${color} 22%, transparent)` : 'transparent',
+                      border: `1px solid ${active ? 'var(--accent-app)' : 'var(--separator)'}`,
+                      background: active ? 'color-mix(in srgb, var(--accent-app) 18%, transparent)' : 'transparent',
                       color: active ? 'var(--text-app)' : 'var(--text-muted)',
                       fontSize: 'var(--text-caption2)',
                       fontWeight: 'var(--font-medium)',
@@ -541,7 +594,6 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
                       gap: '5px',
                     }}
                   >
-                    <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: color }} />
                     {tag}
                     <span style={{ color: 'var(--text-tertiary)', marginLeft: 2 }}>{count}</span>
                   </button>
