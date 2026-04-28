@@ -16,25 +16,33 @@ import {
   forceY,
 } from 'd3-force'
 
-// Defaults ported from CodePen QWQmKWG (vis-network forceAtlas2Based).
-// `springLength` starts at 200 because Atrium's coordinate space is larger
-// than the pen's 1000x1000 — final value gets dialed in during Phase 5.
-// `alphaDecay: 0` is the load-bearing constant — it keeps the simulation
-// running indefinitely so the graph drifts continuously like the reference.
+// Defaults loosely ported from CodePen QWQmKWG (vis-network forceAtlas2Based).
+// vis-network and d3-force don't share a units system, so values were tuned
+// for Atrium's ~292-node scale rather than copied literally.
+//
+// Continuous drift is achieved via `alphaDecay > 0` (sim cools) plus
+// `alphaTarget > 0` (sim never fully stops). This is d3-force's idiom for
+// "sustained low-energy motion." A first-cut tried `alphaDecay: 0` to
+// emulate vis-network's perpetual energy, but that left the sim at alpha=1
+// indefinitely with full-strength forces fighting each other every tick —
+// nodes scattered too fast for the viewport to follow.
 //
 // `centerStrength` powers per-node forceX/forceY pulls toward (0, 0). The
 // pen's vis-network `centralGravity` does the same — pulls each node toward
 // the center proportional to distance. d3's `forceCenter` is NOT equivalent;
 // it only translates the cloud centroid and lets the cloud expand without
-// bound, which scatters nodes off-screen. Phase 2 first-cut used forceCenter
-// and produced exactly that bug — switched here to forceX + forceY.
+// bound. Phase 2 first-cut used forceCenter; switched to forceX + forceY.
+//
+// `springLength` starts at 200 because Atrium's coordinate space is larger
+// than the pen's 1000x1000 — final value gets dialed in during Phase 5.
 export const DEFAULT_CONFIG = Object.freeze({
   springLength: 200,
   springStrength: 0.18,
   charge: -50,
   centerStrength: 0.05,
-  velocityDecay: 0.4,
-  alphaDecay: 0,
+  velocityDecay: 0.6,
+  alphaDecay: 0.02,
+  alphaTarget: 0.01,
 })
 
 // Pure factory — builds a configured d3 simulation from nodes + edges.
@@ -65,6 +73,7 @@ export function createSimulation({
     .force('y', forceY(0).strength(config.centerStrength))
     .velocityDecay(config.velocityDecay)
     .alphaDecay(config.alphaDecay)
+    .alphaTarget(config.alphaTarget ?? 0)
 }
 
 // React hook — manages simulation lifecycle and exposes drag-helpers.
