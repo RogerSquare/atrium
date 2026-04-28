@@ -219,7 +219,11 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
     const projList = []
     let i = 0
     const N = byProject.size
-    const ringR = Math.max(600, N * 90)
+    // With one project visible (active-project filter or filters happen to
+    // leave a single project's tasks), drop the ring radius to 0 so the lone
+    // hub sits dead center. With multiple projects, fall back to the spread
+    // ring so clusters don't collide.
+    const ringR = N <= 1 ? 0 : Math.max(600, N * 90)
     for (const [name, projTasks] of byProject) {
       const angle = N === 0 ? 0 : (i / N) * Math.PI * 2
       const matchedProject = projects.find(p => (p.folder || p.name) === name)
