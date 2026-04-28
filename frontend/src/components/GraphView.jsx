@@ -157,13 +157,13 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
     STATUSES.filter(s => s !== 'done')
   )
   const [timeScope, setTimeScope] = useState('all')
-  const [showHubs, setShowHubs] = useState(true)
-  const [springLength, setSpringLength] = useState(500)
-  // Mirrored in a ref so the build effect can read the latest value without
-  // taking a useEffect dependency on it (which would re-create the network
-  // on every slider tick). Sync happens in an effect so we don't write the
-  // ref during render.
-  const springLengthRef = useRef(500)
+  const [showHubs] = useState(true)
+  // Spring length and showHubs are kept as state (so the network and the
+  // spring-length effect can react), but the controls are intentionally not
+  // surfaced in the side panel — defaults are good enough that exposing them
+  // was just noise. Reintroduce as sliders/toggles later if they're needed.
+  const [springLength] = useState(350)
+  const springLengthRef = useRef(350)
   useEffect(() => { springLengthRef.current = springLength }, [springLength])
 
   // --- Refs ---------------------------------------------------------------
@@ -672,38 +672,6 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
               )
             })}
           </div>
-        </FilterSection>
-
-        {/* Display options */}
-        <FilterSection title="Display">
-          <label className="flex items-center justify-between" style={{ padding: '4px 0' }}>
-            <span style={{ color: 'var(--text-muted)' }}>Show project hubs</span>
-            <input
-              type="checkbox"
-              checked={showHubs}
-              onChange={e => setShowHubs(e.target.checked)}
-              style={{ accentColor: 'var(--accent-app)' }}
-            />
-          </label>
-          <label
-            className="flex items-center justify-between"
-            style={{ padding: '4px 0' }}
-            title="Spring rest length — controls how spread out clusters are. Bigger = more breathing room for task ID labels."
-          >
-            <span style={{ color: 'var(--text-muted)' }}>Spring length</span>
-            <span style={{ color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--text-caption2)' }}>
-              {springLength}
-            </span>
-          </label>
-          <input
-            type="range"
-            min="100"
-            max="1500"
-            step="25"
-            value={springLength}
-            onChange={e => setSpringLength(Number(e.target.value))}
-            style={{ width: '100%', accentColor: 'var(--accent-app)' }}
-          />
         </FilterSection>
 
         {/* Reset */}
