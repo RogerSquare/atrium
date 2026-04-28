@@ -18,31 +18,33 @@ import {
 
 // Defaults loosely ported from CodePen QWQmKWG (vis-network forceAtlas2Based).
 // vis-network and d3-force don't share a units system, so values were tuned
-// for Atrium's ~292-node scale rather than copied literally.
+// for Atrium's ~700-node scale (~230 in-graph + ~510 orphans).
 //
 // Continuous drift is achieved via `alphaDecay > 0` (sim cools) plus
 // `alphaTarget > 0` (sim never fully stops). This is d3-force's idiom for
-// "sustained low-energy motion." A first-cut tried `alphaDecay: 0` to
-// emulate vis-network's perpetual energy, but that left the sim at alpha=1
-// indefinitely with full-strength forces fighting each other every tick —
-// nodes scattered too fast for the viewport to follow.
+// "sustained low-energy motion."
+//
+// Forces are tuned conservatively because at 700+ nodes, even small per-tick
+// position deltas multiply into expensive React reconciliations. Better to
+// drift gently and still feel alive than to scatter and lock up the browser.
 //
 // `centerStrength` powers per-node forceX/forceY pulls toward (0, 0). The
-// pen's vis-network `centralGravity` does the same — pulls each node toward
-// the center proportional to distance. d3's `forceCenter` is NOT equivalent;
-// it only translates the cloud centroid and lets the cloud expand without
-// bound. Phase 2 first-cut used forceCenter; switched to forceX + forceY.
+// pen's vis-network `centralGravity` does the same. d3's `forceCenter` is
+// NOT equivalent — it only translates the cloud centroid; switched to
+// forceX/Y for actual per-node centripetal pull.
 //
-// `springLength` starts at 200 because Atrium's coordinate space is larger
-// than the pen's 1000x1000 — final value gets dialed in during Phase 5.
+// `tickThrottle` caps how often `onTick` fires relative to internal d3
+// ticks. d3-timer ticks at ~60fps; throttle=3 means React state updates
+// at ~20fps, which is plenty smooth for drift and ~3x cheaper to reconcile.
 export const DEFAULT_CONFIG = Object.freeze({
   springLength: 200,
-  springStrength: 0.18,
-  charge: -50,
-  centerStrength: 0.05,
-  velocityDecay: 0.6,
-  alphaDecay: 0.02,
-  alphaTarget: 0.01,
+  springStrength: 0.08,
+  charge: -20,
+  centerStrength: 0.08,
+  velocityDecay: 0.75,
+  alphaDecay: 0.03,
+  alphaTarget: 0.005,
+  tickThrottle: 3,
 })
 
 // Pure factory — builds a configured d3 simulation from nodes + edges.
@@ -89,8 +91,32 @@ export default function useForceSimulation({
 }) {
   const simRef = useRef(null)
 
+  // Content-stable keys for the structural inputs. The parent may re-render
+  // with a fresh `tasks` array from socket updates — that cascades into new
+  // refs for `nodes`, `edges`, etc. even when their CONTENT is identical.
+  // Strings compare by value, so the effect only re-runs on real changes.
+  const nodesKey = useMemo(
+    () => (nodes ? nodes.map((n) => n.id).sort().join(',') : ''),
+    [nodes],
+  )
+  const edgesKey = useMemo(
+    () => (edges ? edges.map((e) => `${e.source}|${e.target}`).sort().join(';') : ''),
+    [edges],
+  )
+  const excludedKey = useMemo(
+    () => (excludedIds ? Array.from(excludedIds).sort().join(',') : ''),
+    [excludedIds],
+  )
+
+  // Mutable args read inside the effect / tick callback via ref so swapping
+  // them (e.g. a fresh onTick callback) doesn't tear down the simulation.
+  const argsRef = useRef(null)
+  argsRef.current = { nodes, edges, initialPositions, excludedIds, onTick, config }
+
   useEffect(() => {
-    if (!enabled || !nodes || nodes.length === 0) return undefined
+    if (!enabled) return undefined
+    const { nodes, edges, initialPositions, excludedIds, config } = argsRef.current
+    if (!nodes || nodes.length === 0) return undefined
 
     const includedNodes = excludedIds
       ? nodes.filter((n) => !excludedIds.has(n.id))
@@ -109,22 +135,29 @@ export default function useForceSimulation({
       config,
     })
 
-    if (onTick) {
-      sim.on('tick', () => {
-        const positions = new Map()
-        for (const node of sim.nodes()) {
-          positions.set(node.id, { x: node.x, y: node.y })
-        }
-        onTick(positions)
-      })
-    }
+    let tickCount = 0
+    const throttle = Math.max(1, config?.tickThrottle ?? 1)
+    sim.on('tick', () => {
+      tickCount += 1
+      const cb = argsRef.current.onTick
+      if (!cb) return
+      // Throttle React updates: d3 ticks at ~60fps; emitting positions every
+      // tick reconciles all 700+ nodes 60 times a second and chokes the
+      // browser. Every Nth tick (default 3 → ~20fps) is plenty smooth.
+      if (tickCount % throttle !== 0) return
+      const positions = new Map()
+      for (const node of sim.nodes()) {
+        positions.set(node.id, { x: node.x, y: node.y })
+      }
+      cb(positions)
+    })
 
     simRef.current = sim
     return () => {
       sim.stop()
       simRef.current = null
     }
-  }, [nodes, edges, initialPositions, excludedIds, enabled, onTick, config])
+  }, [nodesKey, edgesKey, excludedKey, enabled])
 
   return useMemo(
     () => ({
