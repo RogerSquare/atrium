@@ -18,7 +18,7 @@
 // Layout positions come from radialLayout(); reactflow does the rest.
 // Pan + zoom + minimap + reset are reactflow built-ins.
 
-import { memo, useMemo, useState, useCallback, useEffect } from 'react'
+import { memo, useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -211,6 +211,23 @@ function GraphCanvas({ tasks, onSelectTask, githubLinks }) {
     enabled: !!model && simNodes.length > 0,
     onTick: handleTick,
   })
+
+  // After the simulation pre-settles (Phase 5 of ui-graph-polish-001), the
+  // cloud's bounding box differs from the radial seed reactflow's initial
+  // fitView snapped to. Re-fit once per model so the user sees the settled
+  // cloud, not radial-extent emptiness. Only fires once per model load to
+  // avoid stealing the viewport from a user who panned/zoomed manually.
+  const lastFitModelRef = useRef(null)
+  useEffect(() => {
+    if (!model || !livePositions || livePositions.size === 0) return
+    if (lastFitModelRef.current === model) return
+    lastFitModelRef.current = model
+    const t = setTimeout(
+      () => reactFlow.fitView({ padding: 0.2, duration: 500 }),
+      120,
+    )
+    return () => clearTimeout(t)
+  }, [model, livePositions, reactFlow])
 
   const baseNodes = useMemo(() => {
     if (!model) return []

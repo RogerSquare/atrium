@@ -42,10 +42,6 @@ function useReducedMotion() {
 // `alphaTarget > 0` (sim never fully stops). This is d3-force's idiom for
 // "sustained low-energy motion."
 //
-// Forces are tuned conservatively because at 700+ nodes, even small per-tick
-// position deltas multiply into expensive React reconciliations. Better to
-// drift gently and still feel alive than to scatter and lock up the browser.
-//
 // `centerStrength` powers per-node forceX/forceY pulls toward (0, 0). The
 // pen's vis-network `centralGravity` does the same. d3's `forceCenter` is
 // NOT equivalent — it only translates the cloud centroid; switched to
@@ -54,15 +50,26 @@ function useReducedMotion() {
 // `tickThrottle` caps how often `onTick` fires relative to internal d3
 // ticks. d3-timer ticks at ~60fps; throttle=3 means React state updates
 // at ~20fps, which is plenty smooth for drift and ~3x cheaper to reconcile.
+//
+// `preSettleTicks` runs the simulation forward synchronously before the
+// auto-timer starts. Lets the cloud find its equilibrium shape silently so
+// the user's first frame shows a calm graph, not a chaotic high-alpha
+// explosion. 150 ticks @ 700 nodes is ~50ms.
+//
+// Phase 5 tuning: bumped charge (-20 → -80), longer springs (200 → 350),
+// weaker center pull (0.08 → 0.04). The Phase 2 stabilization values were
+// over-dampened — graph collapsed into a tight cluster. New balance gives
+// the cloud room to spread while still anchoring near origin.
 export const DEFAULT_CONFIG = Object.freeze({
-  springLength: 200,
-  springStrength: 0.08,
-  charge: -20,
-  centerStrength: 0.08,
-  velocityDecay: 0.75,
-  alphaDecay: 0.03,
+  springLength: 350,
+  springStrength: 0.1,
+  charge: -80,
+  centerStrength: 0.04,
+  velocityDecay: 0.7,
+  alphaDecay: 0.025,
   alphaTarget: 0.005,
   tickThrottle: 3,
+  preSettleTicks: 150,
 })
 
 // Pure factory — builds a configured d3 simulation from nodes + edges.
@@ -166,6 +173,26 @@ export default function useForceSimulation({
       initialPositions,
       config,
     })
+
+    // Pre-settle: advance the sim synchronously so the user's first paint
+    // shows a calm cloud, not the chaotic high-alpha settling phase.
+    // Auto-timer continues from current alpha after this. Phase 5 of
+    // ui-graph-polish-001.
+    const preSettle = Math.max(0, config?.preSettleTicks ?? 0)
+    if (preSettle > 0) {
+      sim.tick(preSettle)
+      // Push the settled positions into React state immediately so the next
+      // paint shows them. Skipping this would mean one frame of radial-seed
+      // positions before the first auto-tick fires.
+      const cb = argsRef.current.onTick
+      if (cb) {
+        const positions = new Map()
+        for (const node of sim.nodes()) {
+          positions.set(node.id, { x: node.x, y: node.y })
+        }
+        cb(positions)
+      }
+    }
 
     let tickCount = 0
     const throttle = Math.max(1, config?.tickThrottle ?? 1)
