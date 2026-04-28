@@ -341,18 +341,15 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
       const saved = savedPositions[t.id]
       const seedX = proj ? proj.hubX + Math.cos(offA) * offR : 0
       const seedY = proj ? proj.hubY + Math.sin(offA) * offR : 0
-      // Pin tasks the user has dragged: physics:false skips them in the
-      // spring solver, and the Brownian loop (below) checks the same map
-      // and skips them too. This makes drags feel like "put it there and
-      // leave it" — survives view switches, reloads, and filter changes.
-      // Reset Positions clears the savedPositions map and removes pinning.
-      const isPinned = !!saved
+      // Saved position is the *starting* coordinate, not a pin — physics is
+      // always on, so the spring + Brownian forces continue acting. The rAF
+      // loop saves positions periodically so what's restored on the next
+      // mount is the latest physics-driven position, not a stale snapshot.
       return {
         id: t.id,
         label: t.id || '',
         size,
         shape: 'dot',
-        physics: !isPinned,
         x: saved ? saved.x : seedX,
         y: saved ? saved.y : seedY,
         color: { background: fill, border, highlight: { background: fill, border: '#ffffff' } },
@@ -538,7 +535,6 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     net.on('dragStart', p => (p.nodes || []).forEach(id => draggedRef.current.add(id)))
     net.on('dragEnd', p => {
       const ids = p.nodes || []
-      const pinUpdates = []
       let touched = false
       for (const id of ids) {
         draggedRef.current.delete(id)
@@ -546,19 +542,12 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
         if (n && typeof n.x === 'number' && typeof n.y === 'number') {
           positionsRef.current[id] = { x: n.x, y: n.y }
           touched = true
-          // Skip pinning hubs — they have their own custom physics (no
-          // vis-network physics anyway) and pinning them via DataSet
-          // would interfere with the hub-on-hub force loop.
-          if (typeof id === 'string' && !id.startsWith('__hub:')) {
-            pinUpdates.push({ id, physics: false })
-          }
         }
       }
+      // Immediate save on release so a hard reload right after a drag
+      // doesn't lose the user's intent. The rAF tick keeps positions
+      // fresh during continuous physics motion.
       if (touched) persistPositions(positionsRef.current)
-      // Immediate pinning — without this, between drag-release and the
-      // next graphData rebuild the spring + Brownian forces would yank
-      // the dropped node back toward its hub.
-      if (pinUpdates.length > 0) data.nodes.update(pinUpdates)
     })
 
     net.on('click', p => {
@@ -573,6 +562,20 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     for (const h of graphData.hubs) hubVelocitiesRef.current[h.id] = { vx: 0, vy: 0 }
 
     return () => {
+      // Snapshot final positions before tearing down — covers the gap
+      // between the last rAF save and the unmount (e.g. user drags then
+      // immediately switches views).
+      const finalNet = networkRef.current
+      const finalDs = datasetRef.current
+      if (finalNet && finalDs && finalDs.nodes && finalNet.body && finalNet.body.nodes) {
+        finalDs.nodes.forEach(node => {
+          const bn = finalNet.body.nodes[node.id]
+          if (bn && typeof bn.x === 'number' && typeof bn.y === 'number') {
+            positionsRef.current[node.id] = { x: bn.x, y: bn.y }
+          }
+        })
+        persistPositions(positionsRef.current)
+      }
       if (networkRef.current) {
         networkRef.current.destroy()
         networkRef.current = null
@@ -628,6 +631,11 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     // Magnitude of per-frame random impulse on tasks. Small enough that
     // each impulse is sub-pixel; the cumulative effect is gentle drift.
     const BROWNIAN = 0.08
+    // How often to snapshot positions to localStorage. Physics is always
+    // on, so without periodic saves a view switch would lose all the drift
+    // that happened since the user's last drag.
+    const POSITION_SAVE_INTERVAL_MS = 2000
+    let lastSaveTime = performance.now()
 
     const tick = () => {
       const net = networkRef.current
@@ -689,6 +697,25 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
             // and causes sub-pixel drift through the spring/damping system.
             n.vx += (Math.random() - 0.5) * BROWNIAN
             n.vy += (Math.random() - 0.5) * BROWNIAN
+          }
+        }
+
+        // Periodic position snapshot. Physics is always running, so we
+        // capture the current state every ~2s. On view-switch / reload,
+        // the next mount loads the most recent snapshot and the layout
+        // resumes near where the user left it.
+        const now = performance.now()
+        if (now - lastSaveTime > POSITION_SAVE_INTERVAL_MS) {
+          lastSaveTime = now
+          const ds = datasetRef.current
+          if (ds && ds.nodes) {
+            ds.nodes.forEach(node => {
+              const bn = bodyNodes[node.id]
+              if (bn && typeof bn.x === 'number' && typeof bn.y === 'number') {
+                positionsRef.current[node.id] = { x: bn.x, y: bn.y }
+              }
+            })
+            persistPositions(positionsRef.current)
           }
         }
       }
