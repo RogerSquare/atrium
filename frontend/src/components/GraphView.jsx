@@ -203,7 +203,7 @@ function GraphCanvas({ tasks, onSelectTask, githubLinks }) {
     setLivePositions(positions)
   }, [])
 
-  useForceSimulation({
+  const sim = useForceSimulation({
     nodes: simNodes,
     edges: simEdges,
     initialPositions: model?.positions,
@@ -266,7 +266,10 @@ function GraphCanvas({ tasks, onSelectTask, githubLinks }) {
           dim: false,
           isOrphan,
         },
-        draggable: false,
+        // Phase 3 (ui-graph-polish-001): flip drag on for task nodes so the
+        // user can grab a node and feel the simulation respond. Orphans
+        // stay non-draggable since they aren't in the simulation.
+        draggable: !isOrphan,
         selectable: true,
       })
     }
@@ -335,6 +338,38 @@ function GraphCanvas({ tasks, onSelectTask, githubLinks }) {
       if (comp) setFocusedComponentId(comp.rootId)
     },
     [model],
+  )
+
+  // Phase 3 (ui-graph-polish-001): drag → pin in the simulation, release →
+  // un-pin and bump alpha so the springs propagate through neighbors.
+  // Reactflow gives us node.position as the wrapper's top-left in canvas
+  // coords; convert to center coords (matching the sim's coordinate system)
+  // by adding NODE_BOX/2.
+  const onNodeDragStart = useCallback(
+    (_, node) => {
+      sim.pin(node.id, {
+        x: node.position.x + NODE_BOX / 2,
+        y: node.position.y + NODE_BOX / 2,
+      })
+      sim.restart(0.4)
+    },
+    [sim],
+  )
+  const onNodeDrag = useCallback(
+    (_, node) => {
+      sim.pin(node.id, {
+        x: node.position.x + NODE_BOX / 2,
+        y: node.position.y + NODE_BOX / 2,
+      })
+    },
+    [sim],
+  )
+  const onNodeDragStop = useCallback(
+    (_, node) => {
+      sim.release(node.id)
+      sim.restart(0.2)
+    },
+    [sim],
   )
 
   // Drive reactflow's viewport from focus state. When focused, fit to the
@@ -429,13 +464,16 @@ function GraphCanvas({ tasks, onSelectTask, githubLinks }) {
         onNodeMouseLeave={onNodeMouseLeave}
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
+        onNodeDragStart={onNodeDragStart}
+        onNodeDrag={onNodeDrag}
+        onNodeDragStop={onNodeDragStop}
         fitView
         fitViewOptions={{ padding: 0.15 }}
         minZoom={0.15}
         maxZoom={5}
         panOnDrag
         zoomOnScroll
-        nodesDraggable={false}
+        nodesDraggable
         nodesConnectable={false}
         proOptions={{ hideAttribution: false }}
       >
