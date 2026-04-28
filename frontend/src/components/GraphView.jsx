@@ -356,11 +356,18 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
       // overlay via the network's `afterDrawing` event (see build effect).
       const link = githubLinks && githubLinks[t.id]
       const hasBranch = !!(link && (link.branch || link.pr_url))
+      // Pin tasks the user has dragged: physics:false skips them in the
+      // spring solver, and the Brownian loop (below) checks the same map
+      // and skips them too. This makes drags feel like "put it there and
+      // leave it" — survives view switches, reloads, and filter changes.
+      // Reset Positions clears the savedPositions map and removes pinning.
+      const isPinned = !!saved
       return {
         id: t.id,
         label: t.id || '',
         size,
         shape: 'dot',
+        physics: !isPinned,
         _hasBranch: hasBranch,
         x: saved ? saved.x : seedX,
         y: saved ? saved.y : seedY,
@@ -549,6 +556,7 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     net.on('dragStart', p => (p.nodes || []).forEach(id => draggedRef.current.add(id)))
     net.on('dragEnd', p => {
       const ids = p.nodes || []
+      const pinUpdates = []
       let touched = false
       for (const id of ids) {
         draggedRef.current.delete(id)
@@ -556,9 +564,19 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
         if (n && typeof n.x === 'number' && typeof n.y === 'number') {
           positionsRef.current[id] = { x: n.x, y: n.y }
           touched = true
+          // Skip pinning hubs — they have their own custom physics (no
+          // vis-network physics anyway) and pinning them via DataSet
+          // would interfere with the hub-on-hub force loop.
+          if (typeof id === 'string' && !id.startsWith('__hub:')) {
+            pinUpdates.push({ id, physics: false })
+          }
         }
       }
       if (touched) persistPositions(positionsRef.current)
+      // Immediate pinning — without this, between drag-release and the
+      // next graphData rebuild the spring + Brownian forces would yank
+      // the dropped node back toward its hub.
+      if (pinUpdates.length > 0) data.nodes.update(pinUpdates)
     })
 
     net.on('click', p => {
