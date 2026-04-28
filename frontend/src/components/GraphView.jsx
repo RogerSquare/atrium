@@ -20,7 +20,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Network } from 'vis-network'
 import { DataSet } from 'vis-data'
-import { Calendar, Filter, X } from 'lucide-react'
+import { Calendar, Filter, GitBranch, X } from 'lucide-react'
 
 /* ------------------------------------------------------------------ *
  *  Constants
@@ -127,6 +127,34 @@ function seededOffset(taskId) {
 /* ------------------------------------------------------------------ *
  *  Utilities
  * ------------------------------------------------------------------ */
+
+// Lucide-style GitBranch icon, drawn directly to vis-network's canvas in
+// the `afterDrawing` event so it overlays each branched node without
+// touching the dot's category color or border. Path coords are the SVG
+// from lucide-react's GitBranch (viewBox 24×24) translated into canvas
+// commands; lineWidth is counter-scaled so the stroke reads ~2px on
+// screen regardless of icon size.
+function drawGitBranchIcon(ctx, cx, cy, size, color) {
+  const s = size / 24
+  ctx.save()
+  ctx.translate(cx - size / 2, cy - size / 2)
+  ctx.scale(s, s)
+  ctx.strokeStyle = color
+  ctx.lineWidth = 2 / s
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+
+  // <line x1='6' x2='6' y1='3' y2='15'/>
+  ctx.beginPath(); ctx.moveTo(6, 3); ctx.lineTo(6, 15); ctx.stroke()
+  // <circle cx='18' cy='6' r='3'/>
+  ctx.beginPath(); ctx.arc(18, 6, 3, 0, Math.PI * 2); ctx.stroke()
+  // <circle cx='6' cy='18' r='3'/>
+  ctx.beginPath(); ctx.arc(6, 18, 3, 0, Math.PI * 2); ctx.stroke()
+  // <path d='M18 9a9 9 0 0 1-9 9'/>  — quarter arc centered at (9,9), r=9
+  ctx.beginPath(); ctx.arc(9, 9, 9, 0, Math.PI / 2); ctx.stroke()
+
+  ctx.restore()
+}
 
 // Wrapped so the eslint react-hooks/purity rule doesn't flag Date.now() in useMemo.
 // Cutoff intentionally depends on render time — when the user changes time-scope,
@@ -324,16 +352,16 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
       const saved = savedPositions[t.id]
       const seedX = proj ? proj.hubX + Math.cos(offA) * offR : 0
       const seedY = proj ? proj.hubY + Math.sin(offA) * offR : 0
-      // GitHub branch indicator — square for tasks with a branch (or PR),
-      // dot for unbranched. Distinguishable at any zoom level without
-      // touching the category-fill or status-border color encodings.
+      // GitHub branch indicator — flagged here, rendered as a small icon
+      // overlay via the network's `afterDrawing` event (see build effect).
       const link = githubLinks && githubLinks[t.id]
       const hasBranch = !!(link && (link.branch || link.pr_url))
       return {
         id: t.id,
         label: t.id || '',
         size,
-        shape: hasBranch ? 'square' : 'dot',
+        shape: 'dot',
+        _hasBranch: hasBranch,
         x: saved ? saved.x : seedX,
         y: saved ? saved.y : seedY,
         color: { background: fill, border, highlight: { background: fill, border: '#ffffff' } },
@@ -540,6 +568,25 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
       if (node && node._task && onSelectTask) onSelectTask(node._task)
     })
 
+    // Branch indicator overlay — draw a GitBranch icon next to every task
+    // node tagged `_hasBranch`. afterDrawing fires after vis-network has
+    // committed its node + edge passes, so the icon sits on top.
+    const branchedIds = graphData.nodes.filter(n => n._hasBranch).map(n => n.id)
+    if (branchedIds.length > 0) {
+      net.on('afterDrawing', (ctx) => {
+        for (let i = 0; i < branchedIds.length; i++) {
+          const bn = net.body.nodes[branchedIds[i]]
+          if (!bn) continue
+          // Top-right of the dot. Icon size derived from node radius so a
+          // priority=high (size 14) dot gets a slightly larger badge than
+          // priority=low (size 7).
+          const r = bn.size || 8
+          const iconSize = Math.max(11, r + 2)
+          drawGitBranchIcon(ctx, bn.x + r + 6, bn.y - r - 4, iconSize, '#dde1ea')
+        }
+      })
+    }
+
     // Reset hub velocities for new graph
     hubVelocitiesRef.current = {}
     for (const h of graphData.hubs) hubVelocitiesRef.current[h.id] = { vx: 0, vy: 0 }
@@ -738,18 +785,12 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
           </div>
         </FilterSection>
 
-        {/* Shape legend (branch indicator) */}
-        <FilterSection title="Shape">
-          <div className="flex flex-wrap" style={{ gap: 'var(--space-2)' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-caption2)', color: 'var(--text-muted)' }}>
-              <span style={{ width: 9, height: 9, background: 'var(--text-muted)' }} />
-              has GitHub branch
-            </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-caption2)', color: 'var(--text-muted)' }}>
-              <span style={{ width: 9, height: 9, borderRadius: '50%', background: 'var(--text-muted)' }} />
-              no branch yet
-            </span>
-          </div>
+        {/* Branch indicator legend */}
+        <FilterSection title="Indicators">
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-caption2)', color: 'var(--text-muted)', padding: '2px 0' }}>
+            <GitBranch className="w-3.5 h-3.5" />
+            beside a node = task has a GitHub branch
+          </span>
         </FilterSection>
 
         {/* Time scope */}
