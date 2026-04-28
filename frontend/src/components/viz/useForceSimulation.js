@@ -1,0 +1,137 @@
+// d3-force simulation hook — Phase 1 of ui-graph-polish-001-impl.
+//
+// Wraps d3-force so GraphView can drive node positions per-tick instead of
+// rendering a static layout. Keeps the radial/tiled layout output as the seed
+// (initialPositions) so the graph never starts from d3's random scatter.
+//
+// The pure `createSimulation` factory is exported separately so unit tests can
+// drive it without a React renderer or DOM.
+
+import { useEffect, useMemo, useRef } from 'react'
+import {
+  forceSimulation,
+  forceManyBody,
+  forceLink,
+  forceCenter,
+} from 'd3-force'
+
+// Defaults ported from CodePen QWQmKWG (vis-network forceAtlas2Based).
+// `springLength` starts at 200 because Atrium's coordinate space is larger
+// than the pen's 1000x1000 — final value gets dialed in during Phase 5.
+// `alphaDecay: 0` is the load-bearing constant — it keeps the simulation
+// running indefinitely so the graph drifts continuously like the reference.
+export const DEFAULT_CONFIG = Object.freeze({
+  springLength: 200,
+  springStrength: 0.18,
+  charge: -260,
+  centerStrength: 0.0025,
+  velocityDecay: 0.4,
+  alphaDecay: 0,
+})
+
+// Pure factory — builds a configured d3 simulation from nodes + edges.
+// Exported so tests can drive it without React. Callers own the lifecycle:
+// they must call `.stop()` when done.
+export function createSimulation({
+  nodes,
+  edges,
+  initialPositions,
+  config = DEFAULT_CONFIG,
+}) {
+  const simNodes = nodes.map((n) => {
+    const p = initialPositions?.get(n.id)
+    return { id: n.id, x: p?.x ?? 0, y: p?.y ?? 0 }
+  })
+  const linkData = edges.map((e) => ({ source: e.source, target: e.target }))
+
+  return forceSimulation(simNodes)
+    .force('charge', forceManyBody().strength(config.charge))
+    .force(
+      'link',
+      forceLink(linkData)
+        .id((d) => d.id)
+        .distance(config.springLength)
+        .strength(config.springStrength),
+    )
+    .force('center', forceCenter(0, 0).strength(config.centerStrength))
+    .velocityDecay(config.velocityDecay)
+    .alphaDecay(config.alphaDecay)
+}
+
+// React hook — manages simulation lifecycle and exposes drag-helpers.
+// Phase 1 ships the surface; GraphView wires it in Phases 2-3.
+export default function useForceSimulation({
+  nodes,
+  edges,
+  initialPositions,
+  excludedIds,
+  enabled = true,
+  onTick,
+  config = DEFAULT_CONFIG,
+}) {
+  const simRef = useRef(null)
+
+  useEffect(() => {
+    if (!enabled || !nodes || nodes.length === 0) return undefined
+
+    const includedNodes = excludedIds
+      ? nodes.filter((n) => !excludedIds.has(n.id))
+      : nodes
+    const includedIds = new Set(includedNodes.map((n) => n.id))
+    const includedEdges = edges
+      ? edges.filter(
+          (e) => includedIds.has(e.source) && includedIds.has(e.target),
+        )
+      : []
+
+    const sim = createSimulation({
+      nodes: includedNodes,
+      edges: includedEdges,
+      initialPositions,
+      config,
+    })
+
+    if (onTick) {
+      sim.on('tick', () => {
+        const positions = new Map()
+        for (const node of sim.nodes()) {
+          positions.set(node.id, { x: node.x, y: node.y })
+        }
+        onTick(positions)
+      })
+    }
+
+    simRef.current = sim
+    return () => {
+      sim.stop()
+      simRef.current = null
+    }
+  }, [nodes, edges, initialPositions, excludedIds, enabled, onTick, config])
+
+  return useMemo(
+    () => ({
+      pin: (id, position) => {
+        const sim = simRef.current
+        if (!sim) return
+        const node = sim.nodes().find((n) => n.id === id)
+        if (!node) return
+        node.fx = position.x
+        node.fy = position.y
+      },
+      release: (id) => {
+        const sim = simRef.current
+        if (!sim) return
+        const node = sim.nodes().find((n) => n.id === id)
+        if (!node) return
+        node.fx = null
+        node.fy = null
+      },
+      restart: (alpha = 0.3) => {
+        const sim = simRef.current
+        if (!sim) return
+        sim.alpha(alpha).restart()
+      },
+    }),
+    [],
+  )
+}
