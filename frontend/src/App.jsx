@@ -3,6 +3,7 @@ import { LogOut, Search, MessageCircle, X, Eye, Plus, Columns3, List, GitCommitH
 import Board from './components/Board'
 import ListView from './components/ListView'
 import ChangesView from './components/ChangesView'
+import GraphView from './components/GraphView'
 import ViewSwitcher from './components/ViewSwitcher'
 import Sidebar from './components/Sidebar'
 import TaskModal from './components/TaskModal'
@@ -356,6 +357,8 @@ function AppContent() {
             <ListView tasks={filteredTasks} onSelectTask={selectTask} onUpdateTask={undoRedo.updateTaskWithUndo} activeAgents={activeAgents} taskViewers={taskViewers} currentUser={user?.username} selectable={bulkSelectMode} selectedIds={selectedTaskIds} onToggleSelect={toggleSelectTask} recentlyUpdatedIds={recentlyUpdatedIds} githubLinks={githubLinks} />
           ) : activeView === 'changes' ? (
             <ChangesView tasks={filteredTasks} projects={projects} activeProject={activeProject} onSelectTask={selectTask} recentlyUpdatedIds={recentlyUpdatedIds} />
+          ) : activeView === 'graph' ? (
+            <GraphView tasks={filteredTasks} projects={projects} onSelectTask={selectTask} />
           ) : (
             <Board
               tasks={filteredTasks} onUpdateTask={undoRedo.updateTaskWithUndo} onSelectTask={selectTask}

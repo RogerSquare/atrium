@@ -26,7 +26,9 @@
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "vis-data": "^8.0.3",
+    "vis-network": "^10.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
