@@ -12,7 +12,8 @@ import {
   forceSimulation,
   forceManyBody,
   forceLink,
-  forceCenter,
+  forceX,
+  forceY,
 } from 'd3-force'
 
 // Defaults ported from CodePen QWQmKWG (vis-network forceAtlas2Based).
@@ -20,11 +21,18 @@ import {
 // than the pen's 1000x1000 — final value gets dialed in during Phase 5.
 // `alphaDecay: 0` is the load-bearing constant — it keeps the simulation
 // running indefinitely so the graph drifts continuously like the reference.
+//
+// `centerStrength` powers per-node forceX/forceY pulls toward (0, 0). The
+// pen's vis-network `centralGravity` does the same — pulls each node toward
+// the center proportional to distance. d3's `forceCenter` is NOT equivalent;
+// it only translates the cloud centroid and lets the cloud expand without
+// bound, which scatters nodes off-screen. Phase 2 first-cut used forceCenter
+// and produced exactly that bug — switched here to forceX + forceY.
 export const DEFAULT_CONFIG = Object.freeze({
   springLength: 200,
   springStrength: 0.18,
-  charge: -260,
-  centerStrength: 0.0025,
+  charge: -50,
+  centerStrength: 0.05,
   velocityDecay: 0.4,
   alphaDecay: 0,
 })
@@ -53,7 +61,8 @@ export function createSimulation({
         .distance(config.springLength)
         .strength(config.springStrength),
     )
-    .force('center', forceCenter(0, 0).strength(config.centerStrength))
+    .force('x', forceX(0).strength(config.centerStrength))
+    .force('y', forceY(0).strength(config.centerStrength))
     .velocityDecay(config.velocityDecay)
     .alphaDecay(config.alphaDecay)
 }
