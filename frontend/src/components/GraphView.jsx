@@ -39,6 +39,7 @@ import { buildEdges, edgeTypes } from './viz/edges'
 import OverviewBackButton from './viz/OverviewBackButton'
 import WorkOverlayToggle from './viz/WorkOverlayToggle'
 import GraphSearch from './viz/GraphSearch'
+import useForceSimulation from './viz/useForceSimulation'
 import './GraphView.css'
 
 // Tasks untouched for this many days fade in the work overlay.
@@ -74,6 +75,11 @@ function GraphCanvas({ tasks, onSelectTask, githubLinks }) {
   const [focusedComponentId, setFocusedComponentId] = useState(null)
   const [overlayEnabled, setOverlayEnabled] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  // Live positions from the d3-force simulation. Initialized from
+  // model.positions on each model rebuild, then mutated per tick.
+  // baseNodes reads from this instead of model.positions so the graph
+  // drifts continuously per the CodePen reference (ui-graph-polish-001).
+  const [livePositions, setLivePositions] = useState(null)
   const reactFlow = useReactFlow()
 
   const model = useMemo(() => {
@@ -164,9 +170,62 @@ function GraphCanvas({ tasks, onSelectTask, githubLinks }) {
     }
   }, [tasks])
 
+  // Reset livePositions when the model rebuilds (new tasks loaded or layout
+  // strategy changed). The simulation effect below picks this up and
+  // initializes a fresh d3-force run from the radial/tiled seed positions.
+  useEffect(() => {
+    if (model?.positions) setLivePositions(new Map(model.positions))
+    else setLivePositions(null)
+  }, [model])
+
+  // Inputs to d3-force. Nodes come from model.byId; edges merge parent_task
+  // and depends_on with a single spring per pair (deduped + symmetric so
+  // A→B and B→A collapse to one edge).
+  const simNodes = useMemo(() => {
+    if (!model) return []
+    return Array.from(model.byId.keys()).map((id) => ({ id }))
+  }, [model])
+  const simEdges = useMemo(() => {
+    if (!model) return []
+    const seen = new Set()
+    const out = []
+    const all = [...(model.parentEdges || []), ...(model.depEdges || [])]
+    for (const { from, to } of all) {
+      const key = from < to ? `${from}|${to}` : `${to}|${from}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push({ source: from, target: to })
+    }
+    return out
+  }, [model])
+
+  const handleTick = useCallback((positions) => {
+    setLivePositions(positions)
+  }, [])
+
+  useForceSimulation({
+    nodes: simNodes,
+    edges: simEdges,
+    initialPositions: model?.positions,
+    excludedIds: model?.orphanIdSet,
+    enabled: !!model && simNodes.length > 0,
+    onTick: handleTick,
+  })
+
   const baseNodes = useMemo(() => {
     if (!model) return []
-    const { byId, positions, outDegree, rootId, maxChildren, orphanIdSet, orphanRegion } = model
+    const { byId, outDegree, rootId, maxChildren, orphanIdSet, orphanRegion } = model
+    // Merge live (sim-driven) positions on top of static (model) positions.
+    // The simulation excludes orphans, so livePositions is missing entries
+    // for them — falling through to model.positions keeps them parked in the
+    // orphan region.
+    let positions
+    if (livePositions) {
+      positions = new Map(model.positions)
+      for (const [id, p] of livePositions) positions.set(id, p)
+    } else {
+      positions = model.positions
+    }
     const nodes = []
 
     // Synthetic backdrop FIRST — reactflow renders nodes in array order, so
@@ -212,7 +271,7 @@ function GraphCanvas({ tasks, onSelectTask, githubLinks }) {
       })
     }
     return nodes
-  }, [model])
+  }, [model, livePositions])
 
   // Per-task work-overlay data — status/prState/isStale. Computed once and
   // selectively projected into node data only when overlayEnabled. Keeps
