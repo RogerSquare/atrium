@@ -136,25 +136,52 @@ function nowMs() { return Date.now() }
 // Position persistence — survives reload, separate task / hub IDs share the
 // same key namespace. v1 prefix lets us version-bump if the format changes.
 const POSITIONS_STORAGE_KEY = 'atrium-graph-positions-v1'
+const FILTERS_STORAGE_KEY = 'atrium-graph-filters-v1'
 
-function loadPositions() {
-  if (typeof window === 'undefined') return {}
+function loadJsonObject(key) {
+  if (typeof window === 'undefined') return null
   try {
-    const raw = window.localStorage.getItem(POSITIONS_STORAGE_KEY)
-    if (!raw) return {}
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
     const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed : {}
+    return parsed && typeof parsed === 'object' ? parsed : null
   } catch {
-    return {}
+    return null
   }
 }
 
-function persistPositions(positions) {
+function saveJson(key, value) {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.setItem(POSITIONS_STORAGE_KEY, JSON.stringify(positions))
+    window.localStorage.setItem(key, JSON.stringify(value))
   } catch {
-    // localStorage full or disabled — fail silently, in-memory positions still work for the session
+    // quota / disabled — fail silent, in-memory state still works for the session
+  }
+}
+
+function loadPositions() {
+  return loadJsonObject(POSITIONS_STORAGE_KEY) || {}
+}
+function persistPositions(positions) {
+  saveJson(POSITIONS_STORAGE_KEY, positions)
+}
+
+const VALID_STATUSES = new Set(['draft', 'todo', 'in_progress', 'waiting_input', 'review', 'done'])
+const VALID_TIME_SCOPES = new Set(['all', '1d', '3d', '1w', '3w', '1m'])
+const DEFAULT_STATUSES = ['draft', 'todo', 'in_progress', 'waiting_input', 'review']
+
+// Sanitize on load so a malformed/old payload can't put the UI in a broken
+// state — fall back to defaults for any field that fails validation.
+function loadInitialFilters() {
+  const raw = loadJsonObject(FILTERS_STORAGE_KEY)
+  if (!raw) return { filterStatuses: DEFAULT_STATUSES, timeScope: 'all' }
+  const filterStatuses = Array.isArray(raw.filterStatuses)
+    ? raw.filterStatuses.filter(s => VALID_STATUSES.has(s))
+    : DEFAULT_STATUSES
+  const timeScope = VALID_TIME_SCOPES.has(raw.timeScope) ? raw.timeScope : 'all'
+  return {
+    filterStatuses: filterStatuses.length > 0 ? filterStatuses : DEFAULT_STATUSES,
+    timeScope,
   }
 }
 
@@ -177,11 +204,16 @@ function lastActivityTimestamp(task) {
 
 export default function GraphView({ tasks, projects, onSelectTask }) {
   // --- Local filter state -------------------------------------------------
-  // Default: all statuses except `done` (graph stays focused on active work).
-  const [filterStatuses, setFilterStatuses] = useState(() =>
-    STATUSES.filter(s => s !== 'done')
-  )
-  const [timeScope, setTimeScope] = useState('all')
+  // Initial values come from localStorage (sanitized in loadInitialFilters).
+  // Default for first-time users: every status except `done`, all-time scope.
+  const [filterStatuses, setFilterStatuses] = useState(() => loadInitialFilters().filterStatuses)
+  const [timeScope, setTimeScope] = useState(() => loadInitialFilters().timeScope)
+
+  // Persist filters whenever they change. Cheap debounceless write — toggling
+  // a status chip just writes a small JSON blob; no perf concern at this size.
+  useEffect(() => {
+    saveJson(FILTERS_STORAGE_KEY, { filterStatuses, timeScope })
+  }, [filterStatuses, timeScope])
   const [showHubs] = useState(true)
   // Spring length and showHubs are kept as state (so the network and the
   // spring-length effect can react), but the controls are intentionally not
@@ -638,7 +670,9 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
     )
   }, [])
   const resetFilters = useCallback(() => {
-    setFilterStatuses(STATUSES.filter(s => s !== 'done'))
+    // Reset state — the persistence effect re-saves the defaults so storage
+    // matches what the user sees. No need to delete the storage key.
+    setFilterStatuses(DEFAULT_STATUSES)
     setTimeScope('all')
   }, [])
   const resetPositions = useCallback(() => {
