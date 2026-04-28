@@ -128,6 +128,56 @@ function seededOffset(taskId) {
  *  Utilities
  * ------------------------------------------------------------------ */
 
+// --- Filter persistence -------------------------------------------------
+// Filters survive reload and view switch. v1 prefix lets us version-bump
+// the storage shape if it ever changes.
+const FILTERS_STORAGE_KEY = 'atrium-graph-filters-v1'
+const VALID_STATUSES = new Set(['draft', 'todo', 'in_progress', 'waiting_input', 'review', 'done'])
+const VALID_TIME_SCOPES = new Set(['all', '1d', '3d', '1w', '3w', '1m'])
+const OTHER_CATEGORY_KEY = '__other__'
+const VALID_CATEGORIES = new Set([...CATEGORY_LABELS, OTHER_CATEGORY_KEY])
+const DEFAULT_STATUSES = ['draft', 'todo', 'in_progress', 'waiting_input', 'review']
+const DEFAULT_CATEGORIES = [...CATEGORY_LABELS, OTHER_CATEGORY_KEY]
+
+function loadJsonObject(key) {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+function saveJson(key, value) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // quota / disabled — fail silent, in-memory state still works for the session
+  }
+}
+// Sanitize on load so a malformed/old/forward-versioned payload can't put
+// the UI in a broken state — drop unknown values per field, fall back to
+// defaults if a field's filtered list is empty.
+function loadInitialFilters() {
+  const raw = loadJsonObject(FILTERS_STORAGE_KEY)
+  if (!raw) return { filterStatuses: DEFAULT_STATUSES, timeScope: 'all', filterCategories: DEFAULT_CATEGORIES }
+  const filterStatuses = Array.isArray(raw.filterStatuses)
+    ? raw.filterStatuses.filter(s => VALID_STATUSES.has(s))
+    : DEFAULT_STATUSES
+  const timeScope = VALID_TIME_SCOPES.has(raw.timeScope) ? raw.timeScope : 'all'
+  const filterCategories = Array.isArray(raw.filterCategories)
+    ? raw.filterCategories.filter(c => VALID_CATEGORIES.has(c))
+    : DEFAULT_CATEGORIES
+  return {
+    filterStatuses: filterStatuses.length > 0 ? filterStatuses : DEFAULT_STATUSES,
+    timeScope,
+    filterCategories: filterCategories.length > 0 ? filterCategories : DEFAULT_CATEGORIES,
+  }
+}
+
 // Wrapped so the eslint react-hooks/purity rule doesn't flag Date.now() in useMemo.
 // Cutoff intentionally depends on render time — when the user changes time-scope,
 // useMemo re-runs and we want a fresh "now".
@@ -152,11 +202,32 @@ function lastActivityTimestamp(task) {
 
 export default function GraphView({ tasks, projects, onSelectTask }) {
   // --- Local filter state -------------------------------------------------
-  // Default: all statuses except `done` (graph stays focused on active work).
-  const [filterStatuses, setFilterStatuses] = useState(() =>
-    STATUSES.filter(s => s !== 'done')
-  )
-  const [timeScope, setTimeScope] = useState('all')
+  // Initial values come from localStorage (sanitized in loadInitialFilters).
+  // Defaults for first-time users: all statuses except `done`, all-time scope,
+  // every category selected (filter is a no-op).
+  const [filterStatuses, setFilterStatuses] = useState(() => loadInitialFilters().filterStatuses)
+  const [timeScope, setTimeScope] = useState(() => loadInitialFilters().timeScope)
+  const [filterCategories, setFilterCategories] = useState(() => loadInitialFilters().filterCategories)
+
+  // Persist filters whenever they change. Cheap debounceless write — toggling
+  // a chip just writes a small JSON blob; no perf concern at this size.
+  useEffect(() => {
+    saveJson(FILTERS_STORAGE_KEY, { filterStatuses, timeScope, filterCategories })
+  }, [filterStatuses, timeScope, filterCategories])
+
+  // Category chip set — always show the seven standard prefixes; conditionally
+  // include `other` when at least one task in the dataset has a non-standard
+  // prefix (legacy IDs). Memoized so the chip list is stable across renders.
+  const categoryChipKinds = useMemo(() => {
+    const hasOther = tasks.some(t => categoryOf(t.id) === null)
+    const out = CATEGORY_LABELS.map(cat => ({
+      key: cat,
+      color: CATEGORY_COLOR_VAR[cat],
+      label: cat,
+    }))
+    if (hasOther) out.push({ key: OTHER_CATEGORY_KEY, color: OTHER_CATEGORY_VAR, label: 'other' })
+    return out
+  }, [tasks])
   const [showHubs] = useState(true)
   // Spring length and showHubs are kept as state (so the network and the
   // spring-length effect can react), but the controls are intentionally not
@@ -179,15 +250,23 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
     const scope = TIME_SCOPES.find(s => s.value === timeScope)
     const cutoff = scope && scope.days != null ? nowMs() - scope.days * 86400000 : null
     const statusSet = new Set(filterStatuses)
+    const categorySet = new Set(filterCategories)
+    // Only enforce the category axis when the user has narrowed it — every
+    // chip selected is the no-op default and shouldn't run a per-task check.
+    const categoryFiltered = categorySet.size > 0 && categorySet.size < (CATEGORY_LABELS.length + 1)
 
     return tasks.filter(t => {
       if (statusSet.size > 0 && !statusSet.has(t.status)) return false
       if (cutoff !== null) {
         if (lastActivityTimestamp(t) < cutoff) return false
       }
+      if (categoryFiltered) {
+        const cat = categoryOf(t.id) || OTHER_CATEGORY_KEY
+        if (!categorySet.has(cat)) return false
+      }
       return true
     })
-  }, [tasks, filterStatuses, timeScope])
+  }, [tasks, filterStatuses, timeScope, filterCategories])
 
   // --- Build vis-network nodes/edges --------------------------------------
   const graphData = useMemo(() => {
@@ -572,9 +651,17 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
       prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
     )
   }, [])
+  const toggleCategory = useCallback((cat) => {
+    setFilterCategories(prev =>
+      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+    )
+  }, [])
   const resetFilters = useCallback(() => {
-    setFilterStatuses(STATUSES.filter(s => s !== 'done'))
+    // The persistence effect re-saves the defaults, so storage matches the
+    // visible state. No need to delete the storage key.
+    setFilterStatuses(DEFAULT_STATUSES)
     setTimeScope('all')
+    setFilterCategories(DEFAULT_CATEGORIES)
   }, [])
 
   // --- Render -------------------------------------------------------------
@@ -599,25 +686,37 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
           fontSize: 'var(--text-caption1)',
         }}
       >
-        {/* Category legend (color key) */}
-        <FilterSection title="Category (color)">
+        {/* Category — filter + color key. Each chip's swatch matches the
+            dot fill color, so the chip serves both roles. */}
+        <FilterSection title="Category">
           <div className="flex flex-wrap" style={{ gap: 'var(--space-1)' }}>
-            {CATEGORY_LABELS.map(cat => (
-              <span
-                key={cat}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '2px 6px',
-                  fontSize: 'var(--text-caption2)',
-                  color: 'var(--text-muted)',
-                }}
-              >
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: CATEGORY_COLOR_VAR[cat] }} />
-                {cat}
-              </span>
-            ))}
+            {categoryChipKinds.map(({ key, color, label }) => {
+              const active = filterCategories.includes(key)
+              return (
+                <button
+                  key={key}
+                  onClick={() => toggleCategory(key)}
+                  className="apple-press"
+                  title={`Toggle ${label}`}
+                  style={{
+                    padding: '3px 8px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: `1px solid ${active ? color : 'var(--separator)'}`,
+                    background: active ? `color-mix(in srgb, ${color} 18%, transparent)` : 'transparent',
+                    color: active ? 'var(--text-app)' : 'var(--text-muted)',
+                    fontSize: 'var(--text-caption2)',
+                    fontWeight: 'var(--font-medium)',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                  }}
+                >
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
+                  {label}
+                </button>
+              )
+            })}
           </div>
         </FilterSection>
 
