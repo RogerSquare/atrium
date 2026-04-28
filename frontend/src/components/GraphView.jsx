@@ -568,21 +568,20 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
       if (node && node._task && onSelectTask) onSelectTask(node._task)
     })
 
-    // Branch indicator overlay — draw a GitBranch icon next to every task
-    // node tagged `_hasBranch`. afterDrawing fires after vis-network has
-    // committed its node + edge passes, so the icon sits on top.
+    // Branch indicator overlay — draw a GitBranch icon centered on every
+    // task node tagged `_hasBranch`. afterDrawing fires after vis-network
+    // commits its node + edge passes, so the icon overlays the dot. The
+    // dot's category fill shows through the icon's negative space.
     const branchedIds = graphData.nodes.filter(n => n._hasBranch).map(n => n.id)
     if (branchedIds.length > 0) {
       net.on('afterDrawing', (ctx) => {
         for (let i = 0; i < branchedIds.length; i++) {
           const bn = net.body.nodes[branchedIds[i]]
           if (!bn) continue
-          // Top-right of the dot. Icon size derived from node radius so a
-          // priority=high (size 14) dot gets a slightly larger badge than
-          // priority=low (size 7).
-          const r = bn.size || 8
-          const iconSize = Math.max(11, r + 2)
-          drawGitBranchIcon(ctx, bn.x + r + 6, bn.y - r - 4, iconSize, '#dde1ea')
+          // Constant icon size so the badge is legible on the smallest
+          // (priority=low, size 7) dots without dominating the largest
+          // (priority=high, size 14) ones.
+          drawGitBranchIcon(ctx, bn.x, bn.y, 14, '#0e0f12')
         }
       })
     }
