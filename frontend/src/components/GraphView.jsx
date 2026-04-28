@@ -128,34 +128,6 @@ function seededOffset(taskId) {
  *  Utilities
  * ------------------------------------------------------------------ */
 
-// Lucide-style GitBranch icon, drawn directly to vis-network's canvas in
-// the `afterDrawing` event so it overlays each branched node without
-// touching the dot's category color or border. Path coords are the SVG
-// from lucide-react's GitBranch (viewBox 24×24) translated into canvas
-// commands; lineWidth is counter-scaled so the stroke reads ~2px on
-// screen regardless of icon size.
-function drawGitBranchIcon(ctx, cx, cy, size, color) {
-  const s = size / 24
-  ctx.save()
-  ctx.translate(cx - size / 2, cy - size / 2)
-  ctx.scale(s, s)
-  ctx.strokeStyle = color
-  ctx.lineWidth = 2 / s
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-
-  // <line x1='6' x2='6' y1='3' y2='15'/>
-  ctx.beginPath(); ctx.moveTo(6, 3); ctx.lineTo(6, 15); ctx.stroke()
-  // <circle cx='18' cy='6' r='3'/>
-  ctx.beginPath(); ctx.arc(18, 6, 3, 0, Math.PI * 2); ctx.stroke()
-  // <circle cx='6' cy='18' r='3'/>
-  ctx.beginPath(); ctx.arc(6, 18, 3, 0, Math.PI * 2); ctx.stroke()
-  // <path d='M18 9a9 9 0 0 1-9 9'/>  — quarter arc centered at (9,9), r=9
-  ctx.beginPath(); ctx.arc(9, 9, 9, 0, Math.PI / 2); ctx.stroke()
-
-  ctx.restore()
-}
-
 // Wrapped so the eslint react-hooks/purity rule doesn't flag Date.now() in useMemo.
 // Cutoff intentionally depends on render time — when the user changes time-scope,
 // useMemo re-runs and we want a fresh "now".
@@ -196,20 +168,26 @@ function persistPositions(positions) {
 
 const VALID_STATUSES = new Set(['draft', 'todo', 'in_progress', 'waiting_input', 'review', 'done'])
 const VALID_TIME_SCOPES = new Set(['all', '1d', '3d', '1w', '3w', '1m'])
+const VALID_BRANCH_FILTERS = new Set(['has', 'none'])
 const DEFAULT_STATUSES = ['draft', 'todo', 'in_progress', 'waiting_input', 'review']
+const DEFAULT_BRANCH_FILTER = ['has', 'none']  // both = no filter
 
 // Sanitize on load so a malformed/old payload can't put the UI in a broken
 // state — fall back to defaults for any field that fails validation.
 function loadInitialFilters() {
   const raw = loadJsonObject(FILTERS_STORAGE_KEY)
-  if (!raw) return { filterStatuses: DEFAULT_STATUSES, timeScope: 'all' }
+  if (!raw) return { filterStatuses: DEFAULT_STATUSES, timeScope: 'all', filterBranch: DEFAULT_BRANCH_FILTER }
   const filterStatuses = Array.isArray(raw.filterStatuses)
     ? raw.filterStatuses.filter(s => VALID_STATUSES.has(s))
     : DEFAULT_STATUSES
   const timeScope = VALID_TIME_SCOPES.has(raw.timeScope) ? raw.timeScope : 'all'
+  const filterBranch = Array.isArray(raw.filterBranch)
+    ? raw.filterBranch.filter(b => VALID_BRANCH_FILTERS.has(b))
+    : DEFAULT_BRANCH_FILTER
   return {
     filterStatuses: filterStatuses.length > 0 ? filterStatuses : DEFAULT_STATUSES,
     timeScope,
+    filterBranch: filterBranch.length > 0 ? filterBranch : DEFAULT_BRANCH_FILTER,
   }
 }
 
@@ -236,12 +214,13 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
   // Default for first-time users: every status except `done`, all-time scope.
   const [filterStatuses, setFilterStatuses] = useState(() => loadInitialFilters().filterStatuses)
   const [timeScope, setTimeScope] = useState(() => loadInitialFilters().timeScope)
+  const [filterBranch, setFilterBranch] = useState(() => loadInitialFilters().filterBranch)
 
   // Persist filters whenever they change. Cheap debounceless write — toggling
-  // a status chip just writes a small JSON blob; no perf concern at this size.
+  // a chip just writes a small JSON blob; no perf concern at this size.
   useEffect(() => {
-    saveJson(FILTERS_STORAGE_KEY, { filterStatuses, timeScope })
-  }, [filterStatuses, timeScope])
+    saveJson(FILTERS_STORAGE_KEY, { filterStatuses, timeScope, filterBranch })
+  }, [filterStatuses, timeScope, filterBranch])
   const [showHubs] = useState(true)
   // Spring length and showHubs are kept as state (so the network and the
   // spring-length effect can react), but the controls are intentionally not
@@ -274,15 +253,25 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     const scope = TIME_SCOPES.find(s => s.value === timeScope)
     const cutoff = scope && scope.days != null ? nowMs() - scope.days * 86400000 : null
     const statusSet = new Set(filterStatuses)
+    const branchSet = new Set(filterBranch)
+    // Only enforce the branch axis when the user has narrowed it — both
+    // chips selected ('has' + 'none') is the no-op default.
+    const branchFiltered = branchSet.size > 0 && branchSet.size < 2
 
     return tasks.filter(t => {
       if (statusSet.size > 0 && !statusSet.has(t.status)) return false
       if (cutoff !== null) {
         if (lastActivityTimestamp(t) < cutoff) return false
       }
+      if (branchFiltered) {
+        const link = githubLinks && githubLinks[t.id]
+        const hasBranch = !!(link && (link.branch || link.pr_url))
+        const key = hasBranch ? 'has' : 'none'
+        if (!branchSet.has(key)) return false
+      }
       return true
     })
-  }, [tasks, filterStatuses, timeScope])
+  }, [tasks, filterStatuses, timeScope, filterBranch, githubLinks])
 
   // --- Build vis-network nodes/edges --------------------------------------
   const graphData = useMemo(() => {
@@ -352,10 +341,6 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
       const saved = savedPositions[t.id]
       const seedX = proj ? proj.hubX + Math.cos(offA) * offR : 0
       const seedY = proj ? proj.hubY + Math.sin(offA) * offR : 0
-      // GitHub branch indicator — flagged here, rendered as a small icon
-      // overlay via the network's `afterDrawing` event (see build effect).
-      const link = githubLinks && githubLinks[t.id]
-      const hasBranch = !!(link && (link.branch || link.pr_url))
       // Pin tasks the user has dragged: physics:false skips them in the
       // spring solver, and the Brownian loop (below) checks the same map
       // and skips them too. This makes drags feel like "put it there and
@@ -368,7 +353,6 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
         size,
         shape: 'dot',
         physics: !isPinned,
-        _hasBranch: hasBranch,
         x: saved ? saved.x : seedX,
         y: saved ? saved.y : seedY,
         color: { background: fill, border, highlight: { background: fill, border: '#ffffff' } },
@@ -477,10 +461,8 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     }
     // resetVersion is in deps so "Reset positions" forces this useMemo to
     // re-run with the now-empty positionsRef → nodes get seeded coords again.
-    // githubLinks in deps so a fresh /api/github/links payload re-derives
-    // the branch indicator on each task.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleTasks, projects, showHubs, resetVersion, githubLinks])
+  }, [visibleTasks, projects, showHubs, resetVersion])
 
   // --- Init / refresh network on data change ------------------------------
   useEffect(() => {
@@ -585,24 +567,6 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
       const node = data.nodes.get(id)
       if (node && node._task && onSelectTask) onSelectTask(node._task)
     })
-
-    // Branch indicator overlay — draw a GitBranch icon centered on every
-    // task node tagged `_hasBranch`. afterDrawing fires after vis-network
-    // commits its node + edge passes, so the icon overlays the dot. The
-    // dot's category fill shows through the icon's negative space.
-    const branchedIds = graphData.nodes.filter(n => n._hasBranch).map(n => n.id)
-    if (branchedIds.length > 0) {
-      net.on('afterDrawing', (ctx) => {
-        for (let i = 0; i < branchedIds.length; i++) {
-          const bn = net.body.nodes[branchedIds[i]]
-          if (!bn) continue
-          // Constant icon size so the badge is legible on the smallest
-          // (priority=low, size 7) dots without dominating the largest
-          // (priority=high, size 14) ones.
-          drawGitBranchIcon(ctx, bn.x, bn.y, 14, '#dde1ea')
-        }
-      })
-    }
 
     // Reset hub velocities for new graph
     hubVelocitiesRef.current = {}
@@ -740,11 +704,17 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
       prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
     )
   }, [])
+  const toggleBranch = useCallback((kind) => {
+    setFilterBranch(prev =>
+      prev.includes(kind) ? prev.filter(k => k !== kind) : [...prev, kind]
+    )
+  }, [])
   const resetFilters = useCallback(() => {
     // Reset state — the persistence effect re-saves the defaults so storage
     // matches what the user sees. No need to delete the storage key.
     setFilterStatuses(DEFAULT_STATUSES)
     setTimeScope('all')
+    setFilterBranch(DEFAULT_BRANCH_FILTER)
   }, [])
   const resetPositions = useCallback(() => {
     // Wipe stored positions in memory + on disk, drop hub-physics velocities
@@ -802,13 +772,6 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
           </div>
         </FilterSection>
 
-        {/* Branch indicator legend */}
-        <FilterSection title="Indicators">
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-caption2)', color: 'var(--text-muted)', padding: '2px 0' }}>
-            <GitBranch className="w-3.5 h-3.5" />
-            beside a node = task has a GitHub branch
-          </span>
-        </FilterSection>
 
         {/* Time scope */}
         <FilterSection icon={Calendar} title="Time scope">
@@ -857,6 +820,37 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
                   }}
                 >
                   {status.replace('_', ' ')}
+                </button>
+              )
+            })}
+          </div>
+        </FilterSection>
+
+        {/* Branch */}
+        <FilterSection icon={GitBranch} title="Branch">
+          <div className="flex flex-wrap" style={{ gap: 'var(--space-1)' }}>
+            {[
+              { key: 'has', label: 'has branch' },
+              { key: 'none', label: 'no branch' },
+            ].map(({ key, label }) => {
+              const active = filterBranch.includes(key)
+              return (
+                <button
+                  key={key}
+                  onClick={() => toggleBranch(key)}
+                  className="apple-press"
+                  style={{
+                    padding: '3px 8px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: `1px solid ${active ? 'var(--accent-app)' : 'var(--separator)'}`,
+                    background: active ? 'color-mix(in srgb, var(--accent-app) 18%, transparent)' : 'transparent',
+                    color: active ? 'var(--text-app)' : 'var(--text-muted)',
+                    fontSize: 'var(--text-caption2)',
+                    fontWeight: 'var(--font-medium)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {label}
                 </button>
               )
             })}
