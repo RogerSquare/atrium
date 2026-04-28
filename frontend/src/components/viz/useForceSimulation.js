@@ -7,7 +7,7 @@
 // The pure `createSimulation` factory is exported separately so unit tests can
 // drive it without a React renderer or DOM.
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   forceSimulation,
   forceManyBody,
@@ -15,6 +15,24 @@ import {
   forceX,
   forceY,
 } from 'd3-force'
+
+// Per-render hook for `prefers-reduced-motion`. Returns `true` if the user
+// has requested reduced motion in their OS settings. Subscribes to changes
+// so users toggling the setting mid-session see the simulation respond.
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  })
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const handler = (e) => setReduced(e.matches)
+    mq.addEventListener?.('change', handler)
+    return () => mq.removeEventListener?.('change', handler)
+  }, [])
+  return reduced
+}
 
 // Defaults loosely ported from CodePen QWQmKWG (vis-network forceAtlas2Based).
 // vis-network and d3-force don't share a units system, so values were tuned
@@ -90,6 +108,20 @@ export default function useForceSimulation({
   config = DEFAULT_CONFIG,
 }) {
   const simRef = useRef(null)
+  const reducedMotion = useReducedMotion()
+
+  // Reduced motion: cool the simulation to a hard stop instead of sustaining
+  // continuous drift. Nodes settle once and freeze. Drag still works (drag
+  // restarts via sim.restart, but at lower alpha), so the graph is fully
+  // interactive — just no idle motion. Phase 4 of ui-graph-polish-001.
+  const effectiveConfig = useMemo(() => {
+    if (!reducedMotion) return config
+    return {
+      ...config,
+      alphaDecay: 0.0228, // d3-force default — settles in ~300 ticks
+      alphaTarget: 0,
+    }
+  }, [config, reducedMotion])
 
   // Content-stable keys for the structural inputs. The parent may re-render
   // with a fresh `tasks` array from socket updates — that cascades into new
@@ -111,7 +143,7 @@ export default function useForceSimulation({
   // Mutable args read inside the effect / tick callback via ref so swapping
   // them (e.g. a fresh onTick callback) doesn't tear down the simulation.
   const argsRef = useRef(null)
-  argsRef.current = { nodes, edges, initialPositions, excludedIds, onTick, config }
+  argsRef.current = { nodes, edges, initialPositions, excludedIds, onTick, config: effectiveConfig }
 
   useEffect(() => {
     if (!enabled) return undefined
@@ -157,7 +189,9 @@ export default function useForceSimulation({
       sim.stop()
       simRef.current = null
     }
-  }, [nodesKey, edgesKey, excludedKey, enabled])
+    // reducedMotion is in deps because flipping it should rebuild the sim
+    // with the appropriate alphaDecay/alphaTarget pair.
+  }, [nodesKey, edgesKey, excludedKey, enabled, reducedMotion])
 
   return useMemo(
     () => ({
