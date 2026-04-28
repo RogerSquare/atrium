@@ -202,7 +202,7 @@ function lastActivityTimestamp(task) {
  *  Component
  * ------------------------------------------------------------------ */
 
-export default function GraphView({ tasks, projects, onSelectTask }) {
+export default function GraphView({ tasks, projects, onSelectTask, githubLinks }) {
   // --- Local filter state -------------------------------------------------
   // Initial values come from localStorage (sanitized in loadInitialFilters).
   // Default for first-time users: every status except `done`, all-time scope.
@@ -324,11 +324,16 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
       const saved = savedPositions[t.id]
       const seedX = proj ? proj.hubX + Math.cos(offA) * offR : 0
       const seedY = proj ? proj.hubY + Math.sin(offA) * offR : 0
+      // GitHub branch indicator — square for tasks with a branch (or PR),
+      // dot for unbranched. Distinguishable at any zoom level without
+      // touching the category-fill or status-border color encodings.
+      const link = githubLinks && githubLinks[t.id]
+      const hasBranch = !!(link && (link.branch || link.pr_url))
       return {
         id: t.id,
         label: t.id || '',
         size,
-        shape: 'dot',
+        shape: hasBranch ? 'square' : 'dot',
         x: saved ? saved.x : seedX,
         y: saved ? saved.y : seedY,
         color: { background: fill, border, highlight: { background: fill, border: '#ffffff' } },
@@ -437,8 +442,10 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
     }
     // resetVersion is in deps so "Reset positions" forces this useMemo to
     // re-run with the now-empty positionsRef → nodes get seeded coords again.
+    // githubLinks in deps so a fresh /api/github/links payload re-derives
+    // the branch indicator on each task.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleTasks, projects, showHubs, resetVersion])
+  }, [visibleTasks, projects, showHubs, resetVersion, githubLinks])
 
   // --- Init / refresh network on data change ------------------------------
   useEffect(() => {
@@ -728,6 +735,20 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
                 {cat}
               </span>
             ))}
+          </div>
+        </FilterSection>
+
+        {/* Shape legend (branch indicator) */}
+        <FilterSection title="Shape">
+          <div className="flex flex-wrap" style={{ gap: 'var(--space-2)' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-caption2)', color: 'var(--text-muted)' }}>
+              <span style={{ width: 9, height: 9, background: 'var(--text-muted)' }} />
+              has GitHub branch
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-caption2)', color: 'var(--text-muted)' }}>
+              <span style={{ width: 9, height: 9, borderRadius: '50%', background: 'var(--text-muted)' }} />
+              no branch yet
+            </span>
           </div>
         </FilterSection>
 
