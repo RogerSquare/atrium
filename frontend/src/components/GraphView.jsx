@@ -20,7 +20,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Network } from 'vis-network'
 import { DataSet } from 'vis-data'
-import { Tag, Calendar, Filter, X } from 'lucide-react'
+import { Calendar, Filter, X } from 'lucide-react'
 
 /* ------------------------------------------------------------------ *
  *  Constants
@@ -47,9 +47,14 @@ const TIME_SCOPES = [
 ]
 
 // Category-prefix color scheme — matches the Changes view (ChangesView.jsx
-// CATEGORY_STYLE) so the same task has the same color across views. Resolved
-// from CSS variables at draw time so theme switches stay in sync.
-const CATEGORY_COLOR = {
+// CATEGORY_STYLE) so the same task has the same color across views. Two maps:
+//
+//   CATEGORY_COLOR_VAR  — `var(--apple-*)` strings; safe in the React DOM
+//                          (legend swatches) where CSS resolves them.
+//   resolveCategoryHex() — reads computed --apple-* values at runtime so the
+//                          canvas-bound vis-network nodes get real hex.
+//                          Canvas `fillStyle` does NOT resolve CSS variables.
+const CATEGORY_COLOR_VAR = {
   bug:    'var(--apple-red)',
   feat:   'var(--apple-blue)',
   ui:     'var(--apple-teal)',
@@ -58,17 +63,45 @@ const CATEGORY_COLOR = {
   comp:   'var(--gray-1)',
   mobile: 'var(--apple-pink)',
 }
-const OTHER_CATEGORY_COLOR = 'var(--gray-1)'
+const CATEGORY_VAR_NAMES = {
+  bug: '--apple-red',
+  feat: '--apple-blue',
+  ui: '--apple-teal',
+  opt: '--apple-orange',
+  devops: '--apple-purple',
+  comp: '--gray-1',
+  mobile: '--apple-pink',
+}
+const CATEGORY_FALLBACK = {
+  bug: '#FF453A', feat: '#0A84FF', ui: '#64D2FF', opt: '#FF9F0A',
+  devops: '#BF5AF2', comp: '#8E8E93', mobile: '#FF375F',
+}
 const CATEGORY_LABELS = ['feat', 'bug', 'ui', 'opt', 'devops', 'comp', 'mobile']
+const OTHER_CATEGORY_VAR = 'var(--gray-1)'
+const OTHER_CATEGORY_FALLBACK = '#8E8E93'
+
+function readCssVar(name, fallback) {
+  if (typeof document === 'undefined') return fallback
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return v || fallback
+}
+function resolveCategoryHex() {
+  const out = {}
+  for (const cat of CATEGORY_LABELS) {
+    out[cat] = readCssVar(CATEGORY_VAR_NAMES[cat], CATEGORY_FALLBACK[cat])
+  }
+  out.__other__ = readCssVar('--gray-1', OTHER_CATEGORY_FALLBACK)
+  return out
+}
 
 function categoryOf(taskId) {
   if (!taskId) return null
   const prefix = taskId.split('-')[0]?.toLowerCase()
-  return CATEGORY_COLOR[prefix] ? prefix : null
+  return CATEGORY_COLOR_VAR[prefix] ? prefix : null
 }
-function colorForTask(taskId) {
+function colorForTask(taskId, hexMap) {
   const cat = categoryOf(taskId)
-  return cat ? CATEGORY_COLOR[cat] : OTHER_CATEGORY_COLOR
+  return cat ? hexMap[cat] : hexMap.__other__
 }
 
 // FNV-1a 32-bit hash — used for task-id → deterministic position offset.
@@ -123,7 +156,6 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
   const [filterStatuses, setFilterStatuses] = useState(() =>
     STATUSES.filter(s => s !== 'done')
   )
-  const [filterTags, setFilterTags] = useState([])  // array of tag names; OR semantics
   const [timeScope, setTimeScope] = useState('all')
   const [showHubs, setShowHubs] = useState(true)
 
@@ -135,35 +167,20 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
   const hubVelocitiesRef = useRef({})     // hubId -> {vx, vy}
   const draggedRef = useRef(new Set())
 
-  // --- Tag frequency map (for the legend + filter panel) ------------------
-  const tagFrequency = useMemo(() => {
-    const counts = new Map()
-    for (const t of tasks) {
-      const tt = Array.isArray(t.tags) ? t.tags : []
-      for (const tag of tt) counts.set(tag, (counts.get(tag) || 0) + 1)
-    }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1])
-  }, [tasks])
-
   // --- Filter pipeline ----------------------------------------------------
   const visibleTasks = useMemo(() => {
     const scope = TIME_SCOPES.find(s => s.value === timeScope)
     const cutoff = scope && scope.days != null ? nowMs() - scope.days * 86400000 : null
-    const tagSet = filterTags.length > 0 ? new Set(filterTags) : null
     const statusSet = new Set(filterStatuses)
 
     return tasks.filter(t => {
       if (statusSet.size > 0 && !statusSet.has(t.status)) return false
-      if (tagSet) {
-        const tt = Array.isArray(t.tags) ? t.tags : []
-        if (!tt.some(tg => tagSet.has(tg))) return false
-      }
       if (cutoff !== null) {
         if (lastActivityTimestamp(t) < cutoff) return false
       }
       return true
     })
-  }, [tasks, filterStatuses, filterTags, timeScope])
+  }, [tasks, filterStatuses, timeScope])
 
   // --- Build vis-network nodes/edges --------------------------------------
   const graphData = useMemo(() => {
@@ -177,13 +194,20 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
 
     // Place hubs evenly on a circle. Radius scales with project count so
     // clusters don't overlap when there are many projects.
-    // Hub color palette — neutral grays + one accent for visual distinction
-    // between projects, but deliberately not category-encoded (categories are
-    // for tasks, project hubs just need to be tellable apart).
+    // Resolve theme-driven hex values once per build. CSS vars don't work in
+    // canvas, so vis-network needs real colors.
+    const categoryHex = resolveCategoryHex()
+    // Hub palette — neutral accent colors so projects are visually separable
+    // but not category-encoded. Resolved to hex for the canvas renderer.
     const HUB_PALETTE = [
-      'var(--apple-blue)', 'var(--apple-purple)', 'var(--apple-teal)',
-      'var(--apple-orange)', 'var(--apple-pink)', 'var(--apple-green)',
-      'var(--apple-red)', 'var(--gray-1)',
+      readCssVar('--apple-blue',   '#0A84FF'),
+      readCssVar('--apple-purple', '#BF5AF2'),
+      readCssVar('--apple-teal',   '#64D2FF'),
+      readCssVar('--apple-orange', '#FF9F0A'),
+      readCssVar('--apple-pink',   '#FF375F'),
+      readCssVar('--apple-green',  '#30D158'),
+      readCssVar('--apple-red',    '#FF453A'),
+      readCssVar('--gray-1',       '#8E8E93'),
     ]
     const projList = []
     let i = 0
@@ -212,7 +236,7 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
       const off = seededOffset(t.id || '')
       const offR = off.radius
       const offA = off.angle
-      const fill = colorForTask(t.id)
+      const fill = colorForTask(t.id, categoryHex)
       const border = STATUS_BORDER_COLOR[t.status] || '#3a4150'
       const size = t.priority === 'high' ? 14 : t.priority === 'medium' ? 10 : 7
       return {
@@ -223,7 +247,9 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
         x: proj ? proj.hubX + Math.cos(offA) * offR : 0,
         y: proj ? proj.hubY + Math.sin(offA) * offR : 0,
         color: { background: fill, border, highlight: { background: fill, border: '#ffffff' } },
-        borderWidth: 2,
+        // Thin border lets the category fill dominate; at the smallest dot size (7px)
+        // a 2px ring used to make all-done filters look monochrome.
+        borderWidth: 1.5,
         // `vadjust` pushes the label below the dot; combined with `scaling.label.drawThreshold`
         // (set on the network options) labels stay readable when zoomed in but fade out at
         // overview zoom levels so they don't visually clutter the cluster shapes.
@@ -456,14 +482,8 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
       prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
     )
   }, [])
-  const toggleTag = useCallback((tag) => {
-    setFilterTags(prev =>
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-    )
-  }, [])
   const resetFilters = useCallback(() => {
     setFilterStatuses(STATUSES.filter(s => s !== 'done'))
-    setFilterTags([])
     setTimeScope('all')
   }, [])
 
@@ -504,7 +524,7 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
                   color: 'var(--text-muted)',
                 }}
               >
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: CATEGORY_COLOR[cat] }} />
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: CATEGORY_COLOR_VAR[cat] }} />
                 {cat}
               </span>
             ))}
@@ -562,45 +582,6 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
               )
             })}
           </div>
-        </FilterSection>
-
-        {/* Tags */}
-        <FilterSection icon={Tag} title={`Tags${filterTags.length ? ` (${filterTags.length})` : ''}`}>
-          {tagFrequency.length === 0 ? (
-            <div style={{ color: 'var(--text-tertiary)', fontSize: 'var(--text-caption2)', padding: '6px 0' }}>
-              No tags in current dataset.
-            </div>
-          ) : (
-            <div className="flex flex-wrap" style={{ gap: 'var(--space-1)' }}>
-              {tagFrequency.map(([tag, count]) => {
-                const active = filterTags.includes(tag)
-                return (
-                  <button
-                    key={tag}
-                    onClick={() => toggleTag(tag)}
-                    className="apple-press"
-                    title={`${tag} — ${count} task${count === 1 ? '' : 's'}`}
-                    style={{
-                      padding: '3px 8px',
-                      borderRadius: 'var(--radius-sm)',
-                      border: `1px solid ${active ? 'var(--accent-app)' : 'var(--separator)'}`,
-                      background: active ? 'color-mix(in srgb, var(--accent-app) 18%, transparent)' : 'transparent',
-                      color: active ? 'var(--text-app)' : 'var(--text-muted)',
-                      fontSize: 'var(--text-caption2)',
-                      fontWeight: 'var(--font-medium)',
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                    }}
-                  >
-                    {tag}
-                    <span style={{ color: 'var(--text-tertiary)', marginLeft: 2 }}>{count}</span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
         </FilterSection>
 
         {/* Display options */}
