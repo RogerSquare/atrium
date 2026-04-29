@@ -4,7 +4,26 @@ import useTasks from '../hooks/useTasks'
 import useAgents from '../hooks/useAgents'
 import useUndoRedo from '../hooks/useUndoRedo'
 
-const TaskContext = createContext(null)
+// Two-context split (Phase 2 of opt-perf-audit-001-implement, Path C from
+// the plan). Goal: keep the public `useTaskContext()` API working for every
+// existing consumer while letting new code subscribe to a narrower slice.
+//
+//   useTaskData()    — high-churn slice. Re-fires on keystrokes / fetch
+//                      ticks / filter toggles / drag updates / etc.
+//                      Holds: tasks, filtered/derived tasks, projects,
+//                      selectedTask, activeProject, all filter* state,
+//                      searchQuery, recentlyUpdatedIds, githubLinks,
+//                      loading, agent state, bulk-select state, errorToast.
+//   useTaskActions() — stable slice. Refs change rarely (handler identity
+//                      churn only when their useCallback deps change).
+//                      Holds: every mutation handler, fetchData, undoRedo,
+//                      bulk-select handlers, showError/setErrorToast.
+//   useTaskContext() — compat shim. DEPRECATED but kept working: subscribes
+//                      to BOTH contexts and returns their merge so legacy
+//                      consumers see no change. Phase 3 will migrate
+//                      hot-path consumers off it for the actual perf win.
+const TaskHighChurnContext = createContext(null)
+const TaskStableContext = createContext(null)
 
 export function TaskProvider({ user, socketRef, children }) {
   const taskState = useTasks(user, socketRef)
@@ -142,38 +161,150 @@ export function TaskProvider({ user, socketRef, children }) {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [bulkSelectMode, exitBulkMode])
 
-  const value = useMemo(() => ({
-    // Task state (from useTasks hook)
-    ...taskState,
-    // Agents
-    ...agents,
-    // Undo/redo
-    undoRedo,
-    // Bulk selection
-    bulkSelectMode, setBulkSelectMode, selectedTaskIds, batchLoading,
-    toggleSelectTask, shiftSelectTask, toggleSelectColumn,
-    selectAllVisible, deselectAll, exitBulkMode,
-    handleBatchUpdate, handleBatchDelete,
-    // Error toast
-    errorToast, showError, setErrorToast,
+  // --- High-churn context value ---
+  // Re-fires on every keystroke / filter toggle / fetch tick. Includes:
+  //   - Task data: tasks, projects, archivedProjects, loading, recentlyUpdatedIds, githubLinks.
+  //   - Filter state + setters (setters are React-stable, but we keep state and its setter together for ergonomics).
+  //   - Derived: filteredTasks, uniqueAssignees, activeFilterCount.
+  //   - Selection / scope: selectedTask, activeProject + setActiveProject.
+  //   - Agent observation state (taskViewers churns frequently as users join/leave tasks).
+  //   - Bulk-select state (mode + selected ids + batch loading flag).
+  //   - errorToast (transient, but cheap).
+  const highChurnValue = useMemo(() => ({
+    tasks: taskState.tasks,
+    projects: taskState.projects,
+    archivedProjects: taskState.archivedProjects,
+    loading: taskState.loading,
+    selectedTask: taskState.selectedTask,
+    activeProject: taskState.activeProject,
+    setActiveProject: taskState.setActiveProject,
+    filterType: taskState.filterType,
+    setFilterType: taskState.setFilterType,
+    filterPriority: taskState.filterPriority,
+    setFilterPriority: taskState.setFilterPriority,
+    filterAssignee: taskState.filterAssignee,
+    setFilterAssignee: taskState.setFilterAssignee,
+    filterToday: taskState.filterToday,
+    setFilterToday: taskState.setFilterToday,
+    filterStale: taskState.filterStale,
+    setFilterStale: taskState.setFilterStale,
+    searchQuery: taskState.searchQuery,
+    setSearchQuery: taskState.setSearchQuery,
+    filteredTasks: taskState.filteredTasks,
+    uniqueAssignees: taskState.uniqueAssignees,
+    activeFilterCount: taskState.activeFilterCount,
+    recentlyUpdatedIds: taskState.recentlyUpdatedIds,
+    githubLinks: taskState.githubLinks,
+    activeAgents: agents.activeAgents,
+    agentsEnabled: agents.agentsEnabled,
+    aiChatEnabled: agents.aiChatEnabled,
+    taskViewers: agents.taskViewers,
+    bulkSelectMode,
+    selectedTaskIds,
+    batchLoading,
+    errorToast,
   }), [
-    taskState, agents, undoRedo,
-    bulkSelectMode, selectedTaskIds, batchLoading,
+    taskState.tasks, taskState.projects, taskState.archivedProjects, taskState.loading,
+    taskState.selectedTask, taskState.activeProject, taskState.setActiveProject,
+    taskState.filterType, taskState.setFilterType,
+    taskState.filterPriority, taskState.setFilterPriority,
+    taskState.filterAssignee, taskState.setFilterAssignee,
+    taskState.filterToday, taskState.setFilterToday,
+    taskState.filterStale, taskState.setFilterStale,
+    taskState.searchQuery, taskState.setSearchQuery,
+    taskState.filteredTasks, taskState.uniqueAssignees, taskState.activeFilterCount,
+    taskState.recentlyUpdatedIds, taskState.githubLinks,
+    agents.activeAgents, agents.agentsEnabled, agents.aiChatEnabled, agents.taskViewers,
+    bulkSelectMode, selectedTaskIds, batchLoading, errorToast,
+  ])
+
+  // --- Stable context value ---
+  // Refs change rarely. Includes:
+  //   - All task / project mutation handlers (useCallback'd in useTasks).
+  //   - fetchData + fetchGithubLinks.
+  //   - selectTask, resetAllFilters.
+  //   - Agent action handlers.
+  //   - undoRedo (its internal state churns per mutation, not per keystroke — acceptable).
+  //   - All bulk-select handlers + setBulkSelectMode.
+  //   - showError + setErrorToast.
+  // Components reading only this slice (e.g. CommandPalette) are immune to
+  // keystroke / filter / fetch churn.
+  const stableValue = useMemo(() => ({
+    fetchData: taskState.fetchData,
+    fetchGithubLinks: taskState.fetchGithubLinks,
+    selectTask: taskState.selectTask,
+    handleUpdateTask: taskState.handleUpdateTask,
+    handleDeleteTask: taskState.handleDeleteTask,
+    handleCreateTask: taskState.handleCreateTask,
+    handleCreateProject: taskState.handleCreateProject,
+    handleDeleteProject: taskState.handleDeleteProject,
+    archiveProject: taskState.archiveProject,
+    unarchiveProject: taskState.unarchiveProject,
+    resetAllFilters: taskState.resetAllFilters,
+    handleStartAgent: agents.handleStartAgent,
+    handleStopAgent: agents.handleStopAgent,
+    undoRedo,
+    setBulkSelectMode,
+    toggleSelectTask,
+    shiftSelectTask,
+    toggleSelectColumn,
+    selectAllVisible,
+    deselectAll,
+    exitBulkMode,
+    handleBatchUpdate,
+    handleBatchDelete,
+    showError,
+    setErrorToast,
+  }), [
+    taskState.fetchData, taskState.fetchGithubLinks, taskState.selectTask,
+    taskState.handleUpdateTask, taskState.handleDeleteTask, taskState.handleCreateTask,
+    taskState.handleCreateProject, taskState.handleDeleteProject,
+    taskState.archiveProject, taskState.unarchiveProject,
+    taskState.resetAllFilters,
+    agents.handleStartAgent, agents.handleStopAgent,
+    undoRedo,
     toggleSelectTask, shiftSelectTask, toggleSelectColumn,
     selectAllVisible, deselectAll, exitBulkMode,
     handleBatchUpdate, handleBatchDelete,
-    errorToast, showError,
+    showError,
   ])
 
   return (
-    <TaskContext.Provider value={value}>
-      {children}
-    </TaskContext.Provider>
+    <TaskHighChurnContext.Provider value={highChurnValue}>
+      <TaskStableContext.Provider value={stableValue}>
+        {children}
+      </TaskStableContext.Provider>
+    </TaskHighChurnContext.Provider>
   )
 }
 
-export function useTaskContext() {
-  const ctx = useContext(TaskContext)
-  if (!ctx) throw new Error('useTaskContext must be used within TaskProvider')
+// Hooks live alongside the provider; the react-refresh rule prefers a
+// separate file but every consumer in the repo imports useTaskContext
+// from this module — splitting now would force a flag-day import update
+// across ~25 files for no functional benefit.
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useTaskData() {
+  const ctx = useContext(TaskHighChurnContext)
+  if (!ctx) throw new Error('useTaskData must be used within TaskProvider')
   return ctx
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useTaskActions() {
+  const ctx = useContext(TaskStableContext)
+  if (!ctx) throw new Error('useTaskActions must be used within TaskProvider')
+  return ctx
+}
+
+// Compat shim — preserves the legacy TaskContext surface so every existing
+// consumer keeps working without edits. New code should prefer useTaskData()
+// or useTaskActions() to subscribe to the narrower slice they actually need.
+// Phase 4 of the perf plan will (optionally) remove this shim once all
+// hot-path consumers are migrated.
+// eslint-disable-next-line react-refresh/only-export-components
+export function useTaskContext() {
+  const data = useTaskData()
+  const actions = useTaskActions()
+  return useMemo(() => ({ ...data, ...actions }), [data, actions])
 }
