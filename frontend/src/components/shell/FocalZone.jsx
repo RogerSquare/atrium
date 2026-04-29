@@ -7,11 +7,15 @@
 // mounts each switch; AnimatePresence mode="wait" ensures the previous one
 // finishes exiting before the new one enters.
 
+import { lazy, Suspense } from 'react'
 import Board from '../Board'
 import ListView from '../ListView'
 import ChangesView from '../ChangesView'
-import GraphView from '../GraphView'
 import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
+
+// Lazy-loaded — vis-network is ~700KB and only matters when the graph view
+// is the active view. Most users never open it on cold load.
+const GraphView = lazy(() => import('../GraphView'))
 
 export default function FocalZone({
   activeView,
@@ -89,12 +93,14 @@ export default function FocalZone({
               recentlyUpdatedIds={recentlyUpdatedIds}
             />
           ) : activeView === 'graph' ? (
-            <GraphView
-              tasks={tasks}
-              projects={projects}
-              onSelectTask={onSelectTask}
-              githubLinks={githubLinks}
-            />
+            <Suspense fallback={<div className="text-center py-12 italic animate-pulse" style={{ color: 'var(--text-muted)' }}>Loading graph view…</div>}>
+              <GraphView
+                tasks={tasks}
+                projects={projects}
+                onSelectTask={onSelectTask}
+                githubLinks={githubLinks}
+              />
+            </Suspense>
           ) : (
             <Board
               tasks={tasks}

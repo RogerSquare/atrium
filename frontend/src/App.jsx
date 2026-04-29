@@ -1,12 +1,10 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, lazy, Suspense } from 'react'
 import { LogOut, Search, MessageCircle, X, Eye, Plus, Columns3, List, GitCommitHorizontal, Menu, Copy, Check, HelpCircle } from 'lucide-react'
 import Board from './components/Board'
 import ListView from './components/ListView'
 import ChangesView from './components/ChangesView'
-import GraphView from './components/GraphView'
 import ViewSwitcher from './components/ViewSwitcher'
 import Sidebar from './components/Sidebar'
-import TaskModal from './components/TaskModal'
 import CreateTaskModal from './components/CreateTaskModal'
 import CreateProjectModal from './components/CreateProjectModal'
 import ArchivedProjectsModal from './components/ArchivedProjectsModal'
@@ -14,10 +12,8 @@ import Login from './components/Login'
 import Settings from './components/Settings'
 import ProjectDescription from './components/ProjectDescription'
 import ProjectProgress from './components/ProjectProgress'
-import ChatPanel from './components/ChatPanel'
 import ChatNotification from './components/ChatNotification'
 import PreviewPanel from './components/PreviewPanel'
-import DesignStudio from './components/DesignStudio'
 import HelpModal from './components/HelpModal'
 import UndoToast from './components/UndoToast'
 import ErrorToast from './components/ErrorToast'
@@ -28,7 +24,16 @@ import { faceliftShellEnabled } from './config/featureFlags'
 import useChat from './hooks/useChat'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { TaskProvider, useTaskContext } from './contexts/TaskContext'
-import { lazy, Suspense } from 'react'
+
+// Lazy-loaded heavy components — split out of the initial bundle. Each only
+// downloads when the user actually opens that view/modal, mirroring the
+// existing KitchenSink pattern below. Targets carry the bulk of the chunk
+// weight: GraphView pulls in vis-network (~700KB), DesignStudio is ~1857
+// LOC, TaskModal is ~957 LOC, ChatPanel pulls in socket plumbing.
+const GraphView = lazy(() => import('./components/GraphView'))
+const TaskModal = lazy(() => import('./components/TaskModal'))
+const ChatPanel = lazy(() => import('./components/ChatPanel'))
+const DesignStudio = lazy(() => import('./components/DesignStudio'))
 
 // Dev-only kitchen sink — tree-shaken in production
 const KitchenSink = import.meta.env.DEV ? lazy(() => import('./components/KitchenSink')) : null
@@ -358,7 +363,9 @@ function AppContent() {
           ) : activeView === 'changes' ? (
             <ChangesView tasks={filteredTasks} projects={projects} activeProject={activeProject} onSelectTask={selectTask} recentlyUpdatedIds={recentlyUpdatedIds} />
           ) : activeView === 'graph' ? (
-            <GraphView tasks={filteredTasks} projects={projects} onSelectTask={selectTask} githubLinks={githubLinks} />
+            <Suspense fallback={<div className="text-center text-app-text-muted py-12 italic animate-pulse">Loading graph view…</div>}>
+              <GraphView tasks={filteredTasks} projects={projects} onSelectTask={selectTask} githubLinks={githubLinks} />
+            </Suspense>
           ) : (
             <Board
               tasks={filteredTasks} onUpdateTask={undoRedo.updateTaskWithUndo} onSelectTask={selectTask}
@@ -375,7 +382,9 @@ function AppContent() {
 
         {/* Modals */}
         {selectedTask && (
-          <TaskModal task={selectedTask} projects={projects} currentUser={user} onClose={() => selectTask(null)} onUpdateTask={undoRedo.updateTaskWithUndo} onDeleteTask={handleDeleteTask} activeAgents={activeAgents} onStartAgent={handleStartAgent} onStopAgent={handleStopAgent} socket={socketRef.current} taskViewers={taskViewers[selectedTask?.id] || []} agentsEnabled={agentsEnabled} canRunAgents={user?.can_run_agents !== false} aiChatEnabled={aiChatEnabled} githubLinks={githubLinks} />
+          <Suspense fallback={null}>
+            <TaskModal task={selectedTask} projects={projects} currentUser={user} onClose={() => selectTask(null)} onUpdateTask={undoRedo.updateTaskWithUndo} onDeleteTask={handleDeleteTask} activeAgents={activeAgents} onStartAgent={handleStartAgent} onStopAgent={handleStopAgent} socket={socketRef.current} taskViewers={taskViewers[selectedTask?.id] || []} agentsEnabled={agentsEnabled} canRunAgents={user?.can_run_agents !== false} aiChatEnabled={aiChatEnabled} githubLinks={githubLinks} />
+          </Suspense>
         )}
         {showCreateTaskModal && <CreateTaskModal projects={projects} activeProject={activeProject} onClose={() => setShowCreateTaskModal(false)} onCreateTask={handleCreateTask} />}
         {showCreateProjectModal && <CreateProjectModal onClose={() => setShowCreateProjectModal(false)} onCreateProject={handleCreateProject} />}
@@ -391,8 +400,16 @@ function AppContent() {
         {showSettings && <Settings theme={theme} onSetTheme={setTheme} onClose={() => setShowSettings(false)} currentUser={user} onUserUpdate={updateUser} onOpenPreview={() => { fetchPreviewServices(); setShowPreview(true) }} />}
         {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
         {showPreview && <PreviewPanel services={previewServices} onClose={() => setShowPreview(false)} socket={socketRef.current} activeProject={activeProject} />}
-        {showDesignStudio && <DesignStudio services={previewServices} onClose={() => setShowDesignStudio(false)} activeProject={activeProject} user={user} socket={socketRef.current} />}
-        {showChat && <ChatPanel user={user} socket={socketRef.current} messages={chatMessages} onlineUsers={chatOnlineUsers} typingUsers={chatTypingUsers} minimized={chatMinimized} onMinimize={setChatMinimized} soundEnabled={chatSoundEnabled} onToggleSound={() => setChatSoundEnabled(prev => !prev)} onClose={() => setShowChat(false)} onUnreadChange={setChatUnread} aiChatEnabled={aiChatEnabled} />}
+        {showDesignStudio && (
+          <Suspense fallback={null}>
+            <DesignStudio services={previewServices} onClose={() => setShowDesignStudio(false)} activeProject={activeProject} user={user} socket={socketRef.current} />
+          </Suspense>
+        )}
+        {showChat && (
+          <Suspense fallback={null}>
+            <ChatPanel user={user} socket={socketRef.current} messages={chatMessages} onlineUsers={chatOnlineUsers} typingUsers={chatTypingUsers} minimized={chatMinimized} onMinimize={setChatMinimized} soundEnabled={chatSoundEnabled} onToggleSound={() => setChatSoundEnabled(prev => !prev)} onClose={() => setShowChat(false)} onUnreadChange={setChatUnread} aiChatEnabled={aiChatEnabled} />
+          </Suspense>
+        )}
 
         {/* Dev kitchen sink (Ctrl+Shift+K) */}
         {KitchenSink && showKitchenSink && (
