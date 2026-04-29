@@ -128,6 +128,12 @@ function seededOffset(taskId) {
  *  Utilities
  * ------------------------------------------------------------------ */
 
+// --- Position persistence ----------------------------------------------
+// Saved node positions survive reload and view switch. Same task IDs and
+// __hub:<name> share the namespace; safe because hub IDs always start with
+// the reserved prefix.
+const POSITIONS_STORAGE_KEY = 'atrium-graph-positions-v1'
+
 // --- Filter persistence -------------------------------------------------
 // Filters survive reload and view switch. v1 prefix lets us version-bump
 // the storage shape if it ever changes.
@@ -157,6 +163,13 @@ function saveJson(key, value) {
   } catch {
     // quota / disabled — fail silent, in-memory state still works for the session
   }
+}
+
+function loadPositions() {
+  return loadJsonObject(POSITIONS_STORAGE_KEY) || {}
+}
+function persistPositions(positions) {
+  saveJson(POSITIONS_STORAGE_KEY, positions)
 }
 // Sanitize on load so a malformed/old/forward-versioned payload can't put
 // the UI in a broken state — drop unknown values per field, fall back to
@@ -245,6 +258,18 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
   const hubVelocitiesRef = useRef({})     // hubId -> {vx, vy}
   const draggedRef = useRef(new Set())
 
+  // --- Saved node positions (persistence) --------------------------------
+  // Stored as { taskId | hubId: {x, y} }. Lazy-loaded once via useState's
+  // initializer so we don't re-read localStorage on every render. The ref
+  // points to the same mutable object — dragEnd, the rAF tick, and the
+  // build-effect cleanup all mutate it in place; the persist effect then
+  // pushes that to localStorage.
+  const [initialPositions] = useState(loadPositions)
+  const positionsRef = useRef(initialPositions)
+  // Bumping this triggers a graphData rebuild without changing any other
+  // dependency — used by the "Reset positions" button.
+  const [resetVersion, setResetVersion] = useState(0)
+
   // --- Filter pipeline ----------------------------------------------------
   const visibleTasks = useMemo(() => {
     const scope = TIME_SCOPES.find(s => s.value === timeScope)
@@ -317,6 +342,10 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
     // Build task nodes
     const visibleIds = new Set(visibleTasks.map(t => t.id))
     const projectByName = new Map(projList.map(p => [p.name, p]))
+    // positionsRef is mutated only by event handlers (dragEnd / rAF tick / cleanup)
+    // and the resetPositions callback — never during render. Reading here is stable.
+    // resetVersion in the deps below ensures we re-run after a reset.
+    const savedPositions = positionsRef.current || {}
     const taskNodes = visibleTasks.map(t => {
       const proj = projectByName.get(t.project || 'Root')
       const off = seededOffset(t.id || '')
@@ -325,13 +354,20 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
       const fill = colorForTask(t.id, categoryHex)
       const border = STATUS_BORDER_COLOR[t.status] || '#3a4150'
       const size = t.priority === 'high' ? 14 : t.priority === 'medium' ? 10 : 7
+      const saved = savedPositions[t.id]
+      const seedX = proj ? proj.hubX + Math.cos(offA) * offR : 0
+      const seedY = proj ? proj.hubY + Math.sin(offA) * offR : 0
       return {
         id: t.id,
         label: t.id || '',
         size,
         shape: 'dot',
-        x: proj ? proj.hubX + Math.cos(offA) * offR : 0,
-        y: proj ? proj.hubY + Math.sin(offA) * offR : 0,
+        // Saved position is the *starting* coordinate, not a pin — physics
+        // stays on so spring + Brownian forces continue acting. Three save
+        // paths (dragEnd, rAF tick, cleanup) keep the seed close to where
+        // the layout was last seen.
+        x: saved ? saved.x : seedX,
+        y: saved ? saved.y : seedY,
         color: { background: fill, border, highlight: { background: fill, border: '#ffffff' } },
         // Thin border lets the category fill dominate; at the smallest dot size (7px)
         // a 2px ring used to make all-done filters look monochrome.
@@ -352,13 +388,16 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
     })
 
     // Build hub nodes (one per project with visible tasks)
-    const hubNodes = projList.map(proj => ({
-      id: `__hub:${proj.name}`,
+    const hubNodes = projList.map(proj => {
+      const hubId = `__hub:${proj.name}`
+      const savedHub = savedPositions[hubId]
+      return {
+      id: hubId,
       label: showHubs ? `${proj.displayName} · ${proj.taskCount}` : '',
       shape: 'hexagon',
       size: showHubs ? 22 : 1,
-      x: proj.hubX,
-      y: proj.hubY,
+      x: savedHub ? savedHub.x : proj.hubX,
+      y: savedHub ? savedHub.y : proj.hubY,
       mass: 100,
       physics: false,  // anchor — hub-task springs only pull tasks
       color: {
@@ -369,7 +408,8 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
       borderWidth: showHubs ? 1.5 : 0,
       font: { color: '#ffffff', size: 14, face: 'system-ui, sans-serif', strokeColor: '#0e0f12', strokeWidth: 3, bold: true },
       _isHub: true,
-    }))
+      }
+    })
 
     // Edges
     const edges = []
@@ -432,7 +472,10 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
       edges,
       projects: projList,
     }
-  }, [visibleTasks, projects, showHubs])
+    // resetVersion is in deps so "Reset positions" forces this useMemo to
+    // re-run with the now-empty positionsRef → nodes get seeded coords again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleTasks, projects, showHubs, resetVersion])
 
   // --- Init / refresh network on data change ------------------------------
   useEffect(() => {
@@ -506,7 +549,22 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
 
     draggedRef.current.clear()
     net.on('dragStart', p => (p.nodes || []).forEach(id => draggedRef.current.add(id)))
-    net.on('dragEnd', p => (p.nodes || []).forEach(id => draggedRef.current.delete(id)))
+    net.on('dragEnd', p => {
+      const ids = p.nodes || []
+      let touched = false
+      for (const id of ids) {
+        draggedRef.current.delete(id)
+        const n = net.body.nodes[id]
+        if (n && typeof n.x === 'number' && typeof n.y === 'number') {
+          positionsRef.current[id] = { x: n.x, y: n.y }
+          touched = true
+        }
+      }
+      // Immediate save on release so a hard reload right after a drag
+      // doesn't lose the user's intent. The rAF tick keeps positions
+      // fresh during continuous physics motion.
+      if (touched) persistPositions(positionsRef.current)
+    })
 
     net.on('click', p => {
       if (!p.nodes || p.nodes.length === 0) return
@@ -520,6 +578,20 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
     for (const h of graphData.hubs) hubVelocitiesRef.current[h.id] = { vx: 0, vy: 0 }
 
     return () => {
+      // Snapshot final positions before tearing down — covers the gap
+      // between the last rAF save and the unmount (e.g. user drags then
+      // immediately switches views).
+      const finalNet = networkRef.current
+      const finalDs = datasetRef.current
+      if (finalNet && finalDs && finalDs.nodes && finalNet.body && finalNet.body.nodes) {
+        finalDs.nodes.forEach(node => {
+          const bn = finalNet.body.nodes[node.id]
+          if (bn && typeof bn.x === 'number' && typeof bn.y === 'number') {
+            positionsRef.current[node.id] = { x: bn.x, y: bn.y }
+          }
+        })
+        persistPositions(positionsRef.current)
+      }
       if (networkRef.current) {
         networkRef.current.destroy()
         networkRef.current = null
@@ -575,6 +647,11 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
     // Magnitude of per-frame random impulse on tasks. Small enough that
     // each impulse is sub-pixel; the cumulative effect is gentle drift.
     const BROWNIAN = 0.08
+    // How often to snapshot positions to localStorage. Physics is always
+    // on, so without periodic saves a view switch would lose all the drift
+    // that happened since the user's last drag.
+    const POSITION_SAVE_INTERVAL_MS = 2000
+    let lastSaveTime = performance.now()
 
     const tick = () => {
       const net = networkRef.current
@@ -638,6 +715,25 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
             n.vy += (Math.random() - 0.5) * BROWNIAN
           }
         }
+
+        // Periodic position snapshot. Physics is always running, so we
+        // capture the current state every ~2s. On view-switch / reload,
+        // the next mount loads the most recent snapshot and the layout
+        // resumes near where the user left it.
+        const now = performance.now()
+        if (now - lastSaveTime > POSITION_SAVE_INTERVAL_MS) {
+          lastSaveTime = now
+          const ds = datasetRef.current
+          if (ds && ds.nodes) {
+            ds.nodes.forEach(node => {
+              const bn = bodyNodes[node.id]
+              if (bn && typeof bn.x === 'number' && typeof bn.y === 'number') {
+                positionsRef.current[node.id] = { x: bn.x, y: bn.y }
+              }
+            })
+            persistPositions(positionsRef.current)
+          }
+        }
       }
       raf = requestAnimationFrame(tick)
     }
@@ -662,6 +758,17 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
     setFilterStatuses(DEFAULT_STATUSES)
     setTimeScope('all')
     setFilterCategories(DEFAULT_CATEGORIES)
+  }, [])
+  const resetPositions = useCallback(() => {
+    // Wipe stored positions in memory + on disk, drop hub-physics velocities
+    // so the layout starts from rest, then bump resetVersion to force the
+    // graphData useMemo + build effect to re-run with seeded coordinates.
+    positionsRef.current = {}
+    hubVelocitiesRef.current = {}
+    if (typeof window !== 'undefined') {
+      try { window.localStorage.removeItem(POSITIONS_STORAGE_KEY) } catch { /* ignore */ }
+    }
+    setResetVersion(v => v + 1)
   }, [])
 
   // --- Render -------------------------------------------------------------
@@ -774,27 +881,49 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
         </FilterSection>
 
         {/* Reset */}
-        <button
-          onClick={resetFilters}
-          className="apple-press"
-          style={{
-            marginTop: 'var(--space-2)',
-            width: '100%',
-            padding: '6px 10px',
-            borderRadius: 'var(--radius-sm)',
-            border: 'var(--border-hairline)',
-            background: 'transparent',
-            color: 'var(--text-muted)',
-            fontSize: 'var(--text-caption2)',
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 6,
-          }}
-        >
-          <X className="w-3 h-3" /> Reset filters
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', marginTop: 'var(--space-2)' }}>
+          <button
+            onClick={resetFilters}
+            className="apple-press"
+            style={{
+              width: '100%',
+              padding: '6px 10px',
+              borderRadius: 'var(--radius-sm)',
+              border: 'var(--border-hairline)',
+              background: 'transparent',
+              color: 'var(--text-muted)',
+              fontSize: 'var(--text-caption2)',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+            }}
+          >
+            <X className="w-3 h-3" /> Reset filters
+          </button>
+          <button
+            onClick={resetPositions}
+            className="apple-press"
+            title="Clear saved node positions and rebuild the layout from defaults."
+            style={{
+              width: '100%',
+              padding: '6px 10px',
+              borderRadius: 'var(--radius-sm)',
+              border: 'var(--border-hairline)',
+              background: 'transparent',
+              color: 'var(--text-muted)',
+              fontSize: 'var(--text-caption2)',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+            }}
+          >
+            <X className="w-3 h-3" /> Reset positions
+          </button>
+        </div>
 
         {/* Counts */}
         <div
