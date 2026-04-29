@@ -672,6 +672,13 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     // on, so without periodic saves a view switch would lose all the drift
     // that happened since the user's last drag.
     const POSITION_SAVE_INTERVAL_MS = 2000
+    // Epsilon guard: skip the localStorage write when no node has moved by
+    // more than this many pixels since the last save. The Brownian motion
+    // integrates to roughly ±1px over 2s at the current impulse magnitude,
+    // so most ticks at rest fall under 0.5 — eliminates the JSON.stringify
+    // + setItem cost when the network is in equilibrium without losing
+    // visible precision (positions are visually identical within 0.5px).
+    const POSITION_EPSILON_PX = 0.5
     let lastSaveTime = performance.now()
 
     const tick = () => {
@@ -746,13 +753,27 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
           lastSaveTime = now
           const ds = datasetRef.current
           if (ds && ds.nodes) {
+            // Walk every node, update positionsRef in-memory, and track
+            // whether any node has drifted past the epsilon threshold.
+            // Persist only when at least one node is dirty — keeps the
+            // in-memory map fresh for view-switches without paying the
+            // localStorage write cost when the network is at rest.
+            let dirty = false
             ds.nodes.forEach(node => {
               const bn = bodyNodes[node.id]
               if (bn && typeof bn.x === 'number' && typeof bn.y === 'number') {
-                positionsRef.current[node.id] = { x: bn.x, y: bn.y }
+                const prev = positionsRef.current[node.id]
+                if (
+                  !prev
+                  || Math.abs(bn.x - prev.x) > POSITION_EPSILON_PX
+                  || Math.abs(bn.y - prev.y) > POSITION_EPSILON_PX
+                ) {
+                  positionsRef.current[node.id] = { x: bn.x, y: bn.y }
+                  dirty = true
+                }
               }
             })
-            persistPositions(positionsRef.current)
+            if (dirty) persistPositions(positionsRef.current)
           }
         }
       }
