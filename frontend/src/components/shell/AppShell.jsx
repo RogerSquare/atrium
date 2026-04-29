@@ -11,7 +11,7 @@
 // Settings + Help modals mount here so the avatar popover can open them.
 // TaskModal stays as opt-in focus mode via Cmd+Shift+Enter.
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { Eye } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTaskContext } from '../../contexts/TaskContext'
@@ -22,7 +22,9 @@ import FocalZone from './FocalZone'
 import DetailPane from './DetailPane'
 import CommandPalette from './CommandPalette'
 import { AnimatePresence } from '../../lib/motion'
-import TaskModal from '../TaskModal'
+
+// Lazy-loaded — only downloaded when the user opens a task in focus mode.
+const TaskModal = lazy(() => import('../TaskModal'))
 import Settings from '../Settings'
 import HelpModal from '../HelpModal'
 import CreateProjectModal from '../CreateProjectModal'
@@ -328,23 +330,25 @@ export default function AppShell() {
 
       {/* Focus modal — opt-in via Cmd+Shift+Enter */}
       {focusModal && selectedTask && (
-        <TaskModal
-          task={selectedTask}
-          projects={projects}
-          currentUser={user}
-          onClose={() => { setFocusModal(false); selectTask(null) }}
-          onUpdateTask={undoRedo.updateTaskWithUndo}
-          onDeleteTask={handleDeleteTask}
-          activeAgents={activeAgents}
-          onStartAgent={handleStartAgent}
-          onStopAgent={handleStopAgent}
-          socket={socketRef?.current}
-          taskViewers={taskViewers[selectedTask?.id] || []}
-          agentsEnabled={agentsEnabled}
-          canRunAgents={user?.can_run_agents !== false}
-          aiChatEnabled={aiChatEnabled}
-          githubLinks={githubLinks}
-        />
+        <Suspense fallback={null}>
+          <TaskModal
+            task={selectedTask}
+            projects={projects}
+            currentUser={user}
+            onClose={() => { setFocusModal(false); selectTask(null) }}
+            onUpdateTask={undoRedo.updateTaskWithUndo}
+            onDeleteTask={handleDeleteTask}
+            activeAgents={activeAgents}
+            onStartAgent={handleStartAgent}
+            onStopAgent={handleStopAgent}
+            socket={socketRef?.current}
+            taskViewers={taskViewers[selectedTask?.id] || []}
+            agentsEnabled={agentsEnabled}
+            canRunAgents={user?.can_run_agents !== false}
+            aiChatEnabled={aiChatEnabled}
+            githubLinks={githubLinks}
+          />
+        </Suspense>
       )}
 
       {/* Settings / Help / Create Project / Archived — mounted at shell level */}
