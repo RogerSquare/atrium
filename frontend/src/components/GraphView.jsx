@@ -21,6 +21,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Network } from 'vis-network'
 import { DataSet } from 'vis-data'
 import { Calendar, Filter, GitBranch, Locate, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { diffGraphData, applyDiff } from './graphViewIncremental'
 
 /* ------------------------------------------------------------------ *
  *  Constants
@@ -269,6 +270,25 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
   const hubListRef = useRef([])           // [{id, hubX, hubY}]
   const hubVelocitiesRef = useRef({})     // hubId -> {vx, vy}
   const draggedRef = useRef(new Set())
+  // Previous graphData snapshot — kept so the sync effect can diff
+  // membership instead of destroying and recreating the network on every
+  // filter chip toggle. See the sync effect below.
+  const prevGraphDataRef = useRef(null)
+  // Stash onSelectTask in a ref so prop-identity changes from the parent
+  // don't invalidate the build effect (and trigger a network rebuild)
+  // — the click handler reads through the ref so the latest callback is
+  // always used.
+  const onSelectTaskRef = useRef(onSelectTask)
+  useEffect(() => { onSelectTaskRef.current = onSelectTask }, [onSelectTask])
+  // Tracked across Effect B runs to detect filter-only toggles. When
+  // `tasks` reference is stable across two syncs, the parent didn't
+  // push a fresh task list (no upstream status / priority / assignee
+  // change) — so common nodes can't have attribute drift, and the
+  // `updateNodes` portion of the diff is wasted vis-data work. Setting
+  // this ref to null in the build effect's cleanup forces the next
+  // sync to perform the upsert (defensive — keeps reset/remount
+  // clean).
+  const prevSyncedTasksRef = useRef(null)
 
   // --- Saved node positions (persistence) --------------------------------
   // Stored as { taskId | hubId: {x, y} }. Lazy-loaded once via useState's
@@ -498,7 +518,15 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleTasks, projects, showHubs, resetVersion])
 
-  // --- Init / refresh network on data change ------------------------------
+  // --- Init / refresh network --------------------------------------------
+  // Builds the vis-network instance ONCE on mount, and again only when the
+  // user clicks "Reset positions" (which bumps `resetVersion`). Filter chip
+  // toggles change `graphData` but do NOT enter this effect — the sync
+  // effect below applies an incremental DataSet diff so the network, its
+  // physics state, and the camera all survive across filters. This is the
+  // primary win for opt-graph-perf-001: at high N, destroying + recreating
+  // the network on every chip click was the dominant cost and the visible
+  // "reset jolt".
   useEffect(() => {
     if (!containerRef.current) return
 
@@ -515,6 +543,14 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     }
     datasetRef.current = data
     hubListRef.current = graphData.hubs.map(h => ({ id: h.id, hubX: h.x, hubY: h.y }))
+
+    // When at least one node has a saved position, the layout is already at
+    // (or near) equilibrium — running the 200-iteration stabilization pass +
+    // auto-fit just re-flings settled nodes and reads as a "reset jolt". Skip
+    // it; physics resumes immediately and the seeded coordinates stay where
+    // the user left them. Fresh-user case (empty positionsRef) still runs the
+    // full stabilization so the auto-layout settles before the user sees it.
+    const hasSeededPositions = Object.keys(positionsRef.current || {}).length > 0
 
     const options = {
       nodes: {
@@ -551,7 +587,9 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
         // engine never reaches its "stable" condition, so motion is continuous.
         minVelocity: 0.01,
         timestep: 0.35,
-        stabilization: { enabled: true, iterations: 200, fit: true },
+        stabilization: hasSeededPositions
+          ? { enabled: false }
+          : { enabled: true, iterations: 200, fit: true },
       },
       interaction: {
         hover: true,
@@ -591,12 +629,24 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
       if (!p.nodes || p.nodes.length === 0) return
       const id = p.nodes[0]
       const node = data.nodes.get(id)
-      if (node && node._task && onSelectTask) onSelectTask(node._task)
+      // Read the latest onSelectTask through a ref so a new prop identity
+      // from the parent doesn't force a network rebuild.
+      const cb = onSelectTaskRef.current
+      if (node && node._task && cb) cb(node._task)
     })
 
     // Reset hub velocities for new graph
     hubVelocitiesRef.current = {}
     for (const h of graphData.hubs) hubVelocitiesRef.current[h.id] = { vx: 0, vy: 0 }
+
+    // Stash the current snapshot so the sync effect's first run is a no-op
+    // (Effect B re-runs when graphData changes; on the same render that
+    // built the network, prev === next → empty diff). Also seed the
+    // tasks identity ref so the upsert fast-path treats the first sync
+    // as "filter-only" and skips a redundant updateNodes pass over the
+    // freshly-built DataSet.
+    prevGraphDataRef.current = { nodes: graphData.nodes, edges: edgesWithLength }
+    prevSyncedTasksRef.current = tasks
 
     return () => {
       // Snapshot final positions before tearing down — covers the gap
@@ -617,8 +667,69 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
         networkRef.current.destroy()
         networkRef.current = null
       }
+      datasetRef.current = null
+      prevGraphDataRef.current = null
+      prevSyncedTasksRef.current = null
     }
-  }, [graphData, onSelectTask])
+    // graphData is read inside the effect but is intentionally NOT a
+    // dependency — Effect B handles graphData changes incrementally so
+    // we don't trigger a full rebuild on filter toggles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetVersion])
+
+  // --- Incremental graphData sync ----------------------------------------
+  // Filter chip toggles produce a new graphData. Diff it against the
+  // previous snapshot and drive vis-data DataSet add/remove on the live
+  // instance instead of tearing down the network. Hub set, hub velocity
+  // map, and the rAF-loop's hub list are reconciled in lock-step. On the
+  // run that immediately follows a full rebuild (initial mount or reset),
+  // prevGraphDataRef matches graphData and the diff is empty.
+  useEffect(() => {
+    const ds = datasetRef.current
+    const net = networkRef.current
+    if (!ds || !net) return
+
+    const sl = springLengthRef.current
+    const edgesWithLength = graphData.edges.map(e =>
+      typeof e._factor === 'number' ? { ...e, length: sl * e._factor } : e
+    )
+
+    const diff = diffGraphData(prevGraphDataRef.current, {
+      nodes: graphData.nodes,
+      edges: edgesWithLength,
+    })
+    // Filter-toggle fast path: when `tasks` identity is unchanged since
+    // the previous sync, common nodes can't have any attribute drift
+    // (status/priority/etc. all read off task fields that didn't change),
+    // so the upsert pass would just trigger redundant vis-network
+    // redraws. Skip it; add/remove still apply. Upstream task changes
+    // (polling result, mutation) flip `tasks` identity → upsert runs.
+    const tasksUnchanged = prevSyncedTasksRef.current === tasks
+    prevSyncedTasksRef.current = tasks
+    const effectiveDiff = tasksUnchanged
+      ? { ...diff, updateNodes: [] }
+      : diff
+    applyDiff(ds.nodes, ds.edges, effectiveDiff)
+
+    // Reconcile hub list + per-hub velocity map. Hubs that disappeared
+    // (project lost its last visible task) lose their velocity entry;
+    // newly-visible hubs get a zero entry so the rAF loop integrates
+    // them from rest instead of inheriting stale state.
+    hubListRef.current = graphData.hubs.map(h => ({ id: h.id, hubX: h.x, hubY: h.y }))
+    const liveHubIds = new Set(graphData.hubs.map(h => h.id))
+    for (const id of Object.keys(hubVelocitiesRef.current)) {
+      if (!liveHubIds.has(id)) delete hubVelocitiesRef.current[id]
+    }
+    for (const h of graphData.hubs) {
+      if (!hubVelocitiesRef.current[h.id]) hubVelocitiesRef.current[h.id] = { vx: 0, vy: 0 }
+    }
+
+    prevGraphDataRef.current = { nodes: graphData.nodes, edges: edgesWithLength }
+    // `tasks` is included so the linter sees the dep used by the
+    // identity check above. In practice graphData re-derives whenever
+    // tasks changes (transitive dep through visibleTasks), so it's
+    // never an extra trigger — just an explicit one.
+  }, [graphData, tasks])
 
   // --- Live spring-length updates ----------------------------------------
   // Avoid rebuilding the network on every slider tick: walk the existing
@@ -672,6 +783,14 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     // on, so without periodic saves a view switch would lose all the drift
     // that happened since the user's last drag.
     const POSITION_SAVE_INTERVAL_MS = 2000
+    // At high node counts (>1000), bump the snapshot cadence to 5s. The
+    // 2s default was tuned for ~100 nodes; at 2000 nodes the JSON.stringify
+    // + setItem alone is multiple ms per save and dominates frames the user
+    // would otherwise spend dragging. Even at 5s the rAF tick still updates
+    // positionsRef every save-pass, and dragEnd persists immediately, so
+    // intent-bearing moves are never lost.
+    const POSITION_SAVE_INTERVAL_HIGH_N_MS = 5000
+    const HIGH_N_THRESHOLD = 1000
     // Epsilon guard: skip the localStorage write when no node has moved by
     // more than this many pixels since the last save. The Brownian motion
     // integrates to roughly ±1px over 2s at the current impulse magnitude,
@@ -680,6 +799,13 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     // visible precision (positions are visually identical within 0.5px).
     const POSITION_EPSILON_PX = 0.5
     let lastSaveTime = performance.now()
+    // Frame parity counter — used to skip Brownian impulses on alternate
+    // frames when the simulated node count is past HIGH_N_THRESHOLD. The
+    // cumulative drift integrates over many frames so halving the impulse
+    // rate is visually indistinguishable, but cuts the per-frame O(N) write
+    // pass in half — meaningful at N=2000 where this loop dominates the
+    // frame budget.
+    let frameCount = 0
 
     const tick = () => {
       const net = networkRef.current
@@ -731,8 +857,13 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
         // isn't fighting against random noise.
         const phys = net.physics && net.physics.physicsBody
         const indices = phys && phys.physicsNodeIndices
-        if (indices) {
-          for (let i = 0; i < indices.length; i++) {
+        const nodeCount = indices ? indices.length : 0
+        // At high N, skip Brownian on every other frame. The damping
+        // system integrates impulses over many frames, so halving the
+        // cadence is visually identical but cuts per-frame O(N) cost.
+        const skipBrownian = nodeCount > HIGH_N_THRESHOLD && (frameCount & 1) === 1
+        if (indices && !skipBrownian) {
+          for (let i = 0; i < nodeCount; i++) {
             const id = indices[i]
             if (draggedRef.current.has(id)) continue
             const n = bodyNodes[id]
@@ -745,11 +876,14 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
         }
 
         // Periodic position snapshot. Physics is always running, so we
-        // capture the current state every ~2s. On view-switch / reload,
-        // the next mount loads the most recent snapshot and the layout
-        // resumes near where the user left it.
+        // capture the current state every ~2s (or ~5s at high N). On
+        // view-switch / reload, the next mount loads the most recent
+        // snapshot and the layout resumes near where the user left it.
         const now = performance.now()
-        if (now - lastSaveTime > POSITION_SAVE_INTERVAL_MS) {
+        const saveInterval = nodeCount > HIGH_N_THRESHOLD
+          ? POSITION_SAVE_INTERVAL_HIGH_N_MS
+          : POSITION_SAVE_INTERVAL_MS
+        if (now - lastSaveTime > saveInterval) {
           lastSaveTime = now
           const ds = datasetRef.current
           if (ds && ds.nodes) {
@@ -777,6 +911,7 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
           }
         }
       }
+      frameCount++
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
