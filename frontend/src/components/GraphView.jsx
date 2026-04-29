@@ -20,7 +20,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Network } from 'vis-network'
 import { DataSet } from 'vis-data'
-import { Calendar, Filter, Locate, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { Calendar, Filter, GitBranch, Locate, X, ZoomIn, ZoomOut } from 'lucide-react'
 
 /* ------------------------------------------------------------------ *
  *  Constants
@@ -142,8 +142,10 @@ const VALID_STATUSES = new Set(['draft', 'todo', 'in_progress', 'waiting_input',
 const VALID_TIME_SCOPES = new Set(['all', '1d', '3d', '1w', '3w', '1m'])
 const OTHER_CATEGORY_KEY = '__other__'
 const VALID_CATEGORIES = new Set([...CATEGORY_LABELS, OTHER_CATEGORY_KEY])
+const VALID_BRANCH_FILTERS = new Set(['has', 'none'])
 const DEFAULT_STATUSES = ['draft', 'todo', 'in_progress', 'waiting_input', 'review']
 const DEFAULT_CATEGORIES = [...CATEGORY_LABELS, OTHER_CATEGORY_KEY]
+const DEFAULT_BRANCH_FILTER = ['has', 'none']  // both = no-op
 
 function loadJsonObject(key) {
   if (typeof window === 'undefined') return null
@@ -176,7 +178,12 @@ function persistPositions(positions) {
 // defaults if a field's filtered list is empty.
 function loadInitialFilters() {
   const raw = loadJsonObject(FILTERS_STORAGE_KEY)
-  if (!raw) return { filterStatuses: DEFAULT_STATUSES, timeScope: 'all', filterCategories: DEFAULT_CATEGORIES }
+  if (!raw) return {
+    filterStatuses: DEFAULT_STATUSES,
+    timeScope: 'all',
+    filterCategories: DEFAULT_CATEGORIES,
+    filterBranch: DEFAULT_BRANCH_FILTER,
+  }
   const filterStatuses = Array.isArray(raw.filterStatuses)
     ? raw.filterStatuses.filter(s => VALID_STATUSES.has(s))
     : DEFAULT_STATUSES
@@ -184,10 +191,14 @@ function loadInitialFilters() {
   const filterCategories = Array.isArray(raw.filterCategories)
     ? raw.filterCategories.filter(c => VALID_CATEGORIES.has(c))
     : DEFAULT_CATEGORIES
+  const filterBranch = Array.isArray(raw.filterBranch)
+    ? raw.filterBranch.filter(b => VALID_BRANCH_FILTERS.has(b))
+    : DEFAULT_BRANCH_FILTER
   return {
     filterStatuses: filterStatuses.length > 0 ? filterStatuses : DEFAULT_STATUSES,
     timeScope,
     filterCategories: filterCategories.length > 0 ? filterCategories : DEFAULT_CATEGORIES,
+    filterBranch: filterBranch.length > 0 ? filterBranch : DEFAULT_BRANCH_FILTER,
   }
 }
 
@@ -213,7 +224,7 @@ function lastActivityTimestamp(task) {
  *  Component
  * ------------------------------------------------------------------ */
 
-export default function GraphView({ tasks, projects, onSelectTask }) {
+export default function GraphView({ tasks, projects, onSelectTask, githubLinks }) {
   // --- Local filter state -------------------------------------------------
   // Initial values come from localStorage (sanitized in loadInitialFilters).
   // Defaults for first-time users: all statuses except `done`, all-time scope,
@@ -221,12 +232,13 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
   const [filterStatuses, setFilterStatuses] = useState(() => loadInitialFilters().filterStatuses)
   const [timeScope, setTimeScope] = useState(() => loadInitialFilters().timeScope)
   const [filterCategories, setFilterCategories] = useState(() => loadInitialFilters().filterCategories)
+  const [filterBranch, setFilterBranch] = useState(() => loadInitialFilters().filterBranch)
 
   // Persist filters whenever they change. Cheap debounceless write — toggling
   // a chip just writes a small JSON blob; no perf concern at this size.
   useEffect(() => {
-    saveJson(FILTERS_STORAGE_KEY, { filterStatuses, timeScope, filterCategories })
-  }, [filterStatuses, timeScope, filterCategories])
+    saveJson(FILTERS_STORAGE_KEY, { filterStatuses, timeScope, filterCategories, filterBranch })
+  }, [filterStatuses, timeScope, filterCategories, filterBranch])
 
   // Category chip set — always show the seven standard prefixes; conditionally
   // include `other` when at least one task in the dataset has a non-standard
@@ -276,9 +288,12 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
     const cutoff = scope && scope.days != null ? nowMs() - scope.days * 86400000 : null
     const statusSet = new Set(filterStatuses)
     const categorySet = new Set(filterCategories)
+    const branchSet = new Set(filterBranch)
     // Only enforce the category axis when the user has narrowed it — every
     // chip selected is the no-op default and shouldn't run a per-task check.
     const categoryFiltered = categorySet.size > 0 && categorySet.size < (CATEGORY_LABELS.length + 1)
+    // Same logic for branch — both chips selected = no-op.
+    const branchFiltered = branchSet.size > 0 && branchSet.size < 2
 
     return tasks.filter(t => {
       if (statusSet.size > 0 && !statusSet.has(t.status)) return false
@@ -289,9 +304,15 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
         const cat = categoryOf(t.id) || OTHER_CATEGORY_KEY
         if (!categorySet.has(cat)) return false
       }
+      if (branchFiltered) {
+        const link = githubLinks && githubLinks[t.id]
+        const hasBranch = !!(link && (link.branch || link.pr_url))
+        const key = hasBranch ? 'has' : 'none'
+        if (!branchSet.has(key)) return false
+      }
       return true
     })
-  }, [tasks, filterStatuses, timeScope, filterCategories])
+  }, [tasks, filterStatuses, timeScope, filterCategories, filterBranch, githubLinks])
 
   // --- Build vis-network nodes/edges --------------------------------------
   const graphData = useMemo(() => {
@@ -752,12 +773,18 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
       prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
     )
   }, [])
+  const toggleBranch = useCallback((kind) => {
+    setFilterBranch(prev =>
+      prev.includes(kind) ? prev.filter(k => k !== kind) : [...prev, kind]
+    )
+  }, [])
   const resetFilters = useCallback(() => {
     // The persistence effect re-saves the defaults, so storage matches the
     // visible state. No need to delete the storage key.
     setFilterStatuses(DEFAULT_STATUSES)
     setTimeScope('all')
     setFilterCategories(DEFAULT_CATEGORIES)
+    setFilterBranch(DEFAULT_BRANCH_FILTER)
   }, [])
   const resetPositions = useCallback(() => {
     // Wipe stored positions in memory + on disk, drop hub-physics velocities
@@ -896,6 +923,37 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
                   }}
                 >
                   {status.replace('_', ' ')}
+                </button>
+              )
+            })}
+          </div>
+        </FilterSection>
+
+        {/* Branch */}
+        <FilterSection icon={GitBranch} title="Branch">
+          <div className="flex flex-wrap" style={{ gap: 'var(--space-1)' }}>
+            {[
+              { key: 'has', label: 'has branch' },
+              { key: 'none', label: 'no branch' },
+            ].map(({ key, label }) => {
+              const active = filterBranch.includes(key)
+              return (
+                <button
+                  key={key}
+                  onClick={() => toggleBranch(key)}
+                  className="apple-press"
+                  style={{
+                    padding: '3px 8px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: `1px solid ${active ? 'var(--accent-app)' : 'var(--separator)'}`,
+                    background: active ? 'color-mix(in srgb, var(--accent-app) 18%, transparent)' : 'transparent',
+                    color: active ? 'var(--text-app)' : 'var(--text-muted)',
+                    fontSize: 'var(--text-caption2)',
+                    fontWeight: 'var(--font-medium)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {label}
                 </button>
               )
             })}

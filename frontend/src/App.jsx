@@ -358,7 +358,7 @@ function AppContent() {
           ) : activeView === 'changes' ? (
             <ChangesView tasks={filteredTasks} projects={projects} activeProject={activeProject} onSelectTask={selectTask} recentlyUpdatedIds={recentlyUpdatedIds} />
           ) : activeView === 'graph' ? (
-            <GraphView tasks={filteredTasks} projects={projects} onSelectTask={selectTask} />
+            <GraphView tasks={filteredTasks} projects={projects} onSelectTask={selectTask} githubLinks={githubLinks} />
           ) : (
             <Board
               tasks={filteredTasks} onUpdateTask={undoRedo.updateTaskWithUndo} onSelectTask={selectTask}

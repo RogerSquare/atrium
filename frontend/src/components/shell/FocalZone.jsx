@@ -93,6 +93,7 @@ export default function FocalZone({
               tasks={tasks}
               projects={projects}
               onSelectTask={onSelectTask}
+              githubLinks={githubLinks}
             />
           ) : (
             <Board
