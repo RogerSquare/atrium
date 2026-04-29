@@ -72,10 +72,17 @@ export default function useTasks(user, socketRef) {
     }
   }, [user])
 
+  // Polling cadence: 5 minutes. Acts as a backstop for missed socket events
+  // (the realtime path drives most updates). Was 60s; the shorter interval
+  // produced ~30-80ms re-render cascades at N=500 every minute even when no
+  // data had actually changed, with no observable benefit because the socket
+  // already covers the normal-operation case. Trade-off: recovery from a
+  // silent socket disconnect slows from ~1min to ~5min.
+  // See opt-tasks-polling-001 / opt-perf-audit-001 finding F4.
   useEffect(() => {
     if (user) {
       fetchData()
-      const interval = setInterval(fetchData, 60000)
+      const interval = setInterval(fetchData, 300000)
       return () => clearInterval(interval)
     }
   }, [user, fetchData])
