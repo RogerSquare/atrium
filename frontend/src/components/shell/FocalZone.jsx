@@ -61,7 +61,12 @@ export default function FocalZone({
       style={{ gridArea: 'focal', padding: 'var(--space-4)', minWidth: 0 }}
     >
       {topSlot}
-      <AnimatePresence mode="wait" initial={false}>
+      {/* Default AnimatePresence mode (parallel) — exit and enter overlap.
+          mode="wait" used to sequence them, which made every view-switch
+          eat the full motion duration as a guaranteed latency floor before
+          the new view even started mounting. See opt-interaction-latency-001
+          finding I-1 / opt-view-switch-latency-001. */}
+      <AnimatePresence initial={false}>
         <motion.div
           key={activeView}
           initial={{ opacity: 0, y: 4 }}

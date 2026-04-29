@@ -11,7 +11,7 @@
 // Settings + Help modals mount here so the avatar popover can open them.
 // TaskModal stays as opt-in focus mode via Cmd+Shift+Enter.
 
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense, startTransition } from 'react'
 import { Eye } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTaskData, useTaskActions } from '../../contexts/TaskContext'
@@ -106,7 +106,11 @@ export default function AppShell() {
   const syncingUrl = useRef(false)
 
   const handleChangeView = useCallback((view) => {
-    setActiveView(view)
+    // startTransition keeps the current view interactive while React renders
+    // the next view in the background. localStorage.setItem stays outside the
+    // transition so the persisted value matches what the user clicked.
+    // See opt-view-switch-latency-001.
+    startTransition(() => setActiveView(view))
     localStorage.setItem('taskBoardView', view)
   }, [])
 

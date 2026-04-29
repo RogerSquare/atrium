@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, lazy, Suspense } from 'react'
+import { useState, useCallback, useEffect, useMemo, lazy, Suspense, startTransition } from 'react'
 import { LogOut, Search, MessageCircle, X, Eye, Plus, Columns3, List, GitCommitHorizontal, Menu, Copy, Check, HelpCircle } from 'lucide-react'
 import Board from './components/Board'
 import ListView from './components/ListView'
@@ -173,7 +173,12 @@ function AppContent() {
 
   // --- Layout handlers ---
   const handleChangeView = useCallback((view) => {
-    setActiveView(view)
+    // startTransition keeps the current view interactive while React renders
+    // the next view in the background — paint happens on-ready instead of
+    // on-commit. localStorage.setItem stays outside the transition so the
+    // persisted value matches what the user clicked, even if the transition
+    // is interrupted by a faster click. See opt-view-switch-latency-001.
+    startTransition(() => setActiveView(view))
     localStorage.setItem('taskBoardView', view)
   }, [])
 
