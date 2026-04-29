@@ -20,7 +20,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Network } from 'vis-network'
 import { DataSet } from 'vis-data'
-import { Calendar, Filter, X } from 'lucide-react'
+import { Calendar, Filter, Locate, X, ZoomIn, ZoomOut } from 'lucide-react'
 
 /* ------------------------------------------------------------------ *
  *  Constants
@@ -771,6 +771,28 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
     setResetVersion(v => v + 1)
   }, [])
 
+  // --- Zoom + center handlers --------------------------------------------
+  // 1.25 zoom step pairs cleanly with × 0.8 so + then − returns to the same
+  // scale (modulo float drift). All three are no-ops when the network hasn't
+  // mounted yet or has been torn down.
+  const handleZoomIn = useCallback(() => {
+    const net = networkRef.current
+    if (!net) return
+    const scale = net.getScale()
+    net.moveTo({ scale: scale * 1.25, animation: { duration: 200, easingFunction: 'easeInOutQuad' } })
+  }, [])
+  const handleZoomOut = useCallback(() => {
+    const net = networkRef.current
+    if (!net) return
+    const scale = net.getScale()
+    net.moveTo({ scale: scale * 0.8, animation: { duration: 200, easingFunction: 'easeInOutQuad' } })
+  }, [])
+  const handleFit = useCallback(() => {
+    const net = networkRef.current
+    if (!net) return
+    net.fit({ animation: { duration: 250, easingFunction: 'easeInOutQuad' } })
+  }, [])
+
   // --- Render -------------------------------------------------------------
   return (
     <div
@@ -951,6 +973,57 @@ export default function GraphView({ tasks, projects, onSelectTask }) {
         }}
       >
         <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
+
+        {/* Zoom + center controls — single rounded container in the
+            bottom-right of the canvas. vis-network keeps mouse-wheel
+            zoom and drag-pan; these are an additional discoverable
+            affordance. */}
+        <div
+          style={{
+            position: 'absolute',
+            right: 'var(--space-3)',
+            bottom: 'var(--space-3)',
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--bg-card)',
+            border: 'var(--border-hairline)',
+            borderRadius: 'var(--radius-md)',
+            boxShadow: 'var(--shadow-popover)',
+            overflow: 'hidden',
+            zIndex: 5,
+            pointerEvents: 'auto',
+          }}
+        >
+          {[
+            { handler: handleZoomIn,  Icon: ZoomIn,  label: 'Zoom in' },
+            { handler: handleZoomOut, Icon: ZoomOut, label: 'Zoom out' },
+            { handler: handleFit,     Icon: Locate,  label: 'Center / fit to view' },
+            // eslint-disable-next-line no-unused-vars
+          ].map(({ handler, Icon, label }, idx) => (
+            <button
+              key={label}
+              type="button"
+              onClick={handler}
+              aria-label={label}
+              title={label}
+              className="apple-press"
+              style={{
+                width: 34,
+                height: 34,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'transparent',
+                color: 'var(--text-muted)',
+                border: 'none',
+                borderTop: idx === 0 ? 'none' : 'var(--border-hairline)',
+                cursor: 'pointer',
+              }}
+            >
+              <Icon className="w-4 h-4" />
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   )
