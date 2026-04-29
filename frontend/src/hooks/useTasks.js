@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, startTransition } from 'react'
 import { API_URL, API_BASE, apiFetch } from '../config'
 
 export default function useTasks(user, socketRef) {
@@ -196,12 +196,19 @@ export default function useTasks(user, socketRef) {
   }, [socketRef.current])
 
   const selectTask = useCallback((task) => {
-    // End viewing on previous task
-    setSelectedTask(prev => {
-      if (prev && socketRef.current) {
-        socketRef.current.emit('task_view_end', { taskId: prev.id })
-      }
-      return task
+    // setSelectedTask wrapped in startTransition so click feedback (apple-press
+    // animation, etc.) paints immediately while the lazy TaskModal mounts in the
+    // background. Side effects below (socket emits, URL pushState) stay outside
+    // the transition so they fire promptly — they don't block paint and tying
+    // them to the click semantics keeps rapid-click ordering tight.
+    // See opt-select-task-latency-001 / opt-interaction-latency-001 finding I-4.
+    startTransition(() => {
+      setSelectedTask(prev => {
+        if (prev && socketRef.current) {
+          socketRef.current.emit('task_view_end', { taskId: prev.id })
+        }
+        return task
+      })
     })
     // Start viewing new task
     if (task && socketRef.current && user) {
