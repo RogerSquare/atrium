@@ -14,7 +14,7 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { Eye } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
-import { useTaskContext } from '../../contexts/TaskContext'
+import { useTaskData, useTaskActions } from '../../contexts/TaskContext'
 import { API_BASE, apiFetch } from '../../config'
 import TopBar from './TopBar'
 import FilterBar from './FilterBar'
@@ -51,25 +51,34 @@ function readStoredWidth() {
 
 export default function AppShell() {
   const { user, theme, setTheme, socketRef, handleLogout, updateUser } = useAuth()
-  const ctx = useTaskContext()
+  // Two-context split (Phase 3 of opt-perf-audit-001-implement). Same pattern
+  // as App.jsx's AppContent — split the destructure across the two slices so
+  // the facelift shell only re-renders when the slice it actually reads changes.
   const {
     filteredTasks, tasks, projects, activeProject, setActiveProject,
-    loading, selectedTask, selectTask, handleDeleteTask, handleCreateProject,
-    handleCreateTask,
-    archivedProjects, archiveProject, unarchiveProject,
+    loading, selectedTask,
+    archivedProjects,
     searchQuery, setSearchQuery,
     filterType, setFilterType, filterPriority, setFilterPriority,
     filterAssignee, setFilterAssignee, filterToday, setFilterToday,
     filterStale, setFilterStale,
-    uniqueAssignees, activeFilterCount, resetAllFilters,
-    activeAgents, taskViewers, handleStartAgent, handleStopAgent,
-    undoRedo, bulkSelectMode, setBulkSelectMode, selectedTaskIds,
+    uniqueAssignees, activeFilterCount,
+    activeAgents, taskViewers,
+    bulkSelectMode, selectedTaskIds, batchLoading,
+    recentlyUpdatedIds, githubLinks, errorToast,
+    agentsEnabled, aiChatEnabled,
+  } = useTaskData()
+  const {
+    selectTask, handleDeleteTask, handleCreateProject, handleCreateTask,
+    archiveProject, unarchiveProject,
+    resetAllFilters,
+    handleStartAgent, handleStopAgent,
+    undoRedo, setBulkSelectMode,
     toggleSelectTask, shiftSelectTask, toggleSelectColumn,
     selectAllVisible, deselectAll, exitBulkMode,
-    handleBatchUpdate, handleBatchDelete, batchLoading,
-    recentlyUpdatedIds, githubLinks, errorToast, setErrorToast,
-    agentsEnabled, aiChatEnabled,
-  } = ctx
+    handleBatchUpdate, handleBatchDelete,
+    setErrorToast,
+  } = useTaskActions()
 
   const [activeView, setActiveView] = useState(() => localStorage.getItem('taskBoardView') || 'board')
   const [focusModal, setFocusModal] = useState(false)
@@ -282,7 +291,7 @@ export default function AppShell() {
         onToggleSelectColumn={toggleSelectColumn}
         onToggleBulkSelect={() =>
           setBulkSelectMode((prev) => {
-            if (prev) { ctx.deselectAll(); return false }
+            if (prev) { deselectAll(); return false }
             return true
           })
         }

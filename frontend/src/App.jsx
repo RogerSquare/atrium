@@ -23,7 +23,7 @@ import { API_BASE, apiFetch } from './config'
 import { faceliftShellEnabled } from './config/featureFlags'
 import useChat from './hooks/useChat'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
-import { TaskProvider, useTaskContext } from './contexts/TaskContext'
+import { TaskProvider, useTaskData, useTaskActions } from './contexts/TaskContext'
 
 // Lazy-loaded heavy components — split out of the initial bundle. Each only
 // downloads when the user actually opens that view/modal, mirroring the
@@ -40,27 +40,38 @@ const KitchenSink = import.meta.env.DEV ? lazy(() => import('./components/Kitche
 
 function AppContent() {
   const { user, theme, setTheme, socketRef, handleLogout, updateUser } = useAuth()
-  const ctx = useTaskContext()
 
+  // Two-context split (Phase 3 of opt-perf-audit-001-implement). useTaskData
+  // re-fires on keystroke / fetch tick / filter toggle. useTaskActions only
+  // re-fires when handler identities change — once per session in practice.
+  // App.jsx is itself one of the few direct context consumers, so we destructure
+  // each slice into local variables to keep the rest of the component unchanged.
   const {
     tasks, projects, loading, selectedTask, activeProject, setActiveProject,
     filterType, setFilterType, filterPriority, setFilterPriority,
     filterAssignee, setFilterAssignee, searchQuery, setSearchQuery,
     filterToday, setFilterToday, filterStale, setFilterStale,
-    filteredTasks, uniqueAssignees, activeFilterCount, resetAllFilters,
+    filteredTasks, uniqueAssignees, activeFilterCount,
+    archivedProjects,
+    activeAgents, agentsEnabled, aiChatEnabled, taskViewers,
+    bulkSelectMode, selectedTaskIds, batchLoading,
+    errorToast,
+    recentlyUpdatedIds,
+    githubLinks,
+  } = useTaskData()
+  const {
+    resetAllFilters,
     selectTask, handleUpdateTask, handleDeleteTask, handleCreateTask,
     handleCreateProject, handleDeleteProject,
-    archivedProjects, archiveProject, unarchiveProject,
-    activeAgents, agentsEnabled, aiChatEnabled, taskViewers, handleStartAgent, handleStopAgent,
+    archiveProject, unarchiveProject,
+    handleStartAgent, handleStopAgent,
     undoRedo,
-    bulkSelectMode, setBulkSelectMode, selectedTaskIds, batchLoading,
+    setBulkSelectMode,
     toggleSelectTask, shiftSelectTask, toggleSelectColumn,
     selectAllVisible, deselectAll, exitBulkMode,
     handleBatchUpdate, handleBatchDelete,
-    errorToast, setErrorToast,
-    recentlyUpdatedIds,
-    githubLinks,
-  } = ctx
+    setErrorToast,
+  } = useTaskActions()
 
   // Active project ID lookup
   const activeProjectInfo = useMemo(() => {
@@ -183,7 +194,7 @@ function AppContent() {
         redoneMessage: `Archived "${displayName || idOrName}"`,
       })
     } else {
-      ctx.setErrorToast(result.error || 'Archive failed')
+      setErrorToast(result.error || 'Archive failed')
     }
   }, [archiveProject, unarchiveProject, undoRedo, ctx])
 
@@ -197,7 +208,7 @@ function AppContent() {
         redoneMessage: `Restored "${displayName || idOrName}"`,
       })
     } else {
-      ctx.setErrorToast(result.error || 'Restore failed')
+      setErrorToast(result.error || 'Restore failed')
     }
   }, [archiveProject, unarchiveProject, undoRedo, ctx])
 
@@ -374,7 +385,7 @@ function AppContent() {
               selectable={bulkSelectMode} selectedIds={selectedTaskIds}
               onToggleSelect={toggleSelectTask} onShiftSelect={shiftSelectTask} onToggleSelectColumn={toggleSelectColumn}
               recentlyUpdatedIds={recentlyUpdatedIds}
-              onToggleBulkSelect={() => setBulkSelectMode(prev => { if (prev) { ctx.deselectAll(); return false } return true })}
+              onToggleBulkSelect={() => setBulkSelectMode(prev => { if (prev) { deselectAll(); return false } return true })}
               githubLinks={githubLinks}
             />
           )}
