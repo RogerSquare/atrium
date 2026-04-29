@@ -104,6 +104,14 @@ function AppContent() {
   const [showDesignStudio, setShowDesignStudio] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
 
+  // Preload TaskModal in the background once the shell mounts. After F2
+  // made it lazy, the first card-click of a session paid the chunk-load.
+  // Fire-and-forget — the import resolves whenever it does; React.lazy
+  // dedupes when the user clicks. See opt-select-task-latency-001.
+  useEffect(() => {
+    import('./components/TaskModal').catch(() => { /* ignore — lazy() handles errors at use site */ })
+  }, [])
+
   // Kitchen sink shortcut: Ctrl+Shift+K (dev only)
   useEffect(() => {
     if (!KitchenSink) return

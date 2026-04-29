@@ -105,6 +105,14 @@ export default function AppShell() {
   }, [])
   const syncingUrl = useRef(false)
 
+  // Preload TaskModal in the background once the shell mounts. After F2
+  // made it lazy, the first focus-mode open of a session paid the chunk-load.
+  // Fire-and-forget — the import resolves whenever it does; React.lazy
+  // dedupes when the user opens the modal. See opt-select-task-latency-001.
+  useEffect(() => {
+    import('../TaskModal').catch(() => { /* ignore — lazy() handles errors at use site */ })
+  }, [])
+
   const handleChangeView = useCallback((view) => {
     // startTransition keeps the current view interactive while React renders
     // the next view in the background. localStorage.setItem stays outside the
