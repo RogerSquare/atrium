@@ -311,6 +311,8 @@ When a task modifies shared code (e.g., drag handlers, CSS layout, database sche
 **Affects**: feat-reorder-001 (shares drag event handlers), ui-grid-001 (same CSS container)
 ```
 
+**Graph view edges**: the Graph view renders `parent_task` as a **solid arrow** (hierarchy) and `depends_on` as a **dashed arrow** (cross-project deps in amber). The `**Affects**:` line above is for human readers only — it is **not** parsed into graph edges. Populate `depends_on: [<id>, ...]` for any "blocked by" relationship you want to surface visually, not just phase chains. See the atrium skill ("Dependencies and the graph view") for the full guidance.
+
 ## Feature Engineering & Breakdown:
 To optimize development, follow these architectural rules:
 1.  **Categorization**: Every task MUST be tagged with a `type`: `frontend`, `backend`, `fullstack`, or `devops`.
