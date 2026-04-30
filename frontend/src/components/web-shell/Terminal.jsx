@@ -38,13 +38,19 @@ const TERMINAL_THEME = {
 }
 
 // Per-task session id binding. Each task has a stable UUID stored in
-// localStorage; the initial spawn uses `claude --session-id <uuid>`
-// so claude writes its session log under that id from the very first
-// character. Resume becomes `claude --resume <uuid>` — targeting the
-// session that belongs to THIS task, not whichever conversation in
-// the cwd was most recent. "Start new session" rotates to a fresh
-// uuid; the old session file stays on disk and remains recoverable
-// via `claude --resume <old-uuid>` from another shell.
+// localStorage; the initial spawn passes it to the server as
+// `sessionId` along with `tryResume: true`. The backend
+// (web-shell.js) checks whether the session file is actually on disk
+// at ~/.claude/projects/<cwd-slug>/<uuid>.jsonl and picks the right
+// claude flag:
+//   - file exists → `claude --resume <uuid>`   (revive conversation)
+//   - file absent → `claude --session-id <uuid>` (create at this id)
+// This avoids the "No conversation found with session ID: <uuid>"
+// error loop when Resume targeted a never-saved session (e.g., user
+// typed /exit before sending any messages).
+//
+// "Start new session" rotates to a fresh uuid AND sends
+// `tryResume: false`, so the server always creates fresh.
 const SESSION_ID_KEY_PREFIX = 'webshell:session:'
 
 function readSessionId(taskId) {
@@ -81,8 +87,6 @@ function rotateSessionId(taskId) {
   writeSessionId(taskId, fresh)
   return fresh
 }
-function buildStartupCommand(sessionId) { return `claude --session-id ${sessionId}` }
-function buildResumeCommand(sessionId) { return `claude --resume ${sessionId}` }
 
 // Verbose tracing for the input/focus chain. Enable by running
 // `localStorage.setItem('webshell:debug','1')` in devtools and
@@ -303,22 +307,23 @@ export default function ShellTerminal({ task, socket }) {
     // actually fires.
     let startTimer = setTimeout(() => {
       startTimer = null
-      // Bind / read the task-specific session id, then spawn claude
-      // pre-pinned to that id so the log file under
-      // ~/.claude/projects/<cwd>/<uuid>.jsonl is owned by THIS task
-      // from the first character — Resume can target it precisely.
+      // Bind / read the task-specific session id, then ask the
+      // server to either resume the bound session (if its file
+      // exists on disk) or create one at that id (if not). The
+      // backend handles the decision so a missing session file
+      // never produces "No conversation found" — it just creates.
       const sessionId = getOrMintSessionId(task?.id)
-      const command = buildStartupCommand(sessionId)
       dlog('emitting webshell:start (deferred past StrictMode double-mount)', {
         cols: term.cols,
         rows: term.rows,
-        command,
         sessionId,
+        tryResume: true,
       })
       socket.emit('webshell:start', {
         cols: term.cols,
         rows: term.rows,
-        command,
+        sessionId,
+        tryResume: true,
       })
     }, 0)
 
@@ -357,37 +362,39 @@ export default function ShellTerminal({ task, socket }) {
   // the corner case where the user clicks Resume while the previous
   // session is somehow still alive. term.clear() wipes the visible
   // canvas but keeps scrollback so the dead session's last output is
-  // still recoverable via the scrollbar.
-  const respawn = useCallback((command) => {
+  // still recoverable via the scrollbar. The `payload` is forwarded
+  // verbatim to webshell:start; the server resolves command from
+  // sessionId + tryResume.
+  const respawn = useCallback((payload) => {
     const term = xtermRef.current
     if (!term || !socket?.connected) return
     try { term.clear() } catch { /* term disposed */ }
     socket.emit('webshell:start', {
       cols: term.cols,
       rows: term.rows,
-      command,
+      ...payload,
     })
     setExitInfo(null)
     try { term.focus() } catch { /* term disposed */ }
   }, [socket])
 
-  // Resume: target the session id this task is bound to. If the user
-  // pressed Resume on a task that had never spawned before, getOrMint
-  // returns a fresh id and `claude --resume <id>` will error against
-  // a non-existent session file — the canvas surfaces that error and
-  // the overlay re-arms on the resulting exit (Q3 default: surface,
-  // don't auto-fallback to fresh).
+  // Resume: ask the server to revive THIS task's bound session if
+  // its file exists on disk, or create one at that id if not. The
+  // server-side decision (web-shell.js → buildClaudeCommand) is
+  // logged at info level — check the backend log if Resume isn't
+  // doing what's expected.
   const handleResume = useCallback(() => {
     const sessionId = getOrMintSessionId(task?.id)
-    respawn(buildResumeCommand(sessionId))
+    respawn({ sessionId, tryResume: true })
   }, [respawn, task?.id])
-  // New session: rotate to a fresh id BEFORE spawning. The old session
-  // file stays on disk; the user can still recover it manually via
-  // `claude --resume <old-id>` outside atrium, but it's no longer the
-  // task's "current" session.
+  // New session: rotate to a fresh id BEFORE spawning, and force the
+  // server to skip the resume check (the new id won't have a session
+  // file yet anyway, but tryResume=false makes the intent explicit
+  // in the backend logs). Old session file stays on disk; the user
+  // can still recover it manually via `claude --resume <old-id>`.
   const handleNewSession = useCallback(() => {
     const sessionId = rotateSessionId(task?.id)
-    respawn(buildStartupCommand(sessionId))
+    respawn({ sessionId, tryResume: false })
   }, [respawn, task?.id])
   const handleDismiss = useCallback(() => setExitInfo(null), [])
 
