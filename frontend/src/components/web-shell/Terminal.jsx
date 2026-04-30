@@ -37,31 +37,10 @@ const TERMINAL_THEME = {
   selectionBackground: 'rgba(255, 255, 255, 0.3)',
 }
 
-// Default startup command. Like the standalone web-shell, opens
-// straight into Claude Code — but with --dangerously-skip-permissions
-// so the user doesn't have to manually click through trust-folder /
-// tool-approval dialogs every time the Shell tab opens. Matches the
-// flag atrium's existing Run Agent flow uses (routes/agents.js).
-const STARTUP_COMMAND = 'claude --dangerously-skip-permissions'
-
-// Build the message that gets auto-typed into claude after it boots,
-// providing the open task's id (and title when available) plus a
-// nudge to use the atrium skill. Returns null when there's no task,
-// in which case the shell just opens claude with no pre-filled
-// message.
-function buildInitialPrompt(task) {
-  if (!task || !task.id) return null
-  const parts = [`I'm working on task ${task.id} in atrium.`]
-  if (task.title) parts.push(`Title: ${task.title}.`)
-  parts.push(
-    'Use the atrium skill for task management — atrium MCP tools, ' +
-    'or the HTTP API at http://localhost:3001 if MCP is unavailable. ' +
-    'Read the task first, then proceed per the skill rules ' +
-    '(phased work, structured comments, no draft → in_progress, ' +
-    'agents stop at review).'
-  )
-  return parts.join(' ')
-}
+// Default startup command. Same as the standalone web-shell — opens
+// straight into Claude Code rather than a bare prompt. Override with
+// the empty string to opt into a bare interactive shell.
+const STARTUP_COMMAND = 'claude'
 
 // Verbose tracing for the input/focus chain. Enable by running
 // `localStorage.setItem('webshell:debug','1')` in devtools and
@@ -269,18 +248,15 @@ export default function ShellTerminal({ task, socket }) {
     // actually fires.
     let startTimer = setTimeout(() => {
       startTimer = null
-      const initialInput = buildInitialPrompt(task)
       dlog('emitting webshell:start (deferred past StrictMode double-mount)', {
         cols: term.cols,
         rows: term.rows,
         command: STARTUP_COMMAND,
-        initialInput,
       })
       socket.emit('webshell:start', {
         cols: term.cols,
         rows: term.rows,
         command: STARTUP_COMMAND,
-        initialInput,
       })
     }, 0)
 
@@ -308,14 +284,10 @@ export default function ShellTerminal({ task, socket }) {
       try { term.dispose() } catch { /* already disposed */ }
       xtermRef.current = null
     }
-    // task?.id (not full task) is the dep so navigating to a
-    // different task restarts the shell, but a parent re-render that
-    // replaces task with a new object of the same id does NOT
-    // (otherwise every poll-driven task list refresh would kill and
-    // respawn claude). The full `task` object is read inside the
-    // deferred start to pull task.title for the initial prompt; this
-    // is intentional and the eslint warning below is the right call.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // task?.id in deps so navigating to a different task restarts the
+    // shell in the new task's context (server still resolves cwd from
+    // settings.workingDirectory; if a future feature adds per-task
+    // folder mapping, this dep guarantees it picks up the change).
   }, [task?.id, socket])
 
   // The parent (DetailPane's shell-tab branch) provides dimensions
