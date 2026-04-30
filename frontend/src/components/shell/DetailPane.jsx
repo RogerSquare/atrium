@@ -225,7 +225,10 @@ export default function DetailPane({
           <StatusSegmentedControl
             activeStatus={task.status}
             onChange={(nextStatus) => {
-              onUpdateTask?.({ ...task, status: nextStatus })
+              // onUpdateTask signature is (taskId, fieldsDiff) —
+              // matches DetailDescription / DetailComments. Passing
+              // the full task object as the first arg silently fails.
+              onUpdateTask?.(task.id, { status: nextStatus })
             }}
           />
         )}
