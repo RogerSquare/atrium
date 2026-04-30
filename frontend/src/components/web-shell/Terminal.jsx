@@ -13,12 +13,16 @@
 //      one in the new task's context. Matches DetailPane's existing
 //      "reset to Description tab on task change" pattern.
 //
-// Wire format (matches backend/sockets/web-shell.js):
-//   client → server   webshell:start  { cols?, rows?, command? }
-//                     webshell:input  <bytes>
-//                     webshell:resize { cols, rows }
-//   server → client   webshell:output <bytes>
-//                     webshell:exit   { exitCode }
+// Wire format (matches backend/sockets/web-shell.js) — Phase 1 of
+// `feat-shell-background-sessions-001` migrated every event payload to
+// `{ taskId, ... }` so later phases can route N PTYs per socket. taskId
+// is null for the global-shell modal (Phase 5 collapses that workaround):
+//   client → server   webshell:start  { taskId, cols?, rows?, command?, sessionId?, tryResume?, rotate? }
+//                     webshell:input  { taskId, data }
+//                     webshell:resize { taskId, cols, rows }
+//   server → client   webshell:output { taskId, data }
+//                     webshell:exit   { taskId, exitCode, spawnId }
+//                     webshell:spawn  { taskId, spawnId, pid, spawnAt, sessionId, sessionSource }
 //
 // Default startup command is `claude` so the page boots straight into
 // Claude Code on a clean canvas. The cwd is resolved server-side from
@@ -149,6 +153,13 @@ export default function ShellTerminal({ task, socket }) {
   useEffect(() => {
     if (!containerRef.current || !socket) return
 
+    // Wire taskId stamped on every outbound webshell:* event payload
+    // (`feat-shell-background-sessions-001` Phase 1). For the global
+    // shell modal this stays null so the backend keeps using the legacy
+    // "no taskId" path until Phase 5 collapses that workaround.
+    const isGlobalTab = task?.id === GLOBAL_TASK_ID
+    const wireTaskId = isGlobalTab ? null : (task?.id || null)
+
     dlog('mount effect start', {
       taskId: task?.id,
       socketConnected: socket.connected,
@@ -259,7 +270,7 @@ export default function ShellTerminal({ task, socket }) {
       pendingFit = setTimeout(() => {
         if (!safeFit()) return
         if (socket.connected) {
-          socket.emit('webshell:resize', { cols: term.cols, rows: term.rows })
+          socket.emit('webshell:resize', { taskId: wireTaskId, cols: term.cols, rows: term.rows })
         }
       }, 50)
     })
@@ -272,6 +283,9 @@ export default function ShellTerminal({ task, socket }) {
     // only handleSpawnSentinel + handleOutputDiag read/write it.
     let bytesSinceSpawn = 0
 
+    // handleOutput stays string-in (the unwrap happens in handleOutputDiag,
+    // which is the actual socket listener). Keeping the inner helper as a
+    // pure data-writer makes the diagnostic-vs-debug split easier to follow.
     const handleOutput = (data) => {
       if (DEBUG && data.length > 0) {
         const preview = data.length > 80 ? data.slice(0, 80) + '…' : data
@@ -352,7 +366,12 @@ export default function ShellTerminal({ task, socket }) {
         clientReceivedAt: Date.now(),
       })
     }
-    const handleOutputDiag = (data) => {
+    // Wire format Phase 1: payload is `{ taskId, data }`. Drop silently if
+    // the shape is wrong (defensive against any in-flight legacy emits while
+    // both sides roll out together).
+    const handleOutputDiag = (payload) => {
+      if (!payload || typeof payload.data !== 'string') return
+      const data = payload.data
       bytesSinceSpawn += data.length
       // Log each chunk's first 40 bytes so we can correlate visible
       // glitches with the byte stream that produced them. Only
@@ -388,7 +407,8 @@ export default function ShellTerminal({ task, socket }) {
     const inputDisposable = term.onData((data) => {
       dlog('term.onData fired', { bytes: data.length, data: JSON.stringify(data), socketConnected: socket.connected })
       if (socket.connected) {
-        socket.emit('webshell:input', data)
+        // Wire format Phase 1: emit as `{ taskId, data }`.
+        socket.emit('webshell:input', { taskId: wireTaskId, data })
         dlog('webshell:input emitted', { data: JSON.stringify(data) })
       } else {
         dwarn('webshell:input DROPPED — socket not connected', { data: JSON.stringify(data) })
@@ -404,7 +424,7 @@ export default function ShellTerminal({ task, socket }) {
       resizeTimer = setTimeout(() => {
         try { fitAddon.fit() } catch { /* xterm not ready yet */ }
         if (socket.connected) {
-          socket.emit('webshell:resize', { cols: term.cols, rows: term.rows })
+          socket.emit('webshell:resize', { taskId: wireTaskId, cols: term.cols, rows: term.rows })
         }
       }, 100)
     }

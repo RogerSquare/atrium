@@ -14,19 +14,25 @@
 //      opencode flow. Both handlers run per-socket; the prefixes
 //      keep their event streams from interfering.
 //
-// Wire format (client ↔ server):
-//   client → server   webshell:start  { cols?, rows?, command? }
-//                     webshell:input  <bytes>
-//                     webshell:resize { cols, rows }
-//   server → client   webshell:output <bytes>
-//                     webshell:exit   { exitCode }
+// Wire format (client ↔ server) — `feat-shell-background-sessions-001` Phase 1
+// migrated every event payload to a `{ taskId, ... }` discriminator shape so
+// later phases can route N PTYs per socket. taskId is null for the legacy
+// non-task callers (and for the global-shell modal until Phase 5):
+//   client → server   webshell:start  { taskId, cols?, rows?, command?, sessionId?, tryResume?, rotate? }
+//                     webshell:input  { taskId, data }
+//                     webshell:resize { taskId, cols, rows }
+//   server → client   webshell:output { taskId, data }
+//                     webshell:exit   { taskId, exitCode, spawnId }
+//                     webshell:spawn  { taskId, spawnId, pid, spawnAt, sessionId, sessionSource }
 //
 // `command` (optional): when set, server spawns `cmd.exe /c <command>`
 // directly so there's no banner/prompt before the launched CLI takes
 // over the canvas. When unset, an interactive cmd.exe is spawned.
 //
-// One PTY per socket; killed on disconnect via the returned cleanup
-// function.
+// One PTY per socket today; phase 2 of the same feature task introduces a
+// `Map<taskId, ptyEntry>` so background sessions stay alive when the user
+// navigates to a different task. The `activeTaskId` closure variable below
+// is the single-slot precursor to that map.
 
 const fs = require('fs');
 const os = require('os');
@@ -177,6 +183,12 @@ const registerWebShellHandlers = (socket) => {
   // Bytes emitted by the live spawn since spawn start. Logged on
   // exit so we can correlate "spawn N emitted X bytes total".
   let bytesEmittedThisSpawn = 0;
+  // The taskId most recently bound on `webshell:start`. Stamped on
+  // every server→client emit so the new wire format
+  // (`feat-shell-background-sessions-001` Phase 1) can carry the
+  // discriminator forward. Stays single-slot in this phase — phase 2
+  // moves it into a per-PTY Map entry.
+  let activeTaskId = null;
 
   socket.on('webshell:start', async (config = {}) => {
     const spawnId = nextSpawnId++;
@@ -298,6 +310,7 @@ const registerWebShellHandlers = (socket) => {
       );
 
       activeSpawnId = spawnId;
+      activeTaskId = taskId;
       bytesEmittedThisSpawn = 0;
       ptyProcess = pty.spawn(spawnCmd, spawnArgs, {
         name: 'xterm-256color',
@@ -348,7 +361,7 @@ const registerWebShellHandlers = (socket) => {
             'web-shell: pty.onData'
           );
         }
-        socket.emit('webshell:output', data);
+        socket.emit('webshell:output', { taskId: activeTaskId, data });
       });
       // Include resolved sessionId on the spawn sentinel so the frontend
       // can mirror it into localStorage (cache + offline-fallback) and
@@ -374,24 +387,34 @@ const registerWebShellHandlers = (socket) => {
           // land on the new spawn's canvas and corrupt it.
           return;
         }
-        socket.emit('webshell:output', `\r\n\x1b[33m--- Shell exited (${exitCode}) ---\x1b[0m\r\n`);
-        socket.emit('webshell:exit', { exitCode, spawnId: myId });
+        socket.emit('webshell:output', { taskId: activeTaskId, data: `\r\n\x1b[33m--- Shell exited (${exitCode}) ---\x1b[0m\r\n` });
+        socket.emit('webshell:exit', { exitCode, spawnId: myId, taskId: activeTaskId });
         ptyProcess = null;
         activeSpawnId = null;
+        activeTaskId = null;
       });
     } catch (err) {
       logger.error({ err, spawnId, socketId: socket.id }, 'web-shell PTY spawn error');
       socket.emit(
         'webshell:output',
-        `\r\n\x1b[31mError starting terminal: ${err.message}\x1b[0m\r\n`
+        { taskId: activeTaskId, data: `\r\n\x1b[31mError starting terminal: ${err.message}\x1b[0m\r\n` }
       );
     }
   });
 
-  socket.on('webshell:input', (data) => {
-    if (ptyProcess) ptyProcess.write(data);
+  // Wire format (`feat-shell-background-sessions-001` Phase 1): payload is
+  // `{ taskId, data }` instead of raw bytes. Hard cut — no dual-shape
+  // compatibility window per QP1. Drop silently if the payload doesn't
+  // carry a string `data` field (defensive against legacy clients or
+  // malformed emits).
+  socket.on('webshell:input', (payload) => {
+    if (!ptyProcess || !payload || typeof payload.data !== 'string') return;
+    ptyProcess.write(payload.data);
   });
 
+  // Wire format Phase 1: payload is `{ taskId, cols, rows }`. Reads at the
+  // top level still work because cols/rows stayed in the same place; taskId
+  // is currently ignored (single-PTY) and becomes the routing key in phase 2.
   socket.on('webshell:resize', (size) => {
     if (!ptyProcess || !size) return;
     try {
