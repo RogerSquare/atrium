@@ -109,6 +109,12 @@ const scanAllTasks = (dirPath = TASKS_DIR, tasksArray = []) => {
         activity_log: data.activity_log || [],
         github_branch: data.github_branch || null,
         github_pr_url: data.github_pr_url || null,
+        // Per-task claude session UUID — bound on first Shell-tab spawn so
+        // resume targets THIS task's conversation, not the cwd's most-recent.
+        // Source of truth lives in YAML so the binding survives across
+        // browsers / machines (localStorage was the original storage in
+        // feat-shell-task-resume-001 and is now demoted to a cache).
+        claude_session_id: data.claude_session_id || null,
         project: project,
         content: content.trim(),
         filePath: filePath
@@ -201,4 +207,60 @@ const getFullActivityLog = (taskId, data) => {
   return archived.concat(current);
 };
 
-module.exports = { getAllTasks, findTaskFilePath, buildIndex, indexSet, indexDelete, invalidateCache, atomicWriteFileSync, cleanupTempFiles, trimActivityLog, getFullActivityLog, generateSummary };
+// Narrow internal helper for backend modules that need to update a single
+// YAML field without going through the full PUT route (which requires auth
+// and runs validation that's unnecessary for fire-and-forget side-effects
+// like the web-shell socket minting claude_session_id on first spawn).
+//
+// Mirrors the route's atomic-write + activity-log conventions:
+//   - acquires the same task:<id> mutex so it can't race the route
+//   - appends ONE activity_log entry when `actionMessage` is provided
+//   - calls trimActivityLog so the log can't grow unbounded
+//   - invalidates the tasks cache + updates the index
+//   - emits task_updated over socket.io so clients refresh
+//
+// Returns the merged task data (frontmatter + body) so callers can use the
+// resolved value directly. Throws if the task isn't found.
+const updateTaskField = async (taskId, field, value, actor = 'Agent', actionMessage = null) => {
+  const { withLock } = require('./lock');
+  const { getIO } = require('./io');
+
+  return await withLock(`task:${taskId}`, async () => {
+    const filePath = findTaskFilePath(taskId);
+    if (!filePath || !fs.existsSync(filePath)) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    const parsed = matter(raw);
+    const data = parsed.data || {};
+    data[field] = value;
+    data.activity_log = data.activity_log || [];
+    if (actionMessage) {
+      data.activity_log.push({
+        timestamp: new Date().toISOString(),
+        action: `${actionMessage} by ${actor}`,
+      });
+      trimActivityLog(taskId, data);
+    }
+    const newContent = matter.stringify(parsed.content, data);
+    atomicWriteFileSync(filePath, newContent);
+    invalidateCache();
+    indexSet(taskId, filePath);
+
+    const relativePath = path.relative(TASKS_DIR, path.dirname(filePath));
+    const project = relativePath || 'Root';
+    const taskObj = {
+      ...data,
+      id: taskId,
+      project,
+      content: (parsed.content || '').trim(),
+    };
+    try {
+      const io = getIO();
+      if (io) io.emit('task_updated', { ...taskObj, summary: generateSummary(taskObj) });
+    } catch { /* socket.io not initialised yet during boot */ }
+    return taskObj;
+  });
+};
+
+module.exports = { getAllTasks, findTaskFilePath, buildIndex, indexSet, indexDelete, invalidateCache, atomicWriteFileSync, cleanupTempFiles, trimActivityLog, getFullActivityLog, generateSummary, updateTaskField };
