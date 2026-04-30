@@ -2,8 +2,10 @@
 //
 // Left: brand + ProjectAnchor (replaces left-sidebar project list)
 // Center: ViewSwitcher (Board / List / Changes)
-// Right: AvatarPopover (Theme / Settings / Help / Logout)
+// Right: Terminal (global shell modal) | AvatarPopover (Theme / Settings / Help / Logout)
 
+import { Terminal } from 'lucide-react'
+import { IconButton } from '../ui'
 import ViewSwitcher from '../ViewSwitcher'
 import ProjectAnchor from './ProjectAnchor'
 import AvatarPopover from './AvatarPopover'
@@ -27,6 +29,8 @@ export default function TopBar({
   // Avatar popover
   onOpenSettings,
   onOpenHelp,
+  // Global shell modal trigger
+  onOpenGlobalShell,
 }) {
   return (
     <header
@@ -59,8 +63,16 @@ export default function TopBar({
         <ViewSwitcher activeView={activeView} onChangeView={onChangeView} />
       </div>
 
-      {/* Right — avatar popover */}
+      {/* Right — global shell trigger + avatar popover */}
       <div className="flex items-center gap-2">
+        <IconButton
+          size="sm"
+          onClick={onOpenGlobalShell}
+          aria-label="Open shell"
+          title="Open shell"
+        >
+          <Terminal className="w-3.5 h-3.5" />
+        </IconButton>
         <AvatarPopover
           user={user}
           theme={theme}

@@ -58,6 +58,13 @@ const TERMINAL_THEME = {
 // against a backend that hasn't picked up this feature yet.
 const SESSION_ID_KEY_PREFIX = 'webshell:session:'
 
+// Sentinel id for the non-task "global" shell modal (feat-global-shell-modal-001).
+// When the wrapper receives this id, the task YAML lookup is skipped (we don't
+// have a task to write to) and session id is managed entirely client-side
+// against localStorage. The wire payload sends `taskId: null` so the backend
+// stays on its legacy "no taskId, just use the supplied sessionId" path.
+const GLOBAL_TASK_ID = '__global__'
+
 function readSessionId(taskId) {
   if (!taskId) return null
   try { return window.localStorage.getItem(SESSION_ID_KEY_PREFIX + taskId) } catch { return null }
@@ -65,6 +72,24 @@ function readSessionId(taskId) {
 function writeSessionId(taskId, id) {
   if (!taskId) return
   try { window.localStorage.setItem(SESSION_ID_KEY_PREFIX + taskId, id) } catch { /* storage full or disabled */ }
+}
+function mintUuid() {
+  try {
+    if (typeof window !== 'undefined' && window.crypto?.randomUUID) return window.crypto.randomUUID()
+  } catch { /* crypto unavailable */ }
+  // Fallback for ancient browsers — RFC4122 v4 shape via Math.random.
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+function ensureGlobalSessionId() {
+  const existing = readSessionId(GLOBAL_TASK_ID)
+  if (existing) return existing
+  const fresh = mintUuid()
+  writeSessionId(GLOBAL_TASK_ID, fresh)
+  return fresh
 }
 
 // Verbose tracing for the input/focus chain. Enable by running
@@ -404,11 +429,18 @@ export default function ShellTerminal({ task, socket }) {
       // fresh machine send no sessionId so the backend mints server-side
       // and writes to the task YAML. Existing localStorage values are
       // promoted by the backend on first spawn after this feature ships.
-      const sessionHint = readSessionId(task?.id)
+      //
+      // Global shell modal (task.id === GLOBAL_TASK_ID): there is no task
+      // YAML to write to, so we mint client-side here and pass taskId:null
+      // on the wire. Backend then uses the supplied sessionId verbatim
+      // (sessionSource: 'client') without looking up or persisting any
+      // task field.
+      const isGlobal = task?.id === GLOBAL_TASK_ID
+      const sessionHint = isGlobal ? ensureGlobalSessionId() : readSessionId(task?.id)
       const payload = {
         cols: term.cols,
         rows: term.rows,
-        taskId: task?.id || null,
+        taskId: isGlobal ? null : (task?.id || null),
         ...(sessionHint ? { sessionId: sessionHint } : {}),
         tryResume: true,
       }
@@ -517,11 +549,14 @@ export default function ShellTerminal({ task, socket }) {
   // `claude --resume <uuid>` vs `claude --session-id <uuid>` based on
   // whether the on-disk session file exists for THIS machine
   // (web-shell.js → buildClaudeCommand). Decision logged at info level.
+  // Global modal (taskId === GLOBAL_TASK_ID): no task YAML, so we send
+  // taskId:null and let the backend use the localStorage-cached UUID.
   const handleResume = useCallback(() => {
     xlog('handleResume() invoked', { taskId: task?.id, at: Date.now() })
-    const sessionHint = readSessionId(task?.id)
+    const isGlobal = task?.id === GLOBAL_TASK_ID
+    const sessionHint = isGlobal ? ensureGlobalSessionId() : readSessionId(task?.id)
     respawn({
-      taskId: task?.id || null,
+      taskId: isGlobal ? null : (task?.id || null),
       ...(sessionHint ? { sessionId: sessionHint } : {}),
       tryResume: true,
     })
@@ -530,8 +565,18 @@ export default function ShellTerminal({ task, socket }) {
   // a fresh value and writes it to the task YAML through the standard
   // update helpers (so activity_log records the rotation). The new
   // UUID arrives back via the spawn sentinel, which updates localStorage.
+  // Global modal: no task YAML to rotate against, so we mint client-side
+  // and respawn with the new sessionId hint + tryResume:false (we want a
+  // fresh conversation, not a resume of the rotated-away session).
   const handleNewSession = useCallback(() => {
     xlog('handleNewSession() invoked', { taskId: task?.id, at: Date.now() })
+    const isGlobal = task?.id === GLOBAL_TASK_ID
+    if (isGlobal) {
+      const fresh = mintUuid()
+      writeSessionId(GLOBAL_TASK_ID, fresh)
+      respawn({ taskId: null, sessionId: fresh, tryResume: false })
+      return
+    }
     respawn({ taskId: task?.id || null, rotate: true, tryResume: false })
   }, [respawn, task?.id])
   const handleDismiss = useCallback(() => {

@@ -25,6 +25,10 @@ import { AnimatePresence } from '../../lib/motion'
 
 // Lazy-loaded — only downloaded when the user opens a task in focus mode.
 const TaskModal = lazy(() => import('../TaskModal'))
+// Lazy-loaded — xterm + the global commands list aren't part of the
+// initial render path. Pulled in on first click of the TopBar terminal
+// button. Suspense-wrapped at the use site below.
+const GlobalShellModal = lazy(() => import('./GlobalShellModal'))
 import Settings from '../Settings'
 import HelpModal from '../HelpModal'
 import CreateProjectModal from '../CreateProjectModal'
@@ -91,6 +95,7 @@ export default function AppShell() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [previewServices, setPreviewServices] = useState([])
+  const [showGlobalShell, setShowGlobalShell] = useState(false)
   // Narrow-viewport mode — master-detail doesn't fit below 768px, so DetailPane
   // switches to a full-screen overlay instead of sitting in its own grid column.
   const [narrow, setNarrow] = useState(() =>
@@ -181,6 +186,9 @@ export default function AppShell() {
   // --- Keyboard -----------------------------------------------------------
   useEffect(() => {
     const handler = (e) => {
+      // Global shell modal owns Esc + Cmd+Shift+Enter while it's open;
+      // bail so it doesn't double-fire with task-level shortcuts.
+      if (showGlobalShell) return
       if (!selectedTask) return
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'Enter') {
         e.preventDefault()
@@ -191,7 +199,7 @@ export default function AppShell() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [selectedTask, focusModal, selectTask])
+  }, [selectedTask, focusModal, selectTask, showGlobalShell])
 
   // Help shortcut: `?` opens the help modal. Suppressed inside text inputs and
   // when any modal is already open (ModalOverlay marks body.modal-open).
@@ -261,6 +269,7 @@ export default function AppShell() {
         archivedCount={archivedProjects?.length || 0}
         onOpenSettings={() => setShowSettings(true)}
         onOpenHelp={() => setShowHelp(true)}
+        onOpenGlobalShell={() => setShowGlobalShell(true)}
       />
 
       <FilterBar
@@ -423,6 +432,16 @@ export default function AppShell() {
           onClose={() => setShowArchived(false)}
           onUnarchiveProject={(idOrName, displayName) => unarchiveProject(idOrName, displayName)}
         />
+      )}
+      {showGlobalShell && (
+        <Suspense fallback={null}>
+          {/* Modal owns its own socket — see SOCKET LIFECYCLE in
+              GlobalShellModal.jsx. Sharing AuthContext's socket would
+              cause the per-socket PTY cap in the backend web-shell
+              handler to kill the DetailPane Shell tab's PTY when this
+              modal opens. */}
+          <GlobalShellModal onClose={() => setShowGlobalShell(false)} />
+        </Suspense>
       )}
       {showPreview && (
         <PreviewPanel
