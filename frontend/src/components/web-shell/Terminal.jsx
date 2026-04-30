@@ -37,14 +37,52 @@ const TERMINAL_THEME = {
   selectionBackground: 'rgba(255, 255, 255, 0.3)',
 }
 
-// Default startup command. Same as the standalone web-shell — opens
-// straight into Claude Code rather than a bare prompt. Override with
-// the empty string to opt into a bare interactive shell.
-const STARTUP_COMMAND = 'claude'
-// Resume command for the exit-recovery overlay's "Resume previous
-// session" action — picks the most recent claude session in
-// interactive mode without prompting.
-const RESUME_COMMAND = 'claude --continue'
+// Per-task session id binding. Each task has a stable UUID stored in
+// localStorage; the initial spawn uses `claude --session-id <uuid>`
+// so claude writes its session log under that id from the very first
+// character. Resume becomes `claude --resume <uuid>` — targeting the
+// session that belongs to THIS task, not whichever conversation in
+// the cwd was most recent. "Start new session" rotates to a fresh
+// uuid; the old session file stays on disk and remains recoverable
+// via `claude --resume <old-uuid>` from another shell.
+const SESSION_ID_KEY_PREFIX = 'webshell:session:'
+
+function readSessionId(taskId) {
+  if (!taskId) return null
+  try { return window.localStorage.getItem(SESSION_ID_KEY_PREFIX + taskId) } catch { return null }
+}
+function writeSessionId(taskId, id) {
+  if (!taskId) return
+  try { window.localStorage.setItem(SESSION_ID_KEY_PREFIX + taskId, id) } catch { /* storage full or disabled */ }
+}
+function mintUuid() {
+  // crypto.randomUUID is available in all browsers atrium targets
+  // (modern Chrome/Edge/Firefox). The Math.random fallback is
+  // strictly defensive — it only triggers in ancient browsers that
+  // would already fail elsewhere in atrium.
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+function getOrMintSessionId(taskId) {
+  const existing = readSessionId(taskId)
+  if (existing) return existing
+  const fresh = mintUuid()
+  writeSessionId(taskId, fresh)
+  return fresh
+}
+function rotateSessionId(taskId) {
+  const fresh = mintUuid()
+  writeSessionId(taskId, fresh)
+  return fresh
+}
+function buildStartupCommand(sessionId) { return `claude --session-id ${sessionId}` }
+function buildResumeCommand(sessionId) { return `claude --resume ${sessionId}` }
 
 // Verbose tracing for the input/focus chain. Enable by running
 // `localStorage.setItem('webshell:debug','1')` in devtools and
@@ -265,15 +303,22 @@ export default function ShellTerminal({ task, socket }) {
     // actually fires.
     let startTimer = setTimeout(() => {
       startTimer = null
+      // Bind / read the task-specific session id, then spawn claude
+      // pre-pinned to that id so the log file under
+      // ~/.claude/projects/<cwd>/<uuid>.jsonl is owned by THIS task
+      // from the first character — Resume can target it precisely.
+      const sessionId = getOrMintSessionId(task?.id)
+      const command = buildStartupCommand(sessionId)
       dlog('emitting webshell:start (deferred past StrictMode double-mount)', {
         cols: term.cols,
         rows: term.rows,
-        command: STARTUP_COMMAND,
+        command,
+        sessionId,
       })
       socket.emit('webshell:start', {
         cols: term.cols,
         rows: term.rows,
-        command: STARTUP_COMMAND,
+        command,
       })
     }, 0)
 
@@ -326,8 +371,24 @@ export default function ShellTerminal({ task, socket }) {
     try { term.focus() } catch { /* term disposed */ }
   }, [socket])
 
-  const handleResume = useCallback(() => respawn(RESUME_COMMAND), [respawn])
-  const handleNewSession = useCallback(() => respawn(STARTUP_COMMAND), [respawn])
+  // Resume: target the session id this task is bound to. If the user
+  // pressed Resume on a task that had never spawned before, getOrMint
+  // returns a fresh id and `claude --resume <id>` will error against
+  // a non-existent session file — the canvas surfaces that error and
+  // the overlay re-arms on the resulting exit (Q3 default: surface,
+  // don't auto-fallback to fresh).
+  const handleResume = useCallback(() => {
+    const sessionId = getOrMintSessionId(task?.id)
+    respawn(buildResumeCommand(sessionId))
+  }, [respawn, task?.id])
+  // New session: rotate to a fresh id BEFORE spawning. The old session
+  // file stays on disk; the user can still recover it manually via
+  // `claude --resume <old-id>` outside atrium, but it's no longer the
+  // task's "current" session.
+  const handleNewSession = useCallback(() => {
+    const sessionId = rotateSessionId(task?.id)
+    respawn(buildStartupCommand(sessionId))
+  }, [respawn, task?.id])
   const handleDismiss = useCallback(() => setExitInfo(null), [])
 
   // Esc on the recovery overlay = Dismiss. We do not auto-resume on
@@ -406,6 +467,7 @@ export default function ShellTerminal({ task, socket }) {
       {exitInfo && (
         <ExitRecoveryOverlay
           taskId={task?.id}
+          sessionId={readSessionId(task?.id)}
           exitCode={exitInfo.exitCode}
           onResume={handleResume}
           onNewSession={handleNewSession}
@@ -422,7 +484,10 @@ export default function ShellTerminal({ task, socket }) {
 // floating pill / popover (z-index 10 in CommandCard.jsx) still
 // sits on top — the user can pop the command list while the overlay
 // is up without dismissing it.
-function ExitRecoveryOverlay({ taskId, exitCode, onResume, onNewSession, onDismiss }) {
+function ExitRecoveryOverlay({ taskId, sessionId, exitCode, onResume, onNewSession, onDismiss }) {
+  // Last 8 chars of the session uuid is enough to disambiguate
+  // visually without filling the whole popover with a 36-char id.
+  const sessionSuffix = sessionId ? sessionId.slice(-8) : null
   return (
     <div
       // Backdrop swallows clicks on the dead canvas so a stray click
@@ -480,6 +545,21 @@ function ExitRecoveryOverlay({ taskId, exitCode, onResume, onNewSession, onDismi
           >
             exit {exitCode}
           </span>
+          {sessionSuffix ? (
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 'var(--text-caption2)',
+                color: 'var(--text-tertiary)',
+                padding: '2px 6px',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--fill-secondary)',
+              }}
+              title={`Bound session: ${sessionId}`}
+            >
+              …{sessionSuffix}
+            </span>
+          ) : null}
         </div>
         <p
           style={{
@@ -489,7 +569,7 @@ function ExitRecoveryOverlay({ taskId, exitCode, onResume, onNewSession, onDismi
             lineHeight: 1.4,
           }}
         >
-          The shell session ended. Resume the previous claude session to keep its context, or start fresh.
+          The shell session ended. Resume keeps THIS task&apos;s claude context; New starts a fresh conversation bound to this task.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
           <button
