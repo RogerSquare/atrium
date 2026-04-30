@@ -8,11 +8,14 @@
 // the popover back to the button. Pressing Esc or clicking outside
 // the popover dismisses it without copying.
 //
-// Source of truth for prompts is `./commands.js`.
+// Source of truth for prompts is `./commands.js` by default. Callers
+// (e.g. the global shell modal) can pass an alternative `commands`
+// list and `headerLabel` to reuse this component with a different
+// prompt set.
 
 import { useCallback, useEffect, useState } from 'react'
 import { Check, Command, Copy, Hash, X } from 'lucide-react'
-import { COMMANDS } from './commands'
+import { COMMANDS as TASK_COMMANDS } from './commands'
 
 // Best-effort clipboard write. Atrium runs on localhost where the
 // modern API is allowed; legacy execCommand path is the fallback for
@@ -43,9 +46,21 @@ async function copyToClipboard(text) {
 
 const AUTO_COLLAPSE_MS = 800
 
-export default function CommandCard({ task }) {
-  const [isOpen, setIsOpen] = useState(false)
+export default function CommandCard({ task, commands = TASK_COMMANDS, headerLabel, onOpenChange }) {
+  const [isOpen, setIsOpenState] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
+  // Wrap setState so a parent can mirror the popover-open flag without
+  // owning the state itself. The GlobalShellModal uses this to defer
+  // its Esc-closes-modal handler when the popover is open (first Esc
+  // closes popover, second closes modal). Optional — DetailPane omits
+  // it and the component keeps its existing self-contained behavior.
+  const setIsOpen = useCallback((next) => {
+    setIsOpenState((prev) => {
+      const resolved = typeof next === 'function' ? next(prev) : next
+      if (resolved !== prev) onOpenChange?.(resolved)
+      return resolved
+    })
+  }, [onOpenChange])
 
   // State reset on task change is handled by the parent (DetailPane)
   // passing a fresh `key={task.id}` prop, which remounts this
@@ -60,7 +75,7 @@ export default function CommandCard({ task }) {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [isOpen])
+  }, [isOpen, setIsOpen])
 
   const handleCopyText = useCallback(async (id, text) => {
     const ok = await copyToClipboard(text)
@@ -73,7 +88,7 @@ export default function CommandCard({ task }) {
       setCopiedId(null)
       setIsOpen(false)
     }, AUTO_COLLAPSE_MS)
-  }, [])
+  }, [setIsOpen])
 
   if (!task) return null
 
@@ -216,7 +231,7 @@ export default function CommandCard({ task }) {
                   color: 'var(--text-app)',
                 }}
               >
-                {task.title}
+                {headerLabel ?? task.title}
               </div>
             </div>
             <button
@@ -256,7 +271,7 @@ export default function CommandCard({ task }) {
               padding: 'var(--space-1)',
             }}
           >
-            {COMMANDS.map((cmd) => {
+            {commands.map((cmd) => {
               const text = cmd.build(task)
               const copied = copiedId === cmd.id
               return (
