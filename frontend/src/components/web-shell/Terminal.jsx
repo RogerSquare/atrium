@@ -98,12 +98,17 @@ export default function ShellTerminal({ task, socket }) {
 
     // Watch the wrapper for size changes — covers the "tabpanel had
     // 0 height on mount, then got real size" race AND the regular
-    // case where the user drags the DetailPane edge.
+    // case where the user drags the DetailPane edge. After every
+    // successful fit we re-focus the terminal so keystrokes land
+    // even if the first focus() call ran before the textarea had a
+    // valid layout.
     let pendingFit = null
     const resizeObserver = new ResizeObserver(() => {
       if (pendingFit) clearTimeout(pendingFit)
       pendingFit = setTimeout(() => {
-        if (safeFit() && socket.connected) {
+        if (!safeFit()) return
+        try { term.focus() } catch { /* term disposed */ }
+        if (socket.connected) {
           socket.emit('webshell:resize', { cols: term.cols, rows: term.rows })
         }
       }, 50)
@@ -165,32 +170,26 @@ export default function ShellTerminal({ task, socket }) {
     // folder mapping, this dep guarantees it picks up the change).
   }, [task?.id, socket])
 
-  // Outer wrapper is absolutely-positioned to inset:0 so it always
-  // fills the nearest positioned ancestor (DetailPane's tabpanel,
-  // which has `position: relative`). This is the fix for the
-  // "rendered but no interaction" symptom — the intermediate
-  // motion.div from AnimatePresence has no explicit height, so a
-  // plain `height: 100%` on the inner div collapses to 0 and
-  // xterm initializes at 0 cols/0 rows. Absolute positioning
-  // bypasses the motion.div's content-sized height entirely.
-  // Inner ref'd div is what xterm.open()s into.
+  // The parent (DetailPane's shell-tab wrapper) provides explicit
+  // dimensions via `position: absolute; inset: var(--space-4)` inside
+  // the tabpanel. We just fill it with a flex column so the inner
+  // ref'd div has a real height before term.open() runs. The onClick
+  // handler is defensive: xterm normally handles its own focus on
+  // canvas clicks, but clicks on padding/border would otherwise do
+  // nothing.
   return (
     <div
       ref={wrapperRef}
       onClick={() => {
-        // Clicking anywhere in the terminal area should focus the
-        // input; xterm normally handles this on its own canvas, but
-        // clicks on padding/borders end up here and would otherwise
-        // do nothing.
-        const term = containerRef.current?.querySelector('.xterm-helper-textarea')
-        if (term && typeof term.focus === 'function') term.focus()
+        const t = containerRef.current?.querySelector('.xterm-helper-textarea')
+        if (t && typeof t.focus === 'function') t.focus()
       }}
       style={{
-        position: 'absolute',
-        inset: 0,
-        background: TERMINAL_THEME.background,
+        height: '100%',
+        width: '100%',
         display: 'flex',
         flexDirection: 'column',
+        background: TERMINAL_THEME.background,
       }}
     >
       <div

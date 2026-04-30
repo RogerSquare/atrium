@@ -216,31 +216,41 @@ export default function DetailPane({
         style={{ padding: 'var(--space-4)' }}
         role="tabpanel"
       >
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={tabTransition}
-          >
-            {activeTab === 'description' && (
-              <DetailDescription task={task} onUpdateTask={onUpdateTask} />
-            )}
-            {activeTab === 'comments' && (
-              <DetailComments task={task} currentUser={currentUser} onUpdateTask={onUpdateTask} />
-            )}
-            {activeTab === 'activity' && (
-              <DetailActivity task={task} />
-            )}
-            {activeTab === 'changes' && (
-              <DetailChanges task={task} />
-            )}
-            {activeTab === 'shell' && (
-              <ShellTerminal task={task} socket={socket} />
-            )}
-          </motion.div>
-        </AnimatePresence>
+        {activeTab === 'shell' ? (
+          // Shell tab bypasses AnimatePresence: xterm needs an explicit
+          // height ancestor before .open() runs, and the framer-motion
+          // wrapper used by other tabs has no defined height. Rendering
+          // directly into a height:100% div inside the tabpanel (which
+          // is `flex-1 min-h-0`, so its height is well-defined) gives
+          // the terminal real dimensions on first paint and lets clicks
+          // + keystrokes land normally.
+          <div style={{ position: 'absolute', inset: 'var(--space-4)' }}>
+            <ShellTerminal task={task} socket={socket} />
+          </div>
+        ) : (
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={tabTransition}
+            >
+              {activeTab === 'description' && (
+                <DetailDescription task={task} onUpdateTask={onUpdateTask} />
+              )}
+              {activeTab === 'comments' && (
+                <DetailComments task={task} currentUser={currentUser} onUpdateTask={onUpdateTask} />
+              )}
+              {activeTab === 'activity' && (
+                <DetailActivity task={task} />
+              )}
+              {activeTab === 'changes' && (
+                <DetailChanges task={task} />
+              )}
+            </motion.div>
+          </AnimatePresence>
+        )}
       </div>
     </motion.aside>
   )
