@@ -232,7 +232,10 @@ export default function DetailPane({
           // when opened — only the *button row* gets reserved.
           <div style={{ position: 'absolute', inset: 'var(--space-4)' }}>
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 56 }}>
-              <ShellTerminal task={task} socket={socket} />
+              {/* key on task.id remounts the terminal when the user
+                  navigates to a different task — resets the recovery
+                  overlay's exitInfo state alongside the live PTY. */}
+              <ShellTerminal key={task.id} task={task} socket={socket} />
             </div>
             {/* key on task.id remounts the card when the user
                 navigates to a different task — resets isOpen +
