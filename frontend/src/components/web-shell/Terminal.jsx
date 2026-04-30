@@ -360,22 +360,41 @@ export default function ShellTerminal({ task, socket }) {
   // Re-launch a shell on top of the existing socket. The server-side
   // handler kills any live PTY before spawning, so this also covers
   // the corner case where the user clicks Resume while the previous
-  // session is somehow still alive. term.clear() wipes the visible
-  // canvas but keeps scrollback so the dead session's last output is
-  // still recoverable via the scrollbar. The `payload` is forwarded
-  // verbatim to webshell:start; the server resolves command from
-  // sessionId + tryResume.
+  // session is somehow still alive.
+  //
+  // Two render-correctness measures here that fix bug-shell-resume-render-001
+  // (intermittent garbled rendering on Resume — characters smearing,
+  // duplicate banners stacking on top of each other):
+  //
+  //   1. `term.reset()` instead of `term.clear()`. clear() only wipes
+  //      the visible region; reset() also drops scrollback, restores
+  //      cursor position, scroll region, charset, mouse modes, and
+  //      bracketed-paste state. The replay torrent from
+  //      `claude --resume` assumes a clean default terminal — any
+  //      mode the prior session left set (e.g. mouse tracking) makes
+  //      the replay's escape sequences write to the wrong cells.
+  //   2. Defer the `webshell:start` emit by one requestAnimationFrame
+  //      after the reset. xterm commits the cleared frame to the
+  //      renderer on the next paint; sending the spawn synchronously
+  //      means the byte burst can hit cells that haven't finished
+  //      committing the reset yet, producing the doubled-banner
+  //      smear seen in the screenshot. One rAF (~16ms) is below the
+  //      perceptual threshold but above xterm's commit latency.
   const respawn = useCallback((payload) => {
     const term = xtermRef.current
     if (!term || !socket?.connected) return
-    try { term.clear() } catch { /* term disposed */ }
-    socket.emit('webshell:start', {
-      cols: term.cols,
-      rows: term.rows,
-      ...payload,
-    })
+    try { term.reset() } catch { /* term disposed */ }
     setExitInfo(null)
-    try { term.focus() } catch { /* term disposed */ }
+    requestAnimationFrame(() => {
+      const liveTerm = xtermRef.current
+      if (!liveTerm || !socket?.connected) return
+      socket.emit('webshell:start', {
+        cols: liveTerm.cols,
+        rows: liveTerm.rows,
+        ...payload,
+      })
+      try { liveTerm.focus() } catch { /* term disposed */ }
+    })
   }, [socket])
 
   // Resume: ask the server to revive THIS task's bound session if
