@@ -24,7 +24,7 @@
 // Claude Code on a clean canvas. The cwd is resolved server-side from
 // settings.workingDirectory (no per-task folder mapping today).
 
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -41,6 +41,10 @@ const TERMINAL_THEME = {
 // straight into Claude Code rather than a bare prompt. Override with
 // the empty string to opt into a bare interactive shell.
 const STARTUP_COMMAND = 'claude'
+// Resume command for the exit-recovery overlay's "Resume previous
+// session" action — picks the most recent claude session in
+// interactive mode without prompting.
+const RESUME_COMMAND = 'claude --continue'
 
 // Verbose tracing for the input/focus chain. Enable by running
 // `localStorage.setItem('webshell:debug','1')` in devtools and
@@ -64,6 +68,14 @@ export default function ShellTerminal({ task, socket }) {
   // active (DOM vs WebGL renderer), the textarea could be reachable,
   // hidden, or moved.
   const xtermRef = useRef(null)
+
+  // exitInfo flips non-null when the server reports webshell:exit and
+  // drives the recovery overlay below. Cleared by Resume / New /
+  // Dismiss and by Esc while the overlay is showing. Stale overlays
+  // from a previous task can't leak in: the parent (DetailPane) keys
+  // ShellTerminal on task.id, so navigating remounts the component
+  // and this state resets to null.
+  const [exitInfo, setExitInfo] = useState(null)
 
   useEffect(() => {
     if (!containerRef.current || !socket) return
@@ -194,6 +206,11 @@ export default function ShellTerminal({ task, socket }) {
     const handleExit = ({ exitCode }) => {
       dlog('webshell:exit recv', { exitCode })
       term.write(`\r\n\x1b[33m[shell exited (${exitCode})]\x1b[0m\r\n`)
+      // Surface the recovery overlay. We don't auto-restart on any
+      // exit code: silent restart on Ctrl+C / crash would mask real
+      // failures, and on a clean /exit the user might genuinely want
+      // to read the scrollback before deciding.
+      setExitInfo({ exitCode })
     }
     const handleDisconnect = (reason) => {
       dlog('socket disconnect', { reason })
@@ -290,6 +307,46 @@ export default function ShellTerminal({ task, socket }) {
     // folder mapping, this dep guarantees it picks up the change).
   }, [task?.id, socket])
 
+  // Re-launch a shell on top of the existing socket. The server-side
+  // handler kills any live PTY before spawning, so this also covers
+  // the corner case where the user clicks Resume while the previous
+  // session is somehow still alive. term.clear() wipes the visible
+  // canvas but keeps scrollback so the dead session's last output is
+  // still recoverable via the scrollbar.
+  const respawn = useCallback((command) => {
+    const term = xtermRef.current
+    if (!term || !socket?.connected) return
+    try { term.clear() } catch { /* term disposed */ }
+    socket.emit('webshell:start', {
+      cols: term.cols,
+      rows: term.rows,
+      command,
+    })
+    setExitInfo(null)
+    try { term.focus() } catch { /* term disposed */ }
+  }, [socket])
+
+  const handleResume = useCallback(() => respawn(RESUME_COMMAND), [respawn])
+  const handleNewSession = useCallback(() => respawn(STARTUP_COMMAND), [respawn])
+  const handleDismiss = useCallback(() => setExitInfo(null), [])
+
+  // Esc on the recovery overlay = Dismiss. We do not auto-resume on
+  // Esc — silent restart hides real failures (Q5 default in the task
+  // spec). Listener is only attached while exitInfo is non-null so
+  // Esc keeps its existing meaning (close DetailPane) when the
+  // overlay is not visible.
+  useEffect(() => {
+    if (!exitInfo) return undefined
+    const handler = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        setExitInfo(null)
+      }
+    }
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
+  }, [exitInfo])
+
   // The parent (DetailPane's shell-tab branch) provides dimensions
   // via `position: absolute; inset: var(--space-4)` inside the
   // tabpanel. We fill 100%/100% with a flex column.
@@ -332,6 +389,9 @@ export default function ShellTerminal({ task, socket }) {
         display: 'flex',
         flexDirection: 'column',
         background: TERMINAL_THEME.background,
+        // position: relative so the recovery overlay below docks to
+        // this wrapper rather than escaping up to the tabpanel.
+        position: 'relative',
       }}
     >
       <div
@@ -343,6 +403,164 @@ export default function ShellTerminal({ task, socket }) {
           position: 'relative',
         }}
       />
+      {exitInfo && (
+        <ExitRecoveryOverlay
+          taskId={task?.id}
+          exitCode={exitInfo.exitCode}
+          onResume={handleResume}
+          onNewSession={handleNewSession}
+          onDismiss={handleDismiss}
+        />
+      )}
+    </div>
+  )
+}
+
+// Renders centered over the terminal canvas when the spawned shell
+// has exited. Three actions: Resume previous session, Start new
+// session, Dismiss. Layered at z-index 7 so the CommandCard's
+// floating pill / popover (z-index 10 in CommandCard.jsx) still
+// sits on top — the user can pop the command list while the overlay
+// is up without dismissing it.
+function ExitRecoveryOverlay({ taskId, exitCode, onResume, onNewSession, onDismiss }) {
+  return (
+    <div
+      // Backdrop swallows clicks on the dead canvas so a stray click
+      // doesn't try to focus a disposed PTY. Clicking the backdrop
+      // itself dismisses (treats the empty space as "View output").
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onDismiss()
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Shell exited"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 7,
+        background: 'rgba(0, 0, 0, 0.6)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 'var(--space-4)',
+      }}
+    >
+      <div
+        style={{
+          width: 'min(360px, 100%)',
+          background: 'var(--bg-card)',
+          border: 'var(--border-hairline)',
+          borderRadius: 'var(--radius-md)',
+          boxShadow: 'var(--shadow-popover)',
+          padding: 'var(--space-4)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--space-3)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <span
+            style={{
+              fontSize: 'var(--text-callout)',
+              fontWeight: 'var(--font-semibold)',
+              color: 'var(--text-app)',
+            }}
+          >
+            Shell exited
+          </span>
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--text-caption2)',
+              color: 'var(--text-tertiary)',
+              padding: '2px 6px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--fill-secondary)',
+            }}
+          >
+            exit {exitCode}
+          </span>
+        </div>
+        <p
+          style={{
+            margin: 0,
+            fontSize: 'var(--text-footnote)',
+            color: 'var(--text-muted)',
+            lineHeight: 1.4,
+          }}
+        >
+          The shell session ended. Resume the previous claude session to keep its context, or start fresh.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          <button
+            type="button"
+            onClick={onResume}
+            className="apple-press"
+            style={{
+              padding: 'var(--space-2) var(--space-3)',
+              border: 'none',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--accent-app)',
+              color: 'var(--accent-on-app)',
+              fontSize: 'var(--text-caption1)',
+              fontWeight: 'var(--font-semibold)',
+              cursor: 'pointer',
+              textAlign: 'center',
+            }}
+          >
+            Resume previous session
+          </button>
+          <button
+            type="button"
+            onClick={onNewSession}
+            className="apple-press"
+            style={{
+              padding: 'var(--space-2) var(--space-3)',
+              border: 'var(--border-hairline)',
+              borderRadius: 'var(--radius-sm)',
+              background: 'transparent',
+              color: 'var(--text-app)',
+              fontSize: 'var(--text-caption1)',
+              fontWeight: 'var(--font-medium)',
+              cursor: 'pointer',
+              textAlign: 'center',
+            }}
+          >
+            Start new session
+          </button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="apple-press"
+            title="Close (Esc)"
+            style={{
+              padding: '2px 6px',
+              margin: '-2px -6px',
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--text-tertiary)',
+              fontSize: 'var(--text-caption2)',
+              cursor: 'pointer',
+            }}
+          >
+            Dismiss · view output
+          </button>
+          {taskId ? (
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 'var(--text-caption2)',
+                color: 'var(--text-tertiary)',
+              }}
+              title="Task this shell belongs to"
+            >
+              {taskId}
+            </span>
+          ) : null}
+        </div>
+      </div>
     </div>
   )
 }
