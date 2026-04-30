@@ -192,48 +192,6 @@ export default function DetailPane({
         </IconButton>
       </header>
 
-      {/* Status row — segmented-pill control for changing task.status.
-          Always visible (regardless of active tab). Centered horizontally
-          so the pill sits balanced under the header. For tasks in
-          waiting_input, render a non-clickable badge instead — that
-          status is set by atrium_create_approval and shouldn't be a
-          target of manual transitions. */}
-      <div
-        className="shrink-0 flex items-center justify-center"
-        style={{
-          padding: 'var(--space-2) var(--space-3)',
-          borderBottom: 'var(--border-hairline)',
-          minWidth: 0,
-        }}
-      >
-        {task.status === 'waiting_input' ? (
-          <span
-            style={{
-              padding: '4px 10px',
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--bg-secondary)',
-              color: 'var(--apple-yellow)',
-              fontSize: 'var(--text-caption2)',
-              fontWeight: 'var(--font-semibold)',
-              fontFamily: 'var(--font-mono)',
-            }}
-            title="Waiting for an approval response — see /api/approvals"
-          >
-            WAITING_INPUT
-          </span>
-        ) : (
-          <StatusSegmentedControl
-            activeStatus={task.status}
-            onChange={(nextStatus) => {
-              // onUpdateTask signature is (taskId, fieldsDiff) —
-              // matches DetailDescription / DetailComments. Passing
-              // the full task object as the first arg silently fails.
-              onUpdateTask?.(task.id, { status: nextStatus })
-            }}
-          />
-        )}
-      </div>
-
       {/* Tab bar */}
       <nav
         className="shrink-0 flex items-center"
@@ -314,7 +272,48 @@ export default function DetailPane({
               transition={tabTransition}
             >
               {activeTab === 'description' && (
-                <DetailDescription task={task} onUpdateTask={onUpdateTask} />
+                <>
+                  {/* Status row — segmented-pill control for changing
+                      task.status. Lives at the top of the Description
+                      tab. For tasks in waiting_input, render a non-
+                      clickable badge instead — that status is set by
+                      atrium_create_approval and shouldn't be a target
+                      of manual transitions. */}
+                  <div
+                    className="flex items-center justify-center"
+                    style={{
+                      marginBottom: 'var(--space-3)',
+                      minWidth: 0,
+                    }}
+                  >
+                    {task.status === 'waiting_input' ? (
+                      <span
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: 'var(--radius-sm)',
+                          background: 'var(--bg-secondary)',
+                          color: 'var(--apple-yellow)',
+                          fontSize: 'var(--text-caption2)',
+                          fontWeight: 'var(--font-semibold)',
+                          fontFamily: 'var(--font-mono)',
+                        }}
+                        title="Waiting for an approval response — see /api/approvals"
+                      >
+                        WAITING_INPUT
+                      </span>
+                    ) : (
+                      <StatusSegmentedControl
+                        activeStatus={task.status}
+                        onChange={(nextStatus) => {
+                          // onUpdateTask signature is (taskId, fieldsDiff)
+                          // — matches DetailDescription / DetailComments.
+                          onUpdateTask?.(task.id, { status: nextStatus })
+                        }}
+                      />
+                    )}
+                  </div>
+                  <DetailDescription task={task} onUpdateTask={onUpdateTask} />
+                </>
               )}
               {activeTab === 'comments' && (
                 <DetailComments task={task} currentUser={currentUser} onUpdateTask={onUpdateTask} />
