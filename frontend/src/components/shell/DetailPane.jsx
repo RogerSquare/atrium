@@ -193,12 +193,13 @@ export default function DetailPane({
       </header>
 
       {/* Status row — segmented-pill control for changing task.status.
-          Always visible (regardless of active tab). For tasks in
+          Always visible (regardless of active tab). Centered horizontally
+          so the pill sits balanced under the header. For tasks in
           waiting_input, render a non-clickable badge instead — that
           status is set by atrium_create_approval and shouldn't be a
           target of manual transitions. */}
       <div
-        className="shrink-0 flex items-center"
+        className="shrink-0 flex items-center justify-center"
         style={{
           padding: 'var(--space-2) var(--space-3)',
           borderBottom: 'var(--border-hairline)',
