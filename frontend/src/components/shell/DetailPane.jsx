@@ -19,6 +19,7 @@ import DetailComments from '../detail/DetailComments'
 import DetailActivity from '../detail/DetailActivity'
 import DetailChanges from '../detail/DetailChanges'
 import ShellTerminal from '../web-shell/Terminal'
+import CommandCard from '../web-shell/CommandCard'
 import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
 
 const TABS = [
@@ -224,8 +225,22 @@ export default function DetailPane({
           // is `flex-1 min-h-0`, so its height is well-defined) gives
           // the terminal real dimensions on first paint and lets clicks
           // + keystrokes land normally.
-          <div style={{ position: 'absolute', inset: 'var(--space-4)' }}>
-            <ShellTerminal task={task} socket={socket} />
+          //
+          // Layout: flex row, terminal flex-1 on the left, CommandCard
+          // ~280px fixed on the right. The card lives in the same
+          // sized box as the terminal, sharing the inset padding.
+          <div
+            style={{
+              position: 'absolute',
+              inset: 'var(--space-4)',
+              display: 'flex',
+              gap: 'var(--space-2)',
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+              <ShellTerminal task={task} socket={socket} />
+            </div>
+            <CommandCard task={task} />
           </div>
         ) : (
           <AnimatePresence mode="wait" initial={false}>
