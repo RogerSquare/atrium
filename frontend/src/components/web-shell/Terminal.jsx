@@ -107,16 +107,18 @@ export default function ShellTerminal({ task, socket }) {
 
     // Watch the wrapper for size changes — covers the "tabpanel had
     // 0 height on mount, then got real size" race AND the regular
-    // case where the user drags the DetailPane edge. After every
-    // successful fit we re-focus the terminal so keystrokes land
-    // even if the first focus() call ran before the textarea had a
-    // valid layout.
+    // case where the user drags the DetailPane edge. We deliberately
+    // do NOT call term.focus() here: if a parent re-render or DOM
+    // mutation causes ResizeObserver to fire while the user is mid-
+    // keystroke, asserting focus tears the textarea away and the
+    // partial keystroke gets lost. Initial focus is set once below
+    // after term.open(); from then on, xterm's own click handlers
+    // and our mousedown handler keep focus where it should be.
     let pendingFit = null
     const resizeObserver = new ResizeObserver(() => {
       if (pendingFit) clearTimeout(pendingFit)
       pendingFit = setTimeout(() => {
         if (!safeFit()) return
-        try { term.focus() } catch { /* term disposed */ }
         if (socket.connected) {
           socket.emit('webshell:resize', { cols: term.cols, rows: term.rows })
         }
@@ -184,29 +186,28 @@ export default function ShellTerminal({ task, socket }) {
   // via `position: absolute; inset: var(--space-4)` inside the
   // tabpanel. We fill 100%/100% with a flex column.
   //
-  // onMouseDown (NOT onClick) — runs BEFORE focus is lost to whatever
-  // the click would otherwise hit, so calling term.focus() here
-  // reliably routes keystrokes to xterm regardless of which internal
-  // element the click landed on (DOM-renderer text layer, WebGL
-  // canvas, padding, scrollbar). Calling term.focus() directly via
-  // the ref instead of DOM-querying for `.xterm-helper-textarea`
-  // because xterm's DOM tree can vary by renderer and the textarea
-  // can be temporarily detached during resize.
+  // onMouseDown handles clicks on padding / non-xterm areas of the
+  // wrapper — clicks directly on xterm's DOM/canvas focus the term
+  // via xterm's own internal handlers, so we don't double-fire. We
+  // deliberately do NOT have an onFocus handler or tabIndex on the
+  // wrapper — those create a focus war with xterm's helper textarea:
+  // the wrapper repeatedly grabs focus back, eating keystrokes
+  // before term.onData can fire.
   //
-  // tabIndex={0} on the wrapper so the wrapper itself is in the
-  // keyboard-focus tree — a defensive belt for browsers that won't
-  // forward keyboard events to a non-tabbable element's children.
   // Inner ref'd div is `position: relative` so xterm's own absolute
   // children dock to it cleanly.
   return (
     <div
       ref={wrapperRef}
-      tabIndex={0}
-      onMouseDown={() => {
-        try { xtermRef.current?.focus() } catch { /* term disposed */ }
-      }}
-      onFocus={() => {
-        try { xtermRef.current?.focus() } catch { /* term disposed */ }
+      onMouseDown={(e) => {
+        // Only steal focus when the click landed on the wrapper or
+        // the padding ring — clicks inside xterm's own DOM/canvas
+        // are already handled by xterm. Filtering by target avoids
+        // the focus race that swallows keystrokes during the
+        // browser's own focus transition.
+        if (e.target === wrapperRef.current || e.target === containerRef.current) {
+          try { xtermRef.current?.focus() } catch { /* term disposed */ }
+        }
       }}
       style={{
         height: '100%',
@@ -214,7 +215,6 @@ export default function ShellTerminal({ task, socket }) {
         display: 'flex',
         flexDirection: 'column',
         background: TERMINAL_THEME.background,
-        outline: 'none',
       }}
     >
       <div
