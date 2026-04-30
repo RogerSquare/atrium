@@ -37,20 +37,25 @@ const TERMINAL_THEME = {
   selectionBackground: 'rgba(255, 255, 255, 0.3)',
 }
 
-// Per-task session id binding. Each task has a stable UUID stored in
-// localStorage; the initial spawn passes it to the server as
-// `sessionId` along with `tryResume: true`. The backend
-// (web-shell.js) checks whether the session file is actually on disk
-// at ~/.claude/projects/<cwd-slug>/<uuid>.jsonl and picks the right
-// claude flag:
+// Per-task session id binding. The source of truth is the task YAML's
+// `claude_session_id` field — the backend mints/promotes/rotates it on
+// `webshell:start` and reports the resolved value back via the
+// `webshell:spawn` sentinel. localStorage is now a cache: it lets the
+// frontend ship a hint to the server (one-time migration of legacy
+// per-machine UUIDs from feat-shell-task-resume-001) and lets the
+// exit-recovery overlay show the bound id without a round-trip.
+//
+// Spawn-time decision lives in the backend (web-shell.js → `buildClaudeCommand`):
 //   - file exists → `claude --resume <uuid>`   (revive conversation)
 //   - file absent → `claude --session-id <uuid>` (create at this id)
 // This avoids the "No conversation found with session ID: <uuid>"
 // error loop when Resume targeted a never-saved session (e.g., user
 // typed /exit before sending any messages).
 //
-// "Start new session" rotates to a fresh uuid AND sends
-// `tryResume: false`, so the server always creates fresh.
+// "Start new session" sends `rotate: true` and lets the backend mint
+// the new UUID server-side (single source of truth, easier to test).
+// Client-side mintUuid stays as a fallback for graceful degradation
+// against a backend that hasn't picked up this feature yet.
 const SESSION_ID_KEY_PREFIX = 'webshell:session:'
 
 function readSessionId(taskId) {
@@ -60,32 +65,6 @@ function readSessionId(taskId) {
 function writeSessionId(taskId, id) {
   if (!taskId) return
   try { window.localStorage.setItem(SESSION_ID_KEY_PREFIX + taskId, id) } catch { /* storage full or disabled */ }
-}
-function mintUuid() {
-  // crypto.randomUUID is available in all browsers atrium targets
-  // (modern Chrome/Edge/Firefox). The Math.random fallback is
-  // strictly defensive — it only triggers in ancient browsers that
-  // would already fail elsewhere in atrium.
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0
-    const v = c === 'x' ? r : (r & 0x3) | 0x8
-    return v.toString(16)
-  })
-}
-function getOrMintSessionId(taskId) {
-  const existing = readSessionId(taskId)
-  if (existing) return existing
-  const fresh = mintUuid()
-  writeSessionId(taskId, fresh)
-  return fresh
-}
-function rotateSessionId(taskId) {
-  const fresh = mintUuid()
-  writeSessionId(taskId, fresh)
-  return fresh
 }
 
 // Verbose tracing for the input/focus chain. Enable by running
@@ -324,17 +303,27 @@ export default function ShellTerminal({ task, socket }) {
     // (activeSpawnId / bytesSinceSpawn / lastStartEmittedAt are
     // declared above so handleExit can read them for stale-exit
     // filtering. Don't redeclare — these are the same variables.)
-    const handleSpawnSentinel = ({ spawnId, pid, spawnAt }) => {
+    const handleSpawnSentinel = ({ spawnId, pid, spawnAt, sessionId, sessionSource, taskId: spawnTaskId }) => {
       const prev = activeSpawnIdRef.current
       const prevBytes = bytesSinceSpawn
       activeSpawnIdRef.current = spawnId
       bytesSinceSpawn = 0
+      // Mirror the server-resolved session id into localStorage so the
+      // exit-recovery overlay's chip and the next spawn's hint stay in
+      // sync with the task YAML — this is the cache-update half of the
+      // promotion-from-localStorage story.
+      if (sessionId && spawnTaskId) {
+        writeSessionId(spawnTaskId, sessionId)
+      }
       xlog('webshell:spawn sentinel', {
         newSpawnId: spawnId,
         previousSpawnId: prev,
         previousBytesEmitted: prevBytes,
         pid,
         spawnAt,
+        sessionId,
+        sessionSource,
+        taskId: spawnTaskId,
         clientReceivedAt: Date.now(),
       })
     }
@@ -411,17 +400,21 @@ export default function ShellTerminal({ task, socket }) {
     // actually fires.
     let startTimer = setTimeout(() => {
       startTimer = null
-      const sessionId = getOrMintSessionId(task?.id)
+      // Read (don't mint) localStorage as a hint — first-ever opens on a
+      // fresh machine send no sessionId so the backend mints server-side
+      // and writes to the task YAML. Existing localStorage values are
+      // promoted by the backend on first spawn after this feature ships.
+      const sessionHint = readSessionId(task?.id)
       const payload = {
         cols: term.cols,
         rows: term.rows,
-        sessionId,
+        taskId: task?.id || null,
+        ...(sessionHint ? { sessionId: sessionHint } : {}),
         tryResume: true,
       }
       lastStartEmittedAtRef.current = Date.now()
       xlog('emitting webshell:start (initial mount)', {
         ...payload,
-        taskId: task?.id,
         emittedAt: lastStartEmittedAtRef.current,
       })
       socket.emit('webshell:start', payload)
@@ -518,20 +511,28 @@ export default function ShellTerminal({ task, socket }) {
     })
   }, [socket])
 
-  // Resume: ask the server to revive THIS task's bound session if
-  // its file exists on disk, or create one at that id if not. The
-  // server-side decision (web-shell.js → buildClaudeCommand) is
-  // logged at info level — check the backend log if Resume isn't
-  // doing what's expected.
+  // Resume: ask the server to revive THIS task's bound session. The
+  // server resolves the bound UUID from task YAML (or promotes the
+  // localStorage hint on first contact) and decides between
+  // `claude --resume <uuid>` vs `claude --session-id <uuid>` based on
+  // whether the on-disk session file exists for THIS machine
+  // (web-shell.js → buildClaudeCommand). Decision logged at info level.
   const handleResume = useCallback(() => {
     xlog('handleResume() invoked', { taskId: task?.id, at: Date.now() })
-    const sessionId = getOrMintSessionId(task?.id)
-    respawn({ sessionId, tryResume: true })
+    const sessionHint = readSessionId(task?.id)
+    respawn({
+      taskId: task?.id || null,
+      ...(sessionHint ? { sessionId: sessionHint } : {}),
+      tryResume: true,
+    })
   }, [respawn, task?.id])
+  // New session: tell the server to rotate the bound UUID. Server mints
+  // a fresh value and writes it to the task YAML through the standard
+  // update helpers (so activity_log records the rotation). The new
+  // UUID arrives back via the spawn sentinel, which updates localStorage.
   const handleNewSession = useCallback(() => {
     xlog('handleNewSession() invoked', { taskId: task?.id, at: Date.now() })
-    const sessionId = rotateSessionId(task?.id)
-    respawn({ sessionId, tryResume: false })
+    respawn({ taskId: task?.id || null, rotate: true, tryResume: false })
   }, [respawn, task?.id])
   const handleDismiss = useCallback(() => {
     xlog('handleDismiss() invoked', { at: Date.now() })

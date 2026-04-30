@@ -724,7 +724,7 @@ router.put('/:id', async (req, res) => {
   const { id } = req.params;
   try {
     await withLock(`task:${id}`, async () => {
-    const { title, status, priority, content, project, assignee, type, component, tags, files_affected, parent_task, depends_on, due_date, updated_by, github_branch, github_pr_url } = req.body;
+    const { title, status, priority, content, project, assignee, type, component, tags, files_affected, parent_task, depends_on, due_date, updated_by, github_branch, github_pr_url, claude_session_id } = req.body;
 
     let filePath = findTaskFilePath(id);
     let originalProject = '';
@@ -780,6 +780,10 @@ router.put('/:id', async (req, res) => {
       // Optional Changes-view overrides — see CLAUDE.md "Branch & PR Linkage → Explicit override"
       github_branch: github_branch !== undefined ? github_branch : (currentData.github_branch || null),
       github_pr_url: github_pr_url !== undefined ? github_pr_url : (currentData.github_pr_url || null),
+      // Per-task claude session UUID — minted on first Shell-tab spawn,
+      // rotated on Start New Session. Round-trips through MCP for recovery
+      // scripts that need to re-link a task to a known-good session id.
+      claude_session_id: claude_session_id !== undefined ? claude_session_id : (currentData.claude_session_id || null),
       created_at: currentData.created_at || new Date().toISOString(),
       started_at: currentData.started_at || null,
       reviewed_at: currentData.reviewed_at || null,
@@ -814,7 +818,7 @@ router.put('/:id', async (req, res) => {
 
     let changeDetails = [];
 
-    const fieldsToTrack = ['title', 'priority', 'assignee', 'type', 'component'];
+    const fieldsToTrack = ['title', 'priority', 'assignee', 'type', 'component', 'claude_session_id'];
     fieldsToTrack.forEach(field => {
       if (req.body[field] !== undefined && req.body[field] !== currentData[field]) {
         const oldVal = currentData[field] || 'none';

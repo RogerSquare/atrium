@@ -31,9 +31,11 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const pty = require('node-pty');
 const { logger } = require('../lib/logger');
 const { SETTINGS_FILE } = require('../lib/constants');
+const { getAllTasks, updateTaskField } = require('../lib/tasks');
 
 const DEFAULT_SHELL = process.env.WEB_SHELL_DEFAULT_SHELL || 'cmd.exe';
 
@@ -97,6 +99,57 @@ function buildClaudeCommand(cwd, sessionId, tryResume, socketId) {
   return command;
 }
 
+// Resolve the claude session UUID bound to this task. Source of truth is
+// the task YAML's `claude_session_id` field (feat-shell-task-resume-002).
+// Behavior matrix:
+//   - rotate=true            → mint fresh UUID, write back with the
+//                              "rotated" activity_log entry. Caller is
+//                              "Start New Session" on the exit overlay.
+//   - existing field on task → return it; no write, no activity_log noise
+//                              on routine spawns.
+//   - field absent + clientHint provided → promote the client-supplied
+//                              UUID (legacy localStorage value from
+//                              feat-shell-task-resume-001 era) so the
+//                              on-disk session at that UUID stays linked
+//                              to this task.
+//   - field absent + no hint → mint server-side. Server-side is the
+//                              single source of truth (Q2 default in the
+//                              task spec).
+// Returns { sessionId, source } where source is one of
+//   'task' | 'rotate' | 'mint' | 'migrate' — logged at info level so
+// the user can correlate Shell-tab behavior with the path taken.
+async function resolveTaskSessionId({ taskId, clientHint, rotate, actor }) {
+  if (!taskId) return null;
+  let task = null;
+  try {
+    task = getAllTasks().find((t) => t.id === taskId) || null;
+  } catch (err) {
+    logger.warn({ err, taskId }, 'web-shell: getAllTasks failed during session resolution');
+  }
+  if (!task) {
+    logger.warn({ taskId }, 'web-shell: task not found, falling back to client hint');
+    return clientHint
+      ? { sessionId: clientHint, source: 'client-only' }
+      : { sessionId: crypto.randomUUID(), source: 'mint-orphan' };
+  }
+  const existing = task.claude_session_id || null;
+  if (rotate) {
+    const fresh = crypto.randomUUID();
+    await updateTaskField(taskId, 'claude_session_id', fresh, actor, 'Session id rotated for shell binding');
+    return { sessionId: fresh, source: 'rotate' };
+  }
+  if (existing) {
+    return { sessionId: existing, source: 'task' };
+  }
+  if (clientHint) {
+    await updateTaskField(taskId, 'claude_session_id', clientHint, actor, 'Session id minted for shell binding (migrated from localStorage)');
+    return { sessionId: clientHint, source: 'migrate' };
+  }
+  const fresh = crypto.randomUUID();
+  await updateTaskField(taskId, 'claude_session_id', fresh, actor, 'Session id minted for shell binding');
+  return { sessionId: fresh, source: 'mint' };
+}
+
 // Process-wide spawn counter — every PTY spawn gets a monotonically
 // increasing id. Logged on the backend AND included in the very first
 // output emission (a sentinel chunk) so the frontend can correlate
@@ -125,7 +178,7 @@ const registerWebShellHandlers = (socket) => {
   // exit so we can correlate "spawn N emitted X bytes total".
   let bytesEmittedThisSpawn = 0;
 
-  socket.on('webshell:start', (config = {}) => {
+  socket.on('webshell:start', async (config = {}) => {
     const spawnId = nextSpawnId++;
     const startReceivedAt = Date.now();
     try {
@@ -140,7 +193,9 @@ const registerWebShellHandlers = (socket) => {
             rows: config.rows,
             command: config.command,
             sessionId: config.sessionId,
+            taskId: config.taskId,
             tryResume: config.tryResume,
+            rotate: config.rotate,
           },
           priorSpawnId: activeSpawnId,
           priorBytesEmitted: bytesEmittedThisSpawn,
@@ -167,10 +222,53 @@ const registerWebShellHandlers = (socket) => {
       const cwd = resolveCwd();
       const cols = Number.isFinite(config.cols) ? config.cols : 80;
       const rows = Number.isFinite(config.rows) ? config.rows : 24;
-      const sessionId = typeof config.sessionId === 'string' && config.sessionId.length > 0
+      const taskId = typeof config.taskId === 'string' && config.taskId.length > 0
+        ? config.taskId
+        : null;
+      const clientSessionHint = typeof config.sessionId === 'string' && config.sessionId.length > 0
         ? config.sessionId
         : null;
+      const rotate = !!config.rotate;
       const tryResume = !!config.tryResume;
+
+      // When a taskId is present, the task YAML is the source of truth for
+      // the bound session UUID. resolveTaskSessionId mints / promotes /
+      // rotates as needed and writes back through updateTaskField so the
+      // activity_log records the change exactly once. When no taskId is
+      // sent (legacy callers, or non-task contexts), we fall back to the
+      // client-supplied sessionId verbatim — same shape as before this
+      // task shipped.
+      let sessionId = clientSessionHint;
+      let sessionSource = 'client';
+      if (taskId) {
+        try {
+          const resolved = await resolveTaskSessionId({
+            taskId,
+            clientHint: clientSessionHint,
+            rotate,
+            actor: 'web-shell',
+          });
+          if (resolved && resolved.sessionId) {
+            sessionId = resolved.sessionId;
+            sessionSource = resolved.source;
+          }
+        } catch (err) {
+          logger.error({ err, taskId, socketId: socket.id }, 'web-shell: session resolution failed; falling back to client hint');
+        }
+      }
+      logger.info(
+        {
+          spawnId,
+          taskId,
+          sessionId,
+          sessionSource,
+          rotate,
+          tryResume,
+          socketId: socket.id,
+        },
+        'web-shell: resolved session binding'
+      );
+
       let command = typeof config.command === 'string' && config.command.length > 0
         ? config.command
         : null;
@@ -252,7 +350,10 @@ const registerWebShellHandlers = (socket) => {
         }
         socket.emit('webshell:output', data);
       });
-      socket.emit('webshell:spawn', { spawnId: myId, pid: ptyPid, spawnAt });
+      // Include resolved sessionId on the spawn sentinel so the frontend
+      // can mirror it into localStorage (cache + offline-fallback) and
+      // surface it in the exit-recovery overlay's session-id chip.
+      socket.emit('webshell:spawn', { spawnId: myId, pid: ptyPid, spawnAt, sessionId, sessionSource, taskId });
 
       ptyProcess.onExit(({ exitCode }) => {
         const wasActive = activeSpawnId === myId;
