@@ -15,14 +15,17 @@
 //
 // Wire format (matches backend/sockets/web-shell.js) — Phase 1 of
 // `feat-shell-background-sessions-001` migrated every event payload to
-// `{ taskId, ... }` so later phases can route N PTYs per socket. taskId
-// is null for the global-shell modal (Phase 5 collapses that workaround):
-//   client → server   webshell:start  { taskId, cols?, rows?, command?, sessionId?, tryResume?, rotate? }
-//                     webshell:input  { taskId, data }
-//                     webshell:resize { taskId, cols, rows }
-//   server → client   webshell:output { taskId, data }
-//                     webshell:exit   { taskId, exitCode, spawnId }
-//                     webshell:spawn  { taskId, spawnId, pid, spawnAt, sessionId, sessionSource }
+// `{ taskId, ... }` so later phases can route N PTYs per socket. Phase 4
+// added webshell:close + webshell:evicted. taskId is null for the global-
+// shell modal (Phase 5 collapses that workaround):
+//   client → server   webshell:start   { taskId, cols?, rows?, command?, sessionId?, tryResume?, rotate? }
+//                     webshell:input   { taskId, data }
+//                     webshell:resize  { taskId, cols, rows }
+//                     webshell:close   { taskId }
+//   server → client   webshell:output  { taskId, data }
+//                     webshell:exit    { taskId, exitCode, spawnId }
+//                     webshell:spawn   { taskId, spawnId, pid, spawnAt, sessionId, sessionSource }
+//                     webshell:evicted { taskId }
 //
 // Default startup command is `claude` so the page boots straight into
 // Claude Code on a clean canvas. The cwd is resolved server-side from
@@ -354,6 +357,16 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
       dlog('socket disconnect', { reason })
       term.write('\r\n\x1b[31m[disconnected]\x1b[0m\r\n')
     }
+    // Phase 4 — server tells us our PTY was evicted to make room (cap
+    // pressure). Filter by taskId so each instance only acts on its own
+    // eviction; clear the active spawn ref so the next Resume click
+    // triggers a fresh spawn instead of reattaching to nothing.
+    const handleEvicted = (payload) => {
+      if (!payload || payload.taskId !== wireTaskId) return
+      term.write('\r\n\x1b[33m[session evicted — start a new one to reconnect]\x1b[0m\r\n')
+      activeSpawnIdRef.current = null
+      xlog('webshell:evicted recv', { taskId: payload.taskId, at: Date.now() })
+    }
 
     // (activeSpawnId / bytesSinceSpawn / lastStartEmittedAt are
     // declared above so handleExit can read them for stale-exit
@@ -421,6 +434,7 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
     socket.on('webshell:spawn', handleSpawnSentinel)
     socket.on('webshell:output', handleOutputDiag)
     socket.on('webshell:exit', handleExit)
+    socket.on('webshell:evicted', handleEvicted)
     socket.on('disconnect', handleDisconnect)
     if (DEBUG) {
       socket.on('connect', () => dlog('socket connect'))
@@ -514,6 +528,7 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
       socket.off('webshell:spawn', handleSpawnSentinel)
       socket.off('webshell:output', handleOutputDiag)
       socket.off('webshell:exit', handleExit)
+      socket.off('webshell:evicted', handleEvicted)
       socket.off('disconnect', handleDisconnect)
       // Do NOT socket.disconnect() — atrium owns the socket lifecycle.
       try { webglAddon?.dispose() } catch { /* already disposed */ }

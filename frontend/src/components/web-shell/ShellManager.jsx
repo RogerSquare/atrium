@@ -26,6 +26,7 @@
 //     keeps the xterms alive across tab nav too.
 
 import { useState } from 'react'
+import { X } from 'lucide-react'
 import ShellTerminal from './Terminal'
 
 export default function ShellManager({ activeTask, socket }) {
@@ -46,8 +47,22 @@ export default function ShellManager({ activeTask, socket }) {
 
   const activeId = activeTask?.id ?? null
 
+  // Phase 4 — manual close affordance. Emits webshell:close on the wire;
+  // the backend kills the active PTY and its onExit handler emits the
+  // standard webshell:exit, which the existing recovery overlay handles.
+  // We deliberately do NOT remove the entry from openTasks here — leaving
+  // the ShellTerminal mounted lets the overlay show with Resume / Start
+  // new / Dismiss, matching the UX of a natural claude exit.
+  const handleCloseActive = () => {
+    if (!activeId || !socket?.connected) return
+    socket.emit('webshell:close', { taskId: activeId })
+  }
+
   // Fragment with absolute-positioned children — the parent (DetailPane's
   // shell pane) provides the bounding box; each child fills it via inset:0.
+  // The close button sits in the top-right corner above the active xterm
+  // (z-index below the recovery overlay so it disappears when the overlay
+  // arms — prevents double-clicks while a session is exiting).
   return (
     <>
       {openTasks.map((t) => {
@@ -66,6 +81,34 @@ export default function ShellManager({ activeTask, socket }) {
           </div>
         )
       })}
+      {activeId && (
+        <button
+          type="button"
+          onClick={handleCloseActive}
+          aria-label="Close session"
+          title="Close session"
+          className="apple-press"
+          style={{
+            position: 'absolute',
+            top: 4,
+            right: 4,
+            zIndex: 5,
+            width: 24,
+            height: 24,
+            padding: 0,
+            border: 'none',
+            background: 'rgba(0, 0, 0, 0.4)',
+            color: 'rgba(255, 255, 255, 0.7)',
+            borderRadius: 'var(--radius-sm)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+          }}
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      )}
     </>
   )
 }

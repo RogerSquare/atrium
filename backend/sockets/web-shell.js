@@ -16,14 +16,17 @@
 //
 // Wire format (client ↔ server) — `feat-shell-background-sessions-001` Phase 1
 // migrated every event payload to a `{ taskId, ... }` discriminator shape so
-// later phases can route N PTYs per socket. taskId is null for the legacy
-// non-task callers (and for the global-shell modal until Phase 5):
+// later phases can route N PTYs per socket. Phase 4 added the close + evicted
+// events. taskId is null for the legacy non-task callers (and for the global-
+// shell modal until Phase 5):
 //   client → server   webshell:start  { taskId, cols?, rows?, command?, sessionId?, tryResume?, rotate? }
 //                     webshell:input  { taskId, data }
 //                     webshell:resize { taskId, cols, rows }
+//                     webshell:close  { taskId }
 //   server → client   webshell:output { taskId, data }
 //                     webshell:exit   { taskId, exitCode, spawnId }
 //                     webshell:spawn  { taskId, spawnId, pid, spawnAt, sessionId, sessionSource }
+//                     webshell:evicted { taskId }
 //
 // `command` (optional): when set, server spawns `cmd.exe /c <command>`
 // directly so there's no banner/prompt before the launched CLI takes
@@ -184,6 +187,38 @@ let nextSpawnId = 1;
 // the diag logs below will fire.
 logger.info({ marker: 'WEB-SHELL-DIAG-V2' }, 'web-shell handler module loaded');
 
+// Find the entry with smallest lastActivityTs, kill its PTY, remove it
+// from the map, and emit `webshell:evicted { taskId }` so the frontend
+// can render a "session evicted" badge in the affected xterm. Returns
+// `{ taskId, idleMs }` for the caller to log, or null if the map was
+// empty.
+//
+// Eviction is silent at the wire level (no webshell:exit fires) — the
+// killed PTY's onExit will see the entry is already gone (we delete
+// here) and bail via its `wasActive` guard. This is intentional: the
+// user-visible signal is the evicted badge, not the recovery overlay.
+// Manual close via `webshell:close` takes a different path so the user
+// gets the recovery overlay (see the close handler in
+// registerWebShellHandlers).
+function evictLongestIdleEntry(ptyMap, socket) {
+  let oldestKey = null;
+  let oldestTs = Infinity;
+  for (const [key, entry] of ptyMap) {
+    if (entry.lastActivityTs < oldestTs) {
+      oldestTs = entry.lastActivityTs;
+      oldestKey = key;
+    }
+  }
+  if (oldestKey === null) return null;
+  const entry = ptyMap.get(oldestKey);
+  const evictedTaskId = entry.taskId;
+  const idleMs = Date.now() - oldestTs;
+  try { entry.ptyProcess.kill(); } catch { /* already dead */ }
+  ptyMap.delete(oldestKey);
+  socket.emit('webshell:evicted', { taskId: evictedTaskId });
+  return { taskId: evictedTaskId, idleMs };
+}
+
 const registerWebShellHandlers = (socket) => {
   // Map<key, ptyEntry> — one entry per (socket, taskId). taskId may be null
   // for legacy callers and the global-shell modal (until Phase 5 collapses
@@ -310,11 +345,30 @@ const registerWebShellHandlers = (socket) => {
         );
       }
 
-      // Soft-cap warning. Phase 2 only logs; Phase 4 enforces eviction
-      // (kill the longest-idle entry to make room). Worth surfacing now
-      // so the user sees they're approaching the cap before phase 4 ships.
-      if (ptyMap.size >= MAX_PTYS) {
-        logger.warn(
+      // Cap enforcement (`feat-shell-background-sessions-001` Phase 4).
+      // Eviction only fires when we're about to ADD a new entry — replace
+      // (`existing` and `tryResume:false || rotate`) doesn't grow the map,
+      // and reattach already returned early above. So evict only on the
+      // !existing path.
+      if (!existing && ptyMap.size >= MAX_PTYS) {
+        const evicted = evictLongestIdleEntry(ptyMap, socket);
+        if (evicted) {
+          logger.info(
+            {
+              socketId: socket.id,
+              evictedTaskId: evicted.taskId,
+              idleMs: evicted.idleMs,
+              replacedByTaskId: taskId,
+              spawnId,
+              ptyMapSizeAfter: ptyMap.size,
+            },
+            'web-shell: evicted longest-idle PTY at cap'
+          );
+        }
+      } else if (!existing && ptyMap.size >= MAX_PTYS - 1) {
+        // One slot away from the cap — log so the user can correlate
+        // upcoming evictions with their task-shell churn (per QP3).
+        logger.info(
           {
             socketId: socket.id,
             currentSize: ptyMap.size,
@@ -322,7 +376,7 @@ const registerWebShellHandlers = (socket) => {
             taskId,
             spawnId,
           },
-          'web-shell: PTY soft cap reached — eviction not yet enforced (phase 4)'
+          'web-shell: PTY count approaching cap; next new task will evict the longest-idle'
         );
       }
 
@@ -492,6 +546,33 @@ const registerWebShellHandlers = (socket) => {
     if (!entry) return;
     entry.lastActivityTs = Date.now();
     entry.ptyProcess.write(payload.data);
+  });
+
+  // User-initiated close (`feat-shell-background-sessions-001` Phase 4).
+  // Kill the PTY and let the existing onExit handler handle the rest:
+  // it sees `wasActive` true (entry still in map at this point), emits
+  // the standard "Shell exited" output + webshell:exit, then deletes the
+  // entry. Frontend's existing handleExit path arms the recovery overlay,
+  // so manual close → recovery overlay → user clicks Resume to spawn
+  // fresh. No special-case wire event for "manual close" needed.
+  socket.on('webshell:close', (payload) => {
+    if (!payload) return;
+    const entry = ptyMap.get(keyFor(payload.taskId));
+    if (!entry) return;
+    logger.info(
+      {
+        socketId: socket.id,
+        closedTaskId: entry.taskId,
+        spawnId: entry.activeSpawnId,
+        bytesEmitted: entry.bytesEmittedThisSpawn,
+        ptyMapSize: ptyMap.size,
+        reason: 'manual',
+      },
+      'web-shell: PTY close requested by user'
+    );
+    try { entry.ptyProcess.kill(); } catch { /* already dead */ }
+    // Don't delete from map here — onExit handles cleanup AFTER it emits
+    // webshell:exit so the frontend gets the recovery overlay.
   });
 
   // Wire format Phase 1: payload is `{ taskId, cols, rows }`. Phase 2 routes
