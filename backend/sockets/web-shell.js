@@ -15,7 +15,7 @@
 //      keep their event streams from interfering.
 //
 // Wire format (client ↔ server):
-//   client → server   webshell:start  { cols?, rows?, command? }
+//   client → server   webshell:start  { cols?, rows?, command?, initialInput? }
 //                     webshell:input  <bytes>
 //                     webshell:resize { cols, rows }
 //   server → client   webshell:output <bytes>
@@ -24,6 +24,12 @@
 // `command` (optional): when set, server spawns `cmd.exe /c <command>`
 // directly so there's no banner/prompt before the launched CLI takes
 // over the canvas. When unset, an interactive cmd.exe is spawned.
+//
+// `initialInput` (optional): a string written to the PTY's stdin
+// ~2 seconds after spawn, wrapped in bracketed-paste markers so
+// Ink-based CLIs (claude code) treat it as a single pasted message
+// followed by Enter. Used by the DetailPane Shell tab to seed claude
+// with the active task's context.
 //
 // One PTY per socket; killed on disconnect via the returned cleanup
 // function.
@@ -93,6 +99,36 @@ const registerWebShellHandlers = (socket) => {
         socket.emit('webshell:exit', { exitCode });
         ptyProcess = null;
       });
+
+      // Optional initial input — write to the PTY's stdin once the
+      // launched CLI has had time to settle into its input loop.
+      // Wrapped in bracketed-paste markers (\x1b[200~ ... \x1b[201~)
+      // so apps like claude code (Ink-based) treat it as a single
+      // pasted message rather than a flurry of keystrokes; trailing
+      // \r submits. Default delay 2000ms is conservative for claude's
+      // startup; callers can override via `initialInputDelayMs`.
+      if (typeof config.initialInput === 'string' && config.initialInput.length > 0) {
+        const text = config.initialInput;
+        const delayMs = Number.isFinite(config.initialInputDelayMs)
+          ? config.initialInputDelayMs
+          : 2000;
+        setTimeout(() => {
+          if (ptyProcess) {
+            try {
+              ptyProcess.write(`\x1b[200~${text}\x1b[201~\r`);
+              logger.info(
+                { socketId: socket.id, length: text.length, delayMs },
+                'Wrote initialInput to web-shell PTY'
+              );
+            } catch (err) {
+              logger.warn(
+                { err, socketId: socket.id },
+                'Failed to write initialInput to web-shell PTY'
+              );
+            }
+          }
+        }, delayMs);
+      }
     } catch (err) {
       logger.error({ err, socketId: socket.id }, 'web-shell PTY spawn error');
       socket.emit(
