@@ -45,6 +45,14 @@ const STARTUP_COMMAND = 'claude'
 export default function ShellTerminal({ task, socket }) {
   const wrapperRef = useRef(null)
   const containerRef = useRef(null)
+  // xtermRef is read by the wrapper's onMouseDown handler so clicks
+  // anywhere in the visible area (including padding / dead-zones in
+  // xterm's own canvas) reliably focus the terminal via the public
+  // term.focus() API. Querying for `.xterm-helper-textarea` from the
+  // DOM was unreliable — depending on which xterm internal layout was
+  // active (DOM vs WebGL renderer), the textarea could be reachable,
+  // hidden, or moved.
+  const xtermRef = useRef(null)
 
   useEffect(() => {
     if (!containerRef.current || !socket) return
@@ -62,6 +70,7 @@ export default function ShellTerminal({ task, socket }) {
       allowProposedApi: true,
     })
 
+    xtermRef.current = term
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
     term.open(containerRef.current)
@@ -163,6 +172,7 @@ export default function ShellTerminal({ task, socket }) {
       // Do NOT socket.disconnect() — atrium owns the socket lifecycle.
       try { webglAddon?.dispose() } catch { /* already disposed */ }
       try { term.dispose() } catch { /* already disposed */ }
+      xtermRef.current = null
     }
     // task?.id in deps so navigating to a different task restarts the
     // shell in the new task's context (server still resolves cwd from
@@ -170,19 +180,33 @@ export default function ShellTerminal({ task, socket }) {
     // folder mapping, this dep guarantees it picks up the change).
   }, [task?.id, socket])
 
-  // The parent (DetailPane's shell-tab wrapper) provides explicit
-  // dimensions via `position: absolute; inset: var(--space-4)` inside
-  // the tabpanel. We just fill it with a flex column so the inner
-  // ref'd div has a real height before term.open() runs. The onClick
-  // handler is defensive: xterm normally handles its own focus on
-  // canvas clicks, but clicks on padding/border would otherwise do
-  // nothing.
+  // The parent (DetailPane's shell-tab branch) provides dimensions
+  // via `position: absolute; inset: var(--space-4)` inside the
+  // tabpanel. We fill 100%/100% with a flex column.
+  //
+  // onMouseDown (NOT onClick) — runs BEFORE focus is lost to whatever
+  // the click would otherwise hit, so calling term.focus() here
+  // reliably routes keystrokes to xterm regardless of which internal
+  // element the click landed on (DOM-renderer text layer, WebGL
+  // canvas, padding, scrollbar). Calling term.focus() directly via
+  // the ref instead of DOM-querying for `.xterm-helper-textarea`
+  // because xterm's DOM tree can vary by renderer and the textarea
+  // can be temporarily detached during resize.
+  //
+  // tabIndex={0} on the wrapper so the wrapper itself is in the
+  // keyboard-focus tree — a defensive belt for browsers that won't
+  // forward keyboard events to a non-tabbable element's children.
+  // Inner ref'd div is `position: relative` so xterm's own absolute
+  // children dock to it cleanly.
   return (
     <div
       ref={wrapperRef}
-      onClick={() => {
-        const t = containerRef.current?.querySelector('.xterm-helper-textarea')
-        if (t && typeof t.focus === 'function') t.focus()
+      tabIndex={0}
+      onMouseDown={() => {
+        try { xtermRef.current?.focus() } catch { /* term disposed */ }
+      }}
+      onFocus={() => {
+        try { xtermRef.current?.focus() } catch { /* term disposed */ }
       }}
       style={{
         height: '100%',
@@ -190,6 +214,7 @@ export default function ShellTerminal({ task, socket }) {
         display: 'flex',
         flexDirection: 'column',
         background: TERMINAL_THEME.background,
+        outline: 'none',
       }}
     >
       <div
@@ -198,7 +223,7 @@ export default function ShellTerminal({ task, socket }) {
           flex: 1,
           minHeight: 0,
           minWidth: 0,
-          padding: 4,
+          position: 'relative',
         }}
       />
     </div>
