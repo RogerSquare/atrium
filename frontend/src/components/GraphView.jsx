@@ -571,6 +571,32 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     }, 150)
   }, [])
 
+  // --- Auto-recenter on container resize ---------------------------------
+  // Fires whenever the graph's available area actually changes — DetailPane
+  // open / close (slides in from the right, ~380–720px wide), DetailPane
+  // drag-resize, browser window resize. The initial observe() event is
+  // suppressed so we don't double-fit on top of the stabilization-pass
+  // auto-fit baked into the build effect's options. The 150ms debounce
+  // inside `scheduleAutoFit` collapses the burst of resize ticks the
+  // DetailPane slide animation produces into a single fit at the trailing
+  // edge — and shares its timer with the structural-change trigger so a
+  // filter chip toggled while the pane is sliding still produces one fit
+  // total, not two.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return undefined
+    let suppressInitial = true
+    const ro = new ResizeObserver(() => {
+      if (suppressInitial) {
+        suppressInitial = false
+        return
+      }
+      scheduleAutoFit()
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [scheduleAutoFit])
+
   // --- Init / refresh network --------------------------------------------
   // Builds the vis-network instance ONCE on mount, and again only when the
   // user clicks "Reset positions" (which bumps `resetVersion`). Filter chip
