@@ -435,10 +435,12 @@ export default function AppShell() {
       )}
       {showGlobalShell && (
         <Suspense fallback={null}>
-          <GlobalShellModal
-            socket={socketRef?.current}
-            onClose={() => setShowGlobalShell(false)}
-          />
+          {/* Modal owns its own socket — see SOCKET LIFECYCLE in
+              GlobalShellModal.jsx. Sharing AuthContext's socket would
+              cause the per-socket PTY cap in the backend web-shell
+              handler to kill the DetailPane Shell tab's PTY when this
+              modal opens. */}
+          <GlobalShellModal onClose={() => setShowGlobalShell(false)} />
         </Suspense>
       )}
       {showPreview && (

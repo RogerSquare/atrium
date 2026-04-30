@@ -9,6 +9,16 @@
 // GLOBAL_TASK_ID) and CommandCard receives the creation-oriented
 // GLOBAL_COMMANDS plus a headerLabel override.
 //
+// SOCKET LIFECYCLE: the modal opens its own socket.io connection so
+// the backend's web-shell handler can allocate a second PTY. The
+// per-socket handler in backend/sockets/web-shell.js caps to ONE PTY
+// per socket — sharing the AuthContext socket between this modal and
+// the DetailPane Shell tab causes the second `webshell:start` to
+// kill the first PTY and both xterms then hear the same byte stream
+// (visible bug: claude's banner from one shell smearing into the
+// other). The dedicated socket disconnects on unmount, releasing the
+// global PTY and leaving the task-shell PTY untouched.
+//
 // Close affordances: X button, Esc key, backdrop click. When the
 // CommandCard popover is open, the first Esc closes the popover (its
 // own handler) and a second Esc closes the modal (this component's
@@ -16,14 +26,31 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { X } from 'lucide-react'
+import { io } from 'socket.io-client'
 import ShellTerminal from '../web-shell/Terminal'
 import CommandCard from '../web-shell/CommandCard'
 import { GLOBAL_COMMANDS } from '../web-shell/globalCommands'
+import { API_BASE } from '../../config'
 
 const GLOBAL_TASK = { id: '__global__', title: 'Global Shell' }
 
-export default function GlobalShellModal({ socket, onClose }) {
+export default function GlobalShellModal({ onClose }) {
   const [popoverOpen, setPopoverOpen] = useState(false)
+  const [socket, setSocket] = useState(null)
+
+  // Dedicated socket — separate connection so the backend allocates a
+  // second PTY independent of the DetailPane Shell tab's session.
+  // setState-in-effect is intentional here: the socket has to live
+  // for the modal's lifetime (so it can be torn down in cleanup) and
+  // ShellTerminal needs the parent to re-render once it's ready.
+  useEffect(() => {
+    const s = io(API_BASE || window.location.origin)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSocket(s)
+    return () => {
+      try { s.disconnect() } catch { /* already disconnected */ }
+    }
+  }, [])
 
   // Esc closes the modal — but only when the CommandCard popover is
   // closed. The popover registers its own Esc handler while open;
