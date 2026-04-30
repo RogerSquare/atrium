@@ -29,6 +29,8 @@
 // function.
 
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const pty = require('node-pty');
 const { logger } = require('../lib/logger');
 const { SETTINGS_FILE } = require('../lib/constants');
@@ -44,41 +46,161 @@ function resolveCwd() {
   }
 }
 
+// Compute the on-disk session file path claude uses for a given
+// (cwd, sessionId) pair. claude stores sessions under
+// ~/.claude/projects/<slug>/<uuid>.jsonl where the slug is the
+// absolute cwd with every path separator AND `:` replaced by `-`.
+// So `C:\Users\RogerSquare\Documents\opencode` becomes the slug
+// `C--Users-RogerSquare-Documents-opencode`. Resolved relative to
+// the user's home dir.
+function claudeSlugForCwd(cwd) {
+  return cwd.replace(/[\\/:]/g, '-');
+}
+function claudeSessionFile(cwd, sessionId) {
+  return path.join(os.homedir(), '.claude', 'projects', claudeSlugForCwd(cwd), `${sessionId}.jsonl`);
+}
+
+// Pick the right claude command line for the requested session:
+//   - tryResume=true   → if the session file exists on disk, use
+//                        `claude --resume <uuid>` (revives the
+//                        conversation); else fall back to
+//                        `claude --session-id <uuid>` so the spawn
+//                        doesn't error with "No conversation found".
+//   - tryResume=false  → always `claude --session-id <uuid>`
+//                        (used by Start New Session after rotating).
+// The decision is logged so the user can correlate Shell-tab
+// behavior with what the backend actually spawned.
+function buildClaudeCommand(cwd, sessionId, tryResume, socketId) {
+  if (!sessionId) return 'claude';
+  const sessionFile = claudeSessionFile(cwd, sessionId);
+  let exists = false;
+  try { exists = fs.existsSync(sessionFile); } catch { exists = false; }
+  const useResume = tryResume && exists;
+  const command = useResume
+    ? `claude --resume ${sessionId}`
+    : `claude --session-id ${sessionId}`;
+  // Structured log to diagnose per-task session recovery — this is
+  // the trail to look at when "Resume" doesn't behave as expected.
+  logger.info(
+    {
+      socketId,
+      cwd,
+      sessionId,
+      tryResume,
+      sessionFile,
+      sessionFileExists: exists,
+      decision: useResume ? '--resume' : '--session-id',
+      command,
+    },
+    'web-shell: resolved claude command for session'
+  );
+  return command;
+}
+
+// Process-wide spawn counter — every PTY spawn gets a monotonically
+// increasing id. Logged on the backend AND included in the very first
+// output emission (a sentinel chunk) so the frontend can correlate
+// which spawn each output byte belongs to. This is the load-bearing
+// piece of bug-shell-resume-render-001 diagnostics: if the canvas
+// shows two stacked banners, the per-spawn ids in the byte log tell
+// us whether a single spawn produced both (true claude bug) or
+// whether two back-to-back spawns blended (race in our code).
+let nextSpawnId = 1;
+
+// Fires once when the module is loaded so we can verify the new
+// handler is actually running. If you don't see this in the backend
+// log after you restart, the backend wasn't restarted and none of
+// the diag logs below will fire.
+logger.info({ marker: 'WEB-SHELL-DIAG-V2' }, 'web-shell handler module loaded');
+
 const registerWebShellHandlers = (socket) => {
   let ptyProcess = null;
+  // Track the spawn id of the live PTY so onData / onExit handlers
+  // can tag emissions with it. When a new spawn arrives the old
+  // handlers' closure-bound id keeps tagging the now-dying PTY's
+  // tail bytes — which is what tells us whether bleed-through is
+  // happening across spawns.
+  let activeSpawnId = null;
+  // Bytes emitted by the live spawn since spawn start. Logged on
+  // exit so we can correlate "spawn N emitted X bytes total".
+  let bytesEmittedThisSpawn = 0;
 
   socket.on('webshell:start', (config = {}) => {
+    const spawnId = nextSpawnId++;
+    const startReceivedAt = Date.now();
     try {
+      logger.info(
+        {
+          spawnId,
+          socketId: socket.id,
+          startReceivedAt,
+          configKeys: Object.keys(config),
+          configPreview: {
+            cols: config.cols,
+            rows: config.rows,
+            command: config.command,
+            sessionId: config.sessionId,
+            tryResume: config.tryResume,
+          },
+          priorSpawnId: activeSpawnId,
+          priorBytesEmitted: bytesEmittedThisSpawn,
+        },
+        'web-shell: webshell:start received'
+      );
+
       if (ptyProcess) {
+        const dyingSpawnId = activeSpawnId;
+        const dyingBytes = bytesEmittedThisSpawn;
         try { ptyProcess.kill(); } catch { /* already dead */ }
         ptyProcess = null;
+        logger.info(
+          {
+            killedSpawnId: dyingSpawnId,
+            replacedBySpawnId: spawnId,
+            bytesEmittedBeforeKill: dyingBytes,
+            socketId: socket.id,
+          },
+          'web-shell: killed prior PTY before respawn'
+        );
       }
 
       const cwd = resolveCwd();
       const cols = Number.isFinite(config.cols) ? config.cols : 80;
       const rows = Number.isFinite(config.rows) ? config.rows : 24;
-      const command = typeof config.command === 'string' && config.command.length > 0
+      const sessionId = typeof config.sessionId === 'string' && config.sessionId.length > 0
+        ? config.sessionId
+        : null;
+      const tryResume = !!config.tryResume;
+      let command = typeof config.command === 'string' && config.command.length > 0
         ? config.command
         : null;
+      if (!command && sessionId) {
+        command = buildClaudeCommand(cwd, sessionId, tryResume, socket.id);
+      }
 
-      // Branch on whether a startup command is requested.
-      //   command set    → `cmd.exe /c <command>`. /c is silent (no
-      //                    banner, no prompt), runs the command, exits
-      //                    when it finishes. The CLI is the only PTY
-      //                    emitter from the first byte.
-      //   command absent → interactive shell, normal bare-shell flow.
       const useCommandSpawn = command !== null;
       const spawnCmd = useCommandSpawn ? 'cmd.exe' : DEFAULT_SHELL;
       const spawnArgs = useCommandSpawn ? ['/c', command] : [];
 
       logger.info(
-        { cwd, cols, rows, command, socketId: socket.id },
-        'Starting web-shell PTY session'
+        {
+          spawnId,
+          cwd,
+          cols,
+          rows,
+          command,
+          sessionId,
+          tryResume,
+          spawnCmd,
+          spawnArgs,
+          socketId: socket.id,
+          spawnTimingMs: Date.now() - startReceivedAt,
+        },
+        'web-shell: spawning PTY'
       );
 
-      // TERM=xterm-256color unlocks 256-color escapes for tools that
-      // check $TERM. COLORTERM=truecolor unlocks 24-bit color. Without
-      // both, claude's gradient ASCII art renders flat (16-color mode).
+      activeSpawnId = spawnId;
+      bytesEmittedThisSpawn = 0;
       ptyProcess = pty.spawn(spawnCmd, spawnArgs, {
         name: 'xterm-256color',
         cols,
@@ -86,15 +208,78 @@ const registerWebShellHandlers = (socket) => {
         cwd,
         env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
       });
+      const ptyPid = ptyProcess.pid;
+      const spawnAt = Date.now();
 
-      ptyProcess.onData((data) => socket.emit('webshell:output', data));
+      // Bind closure to THIS spawn's id. node-pty queues onExit on
+      // the next tick; if the user clicks Resume before that tick
+      // runs, we'll have already killed-and-respawned by the time
+      // the queued onExit fires. Without the activeSpawnId guard
+      // below, that late onExit emits "--- Shell exited ---" output
+      // + an exit event AFTER the new banner started rendering on
+      // the freshly-reset client canvas — exactly the corruption
+      // pattern from bug-shell-resume-render-001. Same guard for
+      // late onData bytes from the dying spawn.
+      const myId = spawnId;
+      ptyProcess.onData((data) => {
+        if (activeSpawnId !== myId) {
+          if (process.env.WEBSHELL_BYTE_TRACE === '1') {
+            logger.debug(
+              {
+                spawnId: myId,
+                activeSpawnId,
+                bytes: data.length,
+                socketId: socket.id,
+              },
+              'web-shell: dropped onData from non-active spawn'
+            );
+          }
+          return;
+        }
+        bytesEmittedThisSpawn += data.length;
+        if (process.env.WEBSHELL_BYTE_TRACE === '1') {
+          logger.debug(
+            {
+              spawnId: myId,
+              activeSpawnId,
+              bytes: data.length,
+              preview: data.length > 60 ? data.slice(0, 60) + '...' : data,
+              elapsedMs: Date.now() - spawnAt,
+              socketId: socket.id,
+            },
+            'web-shell: pty.onData'
+          );
+        }
+        socket.emit('webshell:output', data);
+      });
+      socket.emit('webshell:spawn', { spawnId: myId, pid: ptyPid, spawnAt });
+
       ptyProcess.onExit(({ exitCode }) => {
+        const wasActive = activeSpawnId === myId;
+        logger.info(
+          {
+            spawnId: myId,
+            wasActiveSpawn: wasActive,
+            exitCode,
+            bytesEmitted: bytesEmittedThisSpawn,
+            durationMs: Date.now() - spawnAt,
+            socketId: socket.id,
+          },
+          'web-shell: pty exited'
+        );
+        if (!wasActive) {
+          // We've already moved on to a new spawn. Don't emit any
+          // output or exit events for this dead spawn — they would
+          // land on the new spawn's canvas and corrupt it.
+          return;
+        }
         socket.emit('webshell:output', `\r\n\x1b[33m--- Shell exited (${exitCode}) ---\x1b[0m\r\n`);
-        socket.emit('webshell:exit', { exitCode });
+        socket.emit('webshell:exit', { exitCode, spawnId: myId });
         ptyProcess = null;
+        activeSpawnId = null;
       });
     } catch (err) {
-      logger.error({ err, socketId: socket.id }, 'web-shell PTY spawn error');
+      logger.error({ err, spawnId, socketId: socket.id }, 'web-shell PTY spawn error');
       socket.emit(
         'webshell:output',
         `\r\n\x1b[31mError starting terminal: ${err.message}\x1b[0m\r\n`
@@ -117,9 +302,13 @@ const registerWebShellHandlers = (socket) => {
 
   return () => {
     if (ptyProcess) {
-      logger.info({ socketId: socket.id }, 'Cleaning up web-shell PTY');
+      logger.info(
+        { socketId: socket.id, spawnId: activeSpawnId },
+        'Cleaning up web-shell PTY'
+      );
       try { ptyProcess.kill(); } catch { /* already dead */ }
       ptyProcess = null;
+      activeSpawnId = null;
     }
   };
 };

@@ -38,13 +38,19 @@ const TERMINAL_THEME = {
 }
 
 // Per-task session id binding. Each task has a stable UUID stored in
-// localStorage; the initial spawn uses `claude --session-id <uuid>`
-// so claude writes its session log under that id from the very first
-// character. Resume becomes `claude --resume <uuid>` — targeting the
-// session that belongs to THIS task, not whichever conversation in
-// the cwd was most recent. "Start new session" rotates to a fresh
-// uuid; the old session file stays on disk and remains recoverable
-// via `claude --resume <old-uuid>` from another shell.
+// localStorage; the initial spawn passes it to the server as
+// `sessionId` along with `tryResume: true`. The backend
+// (web-shell.js) checks whether the session file is actually on disk
+// at ~/.claude/projects/<cwd-slug>/<uuid>.jsonl and picks the right
+// claude flag:
+//   - file exists → `claude --resume <uuid>`   (revive conversation)
+//   - file absent → `claude --session-id <uuid>` (create at this id)
+// This avoids the "No conversation found with session ID: <uuid>"
+// error loop when Resume targeted a never-saved session (e.g., user
+// typed /exit before sending any messages).
+//
+// "Start new session" rotates to a fresh uuid AND sends
+// `tryResume: false`, so the server always creates fresh.
 const SESSION_ID_KEY_PREFIX = 'webshell:session:'
 
 function readSessionId(taskId) {
@@ -81,8 +87,6 @@ function rotateSessionId(taskId) {
   writeSessionId(taskId, fresh)
   return fresh
 }
-function buildStartupCommand(sessionId) { return `claude --session-id ${sessionId}` }
-function buildResumeCommand(sessionId) { return `claude --resume ${sessionId}` }
 
 // Verbose tracing for the input/focus chain. Enable by running
 // `localStorage.setItem('webshell:debug','1')` in devtools and
@@ -94,6 +98,12 @@ const DEBUG = (() => {
 })()
 const dlog = DEBUG ? (...args) => console.log('[webshell]', ...args) : () => {}
 const dwarn = DEBUG ? (...args) => console.warn('[webshell]', ...args) : () => {}
+// Diagnostic logging for bug-shell-resume-render-001. ALWAYS ON
+// regardless of the DEBUG flag — these are the events we need to
+// see in the user's console to diagnose the garbled-render bug.
+// Tagged with [webshell-diag] so they're greppable. Output is
+// short enough to leave on permanently while we hunt the bug.
+const xlog = (...args) => console.log('[webshell-diag]', ...args)
 
 export default function ShellTerminal({ task, socket }) {
   const wrapperRef = useRef(null)
@@ -114,6 +124,23 @@ export default function ShellTerminal({ task, socket }) {
   // ShellTerminal on task.id, so navigating remounts the component
   // and this state resets to null.
   const [exitInfo, setExitInfo] = useState(null)
+
+  // Spawn-correlation state shared between the mount effect (server
+  // events arrive there) and the respawn callback (button click
+  // emits webshell:start). Refs so both paths see the same values
+  // without depending on closures or component re-renders.
+  //   activeSpawnIdRef   — latest server-side spawnId we've heard
+  //                        from via the webshell:spawn sentinel.
+  //   lastStartEmittedAtRef — Date.now() of the last webshell:start
+  //                        we sent. Used to drop stale exit events
+  //                        whose underlying PTY was the prior one
+  //                        (server kills the prior PTY before
+  //                        spawning the new one — the kill emits a
+  //                        webshell:exit that, naively handled,
+  //                        re-arms the overlay seconds after the
+  //                        user clicked Resume).
+  const activeSpawnIdRef = useRef(null)
+  const lastStartEmittedAtRef = useRef(0)
 
   useEffect(() => {
     if (!containerRef.current || !socket) return
@@ -234,6 +261,13 @@ export default function ShellTerminal({ task, socket }) {
     })
     if (wrapperRef.current) resizeObserver.observe(wrapperRef.current)
 
+    // Spawn correlation state. activeSpawnIdRef + lastStartEmittedAtRef
+    // are component-level so the respawn() callback (defined outside
+    // this effect) can stamp lastStartEmittedAtRef when a Resume /
+    // New click emits webshell:start. bytesSinceSpawn is local —
+    // only handleSpawnSentinel + handleOutputDiag read/write it.
+    let bytesSinceSpawn = 0
+
     const handleOutput = (data) => {
       if (DEBUG && data.length > 0) {
         const preview = data.length > 80 ? data.slice(0, 80) + '…' : data
@@ -241,13 +275,45 @@ export default function ShellTerminal({ task, socket }) {
       }
       term.write(data)
     }
-    const handleExit = ({ exitCode }) => {
-      dlog('webshell:exit recv', { exitCode })
+    const handleExit = ({ exitCode, spawnId }) => {
+      // Filter stale exit events. When the user clicks Resume the
+      // server kills the prior PTY (if it was somehow still alive)
+      // and spawns a new one. The kill triggers a webshell:exit
+      // tagged with the DYING PTY's spawnId — if we naively re-arm
+      // the overlay on that, the popup pops back up instantly and
+      // looks like the click was ignored.
+      //
+      // Two-part filter:
+      //   1. If we have a known activeSpawnId (sentinel arrived for
+      //      a newer spawn), and this exit is for an OLDER spawn,
+      //      it's stale — log + drop.
+      //   2. If we just emitted a webshell:start in the last ~250ms,
+      //      any exit arriving without its own spawnId is most likely
+      //      the dying-prior-PTY exit. Drop and warn.
+      const now = Date.now()
+      const isOlder = typeof spawnId === 'number' && activeSpawnIdRef.current != null && spawnId < activeSpawnIdRef.current
+      const recentStart = now - lastStartEmittedAtRef.current < 250
+      if (isOlder || (spawnId == null && recentStart)) {
+        xlog('webshell:exit DROPPED (stale, prior PTY death)', {
+          exitSpawnId: spawnId,
+          activeSpawnId: activeSpawnIdRef.current,
+          isOlder,
+          recentStart,
+          msSinceLastStart: now - lastStartEmittedAtRef.current,
+          exitCode,
+        })
+        // Don't write anything to the canvas. Painting an "ignored"
+        // marker after term.reset() pollutes the new spawn's
+        // banner — the diag log is the only audit trail needed.
+        return
+      }
+      xlog('webshell:exit recv (re-arming overlay)', {
+        exitSpawnId: spawnId,
+        activeSpawnId: activeSpawnIdRef.current,
+        msSinceLastStart: now - lastStartEmittedAtRef.current,
+        exitCode,
+      })
       term.write(`\r\n\x1b[33m[shell exited (${exitCode})]\x1b[0m\r\n`)
-      // Surface the recovery overlay. We don't auto-restart on any
-      // exit code: silent restart on Ctrl+C / crash would mask real
-      // failures, and on a clean /exit the user might genuinely want
-      // to read the scrollback before deciding.
       setExitInfo({ exitCode })
     }
     const handleDisconnect = (reason) => {
@@ -255,7 +321,49 @@ export default function ShellTerminal({ task, socket }) {
       term.write('\r\n\x1b[31m[disconnected]\x1b[0m\r\n')
     }
 
-    socket.on('webshell:output', handleOutput)
+    // (activeSpawnId / bytesSinceSpawn / lastStartEmittedAt are
+    // declared above so handleExit can read them for stale-exit
+    // filtering. Don't redeclare — these are the same variables.)
+    const handleSpawnSentinel = ({ spawnId, pid, spawnAt }) => {
+      const prev = activeSpawnIdRef.current
+      const prevBytes = bytesSinceSpawn
+      activeSpawnIdRef.current = spawnId
+      bytesSinceSpawn = 0
+      xlog('webshell:spawn sentinel', {
+        newSpawnId: spawnId,
+        previousSpawnId: prev,
+        previousBytesEmitted: prevBytes,
+        pid,
+        spawnAt,
+        clientReceivedAt: Date.now(),
+      })
+    }
+    const handleOutputDiag = (data) => {
+      bytesSinceSpawn += data.length
+      // Log each chunk's first 40 bytes so we can correlate visible
+      // glitches with the byte stream that produced them. Only
+      // chunks where activeSpawnIdRef is null (bytes arrived before
+      // the sentinel) are logged as orphans — those are the ones
+      // we suspect of causing the doubled-banner overlap.
+      if (activeSpawnIdRef.current === null) {
+        xlog('ORPHAN webshell:output (no active spawn)', {
+          bytes: data.length,
+          preview: data.length > 40 ? data.slice(0, 40) + '…' : data,
+          clientReceivedAt: Date.now(),
+        })
+      } else if (DEBUG) {
+        dlog('webshell:output', {
+          spawnId: activeSpawnIdRef.current,
+          bytes: data.length,
+          totalSinceSpawn: bytesSinceSpawn,
+          preview: data.length > 40 ? data.slice(0, 40) + '…' : data,
+        })
+      }
+      handleOutput(data)
+    }
+
+    socket.on('webshell:spawn', handleSpawnSentinel)
+    socket.on('webshell:output', handleOutputDiag)
     socket.on('webshell:exit', handleExit)
     socket.on('disconnect', handleDisconnect)
     if (DEBUG) {
@@ -303,23 +411,20 @@ export default function ShellTerminal({ task, socket }) {
     // actually fires.
     let startTimer = setTimeout(() => {
       startTimer = null
-      // Bind / read the task-specific session id, then spawn claude
-      // pre-pinned to that id so the log file under
-      // ~/.claude/projects/<cwd>/<uuid>.jsonl is owned by THIS task
-      // from the first character — Resume can target it precisely.
       const sessionId = getOrMintSessionId(task?.id)
-      const command = buildStartupCommand(sessionId)
-      dlog('emitting webshell:start (deferred past StrictMode double-mount)', {
+      const payload = {
         cols: term.cols,
         rows: term.rows,
-        command,
         sessionId,
+        tryResume: true,
+      }
+      lastStartEmittedAtRef.current = Date.now()
+      xlog('emitting webshell:start (initial mount)', {
+        ...payload,
+        taskId: task?.id,
+        emittedAt: lastStartEmittedAtRef.current,
       })
-      socket.emit('webshell:start', {
-        cols: term.cols,
-        rows: term.rows,
-        command,
-      })
+      socket.emit('webshell:start', payload)
     }, 0)
 
     return () => {
@@ -338,7 +443,8 @@ export default function ShellTerminal({ task, socket }) {
       if (pendingFit) clearTimeout(pendingFit)
       resizeObserver.disconnect()
       inputDisposable.dispose()
-      socket.off('webshell:output', handleOutput)
+      socket.off('webshell:spawn', handleSpawnSentinel)
+      socket.off('webshell:output', handleOutputDiag)
       socket.off('webshell:exit', handleExit)
       socket.off('disconnect', handleDisconnect)
       // Do NOT socket.disconnect() — atrium owns the socket lifecycle.
@@ -355,41 +461,82 @@ export default function ShellTerminal({ task, socket }) {
   // Re-launch a shell on top of the existing socket. The server-side
   // handler kills any live PTY before spawning, so this also covers
   // the corner case where the user clicks Resume while the previous
-  // session is somehow still alive. term.clear() wipes the visible
-  // canvas but keeps scrollback so the dead session's last output is
-  // still recoverable via the scrollbar.
-  const respawn = useCallback((command) => {
-    const term = xtermRef.current
-    if (!term || !socket?.connected) return
-    try { term.clear() } catch { /* term disposed */ }
-    socket.emit('webshell:start', {
-      cols: term.cols,
-      rows: term.rows,
-      command,
-    })
+  // session is somehow still alive.
+  //
+  // Two render-correctness measures here that fix bug-shell-resume-render-001
+  // (intermittent garbled rendering on Resume — characters smearing,
+  // duplicate banners stacking on top of each other):
+  //
+  //   1. `term.reset()` instead of `term.clear()`. clear() only wipes
+  //      the visible region; reset() also drops scrollback, restores
+  //      cursor position, scroll region, charset, mouse modes, and
+  //      bracketed-paste state. The replay torrent from
+  //      `claude --resume` assumes a clean default terminal — any
+  //      mode the prior session left set (e.g. mouse tracking) makes
+  //      the replay's escape sequences write to the wrong cells.
+  //   2. Defer the `webshell:start` emit by one requestAnimationFrame
+  //      after the reset. xterm commits the cleared frame to the
+  //      renderer on the next paint; sending the spawn synchronously
+  //      means the byte burst can hit cells that haven't finished
+  //      committing the reset yet, producing the doubled-banner
+  //      smear seen in the screenshot. One rAF (~16ms) is below the
+  //      perceptual threshold but above xterm's commit latency.
+  const respawn = useCallback((payload) => {
+    // Always close the overlay first, regardless of whether the
+    // spawn actually fires. The user clicked a button — they expect
+    // visible feedback. Any guard that prevents the spawn must NOT
+    // prevent the overlay close, otherwise the popup looks frozen.
     setExitInfo(null)
-    try { term.focus() } catch { /* term disposed */ }
+    xlog('respawn() called', { payload, calledAt: Date.now() })
+    const term = xtermRef.current
+    if (!term || !socket?.connected) {
+      xlog('respawn() bailed (no term or disconnected)', {
+        hasTerm: !!term,
+        socketConnected: socket?.connected,
+      })
+      return
+    }
+    try { term.reset() } catch { /* term disposed */ }
+    requestAnimationFrame(() => {
+      const liveTerm = xtermRef.current
+      if (!liveTerm || !socket?.connected) {
+        xlog('respawn() rAF bailed', {
+          hasTerm: !!liveTerm,
+          socketConnected: socket?.connected,
+        })
+        return
+      }
+      const fullPayload = {
+        cols: liveTerm.cols,
+        rows: liveTerm.rows,
+        ...payload,
+      }
+      lastStartEmittedAtRef.current = Date.now()
+      xlog('emitting webshell:start (respawn)', { ...fullPayload, emittedAt: lastStartEmittedAtRef.current })
+      socket.emit('webshell:start', fullPayload)
+      try { liveTerm.focus() } catch { /* term disposed */ }
+    })
   }, [socket])
 
-  // Resume: target the session id this task is bound to. If the user
-  // pressed Resume on a task that had never spawned before, getOrMint
-  // returns a fresh id and `claude --resume <id>` will error against
-  // a non-existent session file — the canvas surfaces that error and
-  // the overlay re-arms on the resulting exit (Q3 default: surface,
-  // don't auto-fallback to fresh).
+  // Resume: ask the server to revive THIS task's bound session if
+  // its file exists on disk, or create one at that id if not. The
+  // server-side decision (web-shell.js → buildClaudeCommand) is
+  // logged at info level — check the backend log if Resume isn't
+  // doing what's expected.
   const handleResume = useCallback(() => {
+    xlog('handleResume() invoked', { taskId: task?.id, at: Date.now() })
     const sessionId = getOrMintSessionId(task?.id)
-    respawn(buildResumeCommand(sessionId))
+    respawn({ sessionId, tryResume: true })
   }, [respawn, task?.id])
-  // New session: rotate to a fresh id BEFORE spawning. The old session
-  // file stays on disk; the user can still recover it manually via
-  // `claude --resume <old-id>` outside atrium, but it's no longer the
-  // task's "current" session.
   const handleNewSession = useCallback(() => {
+    xlog('handleNewSession() invoked', { taskId: task?.id, at: Date.now() })
     const sessionId = rotateSessionId(task?.id)
-    respawn(buildStartupCommand(sessionId))
+    respawn({ sessionId, tryResume: false })
   }, [respawn, task?.id])
-  const handleDismiss = useCallback(() => setExitInfo(null), [])
+  const handleDismiss = useCallback(() => {
+    xlog('handleDismiss() invoked', { at: Date.now() })
+    setExitInfo(null)
+  }, [])
 
   // Esc on the recovery overlay = Dismiss. We do not auto-resume on
   // Esc — silent restart hides real failures (Q5 default in the task
@@ -488,6 +635,25 @@ function ExitRecoveryOverlay({ taskId, sessionId, exitCode, onResume, onNewSessi
   // Last 8 chars of the session uuid is enough to disambiguate
   // visually without filling the whole popover with a 36-char id.
   const sessionSuffix = sessionId ? sessionId.slice(-8) : null
+  // Breadcrumb on overlay mount + every prop change. Confirms the
+  // overlay is visible and shows when it (re)appears in response to
+  // an exit event — so we can correlate a click that "didn't take"
+  // with subsequent re-arms.
+  useEffect(() => {
+    console.log('[webshell-diag] ExitRecoveryOverlay rendered', {
+      taskId,
+      exitCode,
+      sessionSuffix,
+      at: Date.now(),
+    })
+  }, [taskId, exitCode, sessionSuffix])
+  // Wrap each action handler with a click breadcrumb at the DOM
+  // level — confirms the button onClick fired with the right handler
+  // even before React re-renders.
+  const wrap = (label, fn) => () => {
+    console.log('[webshell-diag] overlay button click', { label, at: Date.now() })
+    fn()
+  }
   return (
     <div
       // Backdrop swallows clicks on the dead canvas so a stray click
@@ -574,7 +740,7 @@ function ExitRecoveryOverlay({ taskId, sessionId, exitCode, onResume, onNewSessi
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
           <button
             type="button"
-            onClick={onResume}
+            onClick={wrap('Resume', onResume)}
             className="apple-press"
             style={{
               padding: 'var(--space-2) var(--space-3)',
@@ -592,7 +758,7 @@ function ExitRecoveryOverlay({ taskId, sessionId, exitCode, onResume, onNewSessi
           </button>
           <button
             type="button"
-            onClick={onNewSession}
+            onClick={wrap('NewSession', onNewSession)}
             className="apple-press"
             style={{
               padding: 'var(--space-2) var(--space-3)',
@@ -612,7 +778,7 @@ function ExitRecoveryOverlay({ taskId, sessionId, exitCode, onResume, onNewSessi
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
           <button
             type="button"
-            onClick={onDismiss}
+            onClick={wrap('Dismiss', onDismiss)}
             className="apple-press"
             title="Close (Esc)"
             style={{
