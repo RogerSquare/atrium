@@ -233,14 +233,44 @@ export default function ShellTerminal({ task, socket }) {
     }
     window.addEventListener('resize', handleResize)
 
-    // Kick off the shell once the canvas has its initial size.
-    socket.emit('webshell:start', {
-      cols: term.cols,
-      rows: term.rows,
-      command: STARTUP_COMMAND,
-    })
+    // Defer the actual server-side spawn until after this microtask
+    // turn settles. React 18+ StrictMode runs effects twice in dev
+    // (setup → cleanup → setup), and a synchronous emit here would
+    // cause the server to kill the first PTY when the second mount
+    // re-emits webshell:start. Claude's process gets wedged when
+    // that happens — the second PTY's claude.exe renders its banner
+    // but never reads stdin, so the terminal looks alive but every
+    // keystroke is silently dropped.
+    //
+    // setTimeout(0) defers past StrictMode's intermediate cleanup,
+    // which runs synchronously. The first mount's cleanup clears
+    // its pending start, so only the second (real) mount's start
+    // actually fires.
+    let startTimer = setTimeout(() => {
+      startTimer = null
+      dlog('emitting webshell:start (deferred past StrictMode double-mount)', {
+        cols: term.cols,
+        rows: term.rows,
+        command: STARTUP_COMMAND,
+      })
+      socket.emit('webshell:start', {
+        cols: term.cols,
+        rows: term.rows,
+        command: STARTUP_COMMAND,
+      })
+    }, 0)
 
     return () => {
+      dlog('cleanup running', { startTimerActive: startTimer !== null })
+      // Cancel pending start emit if cleanup runs before the
+      // setTimeout fires — this is the StrictMode dev path. If the
+      // start already fired, the server has a live PTY associated
+      // with this socket; the next mount's start will replace it,
+      // which is the legitimate restart-on-task-change flow.
+      if (startTimer !== null) {
+        clearTimeout(startTimer)
+        startTimer = null
+      }
       window.removeEventListener('resize', handleResize)
       if (resizeTimer) clearTimeout(resizeTimer)
       if (pendingFit) clearTimeout(pendingFit)
