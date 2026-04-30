@@ -302,9 +302,9 @@ export default function ShellTerminal({ task, socket }) {
           msSinceLastStart: now - lastStartEmittedAtRef.current,
           exitCode,
         })
-        // Still write the canvas exit marker so scrollback shows
-        // what happened, but DON'T re-arm the overlay.
-        term.write(`\r\n\x1b[33m[shell exited (${exitCode}) — stale, ignored]\x1b[0m\r\n`)
+        // Don't write anything to the canvas. Painting an "ignored"
+        // marker after term.reset() pollutes the new spawn's
+        // banner — the diag log is the only audit trail needed.
         return
       }
       xlog('webshell:exit recv (re-arming overlay)', {

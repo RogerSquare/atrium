@@ -211,12 +211,31 @@ const registerWebShellHandlers = (socket) => {
       const ptyPid = ptyProcess.pid;
       const spawnAt = Date.now();
 
-      // Bind closure to THIS spawn's id so a late-arriving onData
-      // from an already-killed spawn still tags itself with the
-      // dying spawn's id, not the current one. This is the smoking
-      // gun for bleed-through diagnosis.
+      // Bind closure to THIS spawn's id. node-pty queues onExit on
+      // the next tick; if the user clicks Resume before that tick
+      // runs, we'll have already killed-and-respawned by the time
+      // the queued onExit fires. Without the activeSpawnId guard
+      // below, that late onExit emits "--- Shell exited ---" output
+      // + an exit event AFTER the new banner started rendering on
+      // the freshly-reset client canvas — exactly the corruption
+      // pattern from bug-shell-resume-render-001. Same guard for
+      // late onData bytes from the dying spawn.
       const myId = spawnId;
       ptyProcess.onData((data) => {
+        if (activeSpawnId !== myId) {
+          if (process.env.WEBSHELL_BYTE_TRACE === '1') {
+            logger.debug(
+              {
+                spawnId: myId,
+                activeSpawnId,
+                bytes: data.length,
+                socketId: socket.id,
+              },
+              'web-shell: dropped onData from non-active spawn'
+            );
+          }
+          return;
+        }
         bytesEmittedThisSpawn += data.length;
         if (process.env.WEBSHELL_BYTE_TRACE === '1') {
           logger.debug(
@@ -231,23 +250,16 @@ const registerWebShellHandlers = (socket) => {
             'web-shell: pty.onData'
           );
         }
-        // Emit a "spawn-tag" sentinel as the FIRST output of every
-        // new spawn — frontend can read this to confirm which spawn
-        // owns the stream. Sentinel is OSC 1337 (iTerm-compatible
-        // private escape, ignored by xterm). Wrapped so it never
-        // shows in the visible canvas.
         socket.emit('webshell:output', data);
       });
-      // Emit the spawn-tag sentinel as a SEPARATE event so it can't
-      // be mistaken for PTY output. Frontend listens for
-      // `webshell:spawn` and logs / correlates.
       socket.emit('webshell:spawn', { spawnId: myId, pid: ptyPid, spawnAt });
 
       ptyProcess.onExit(({ exitCode }) => {
+        const wasActive = activeSpawnId === myId;
         logger.info(
           {
             spawnId: myId,
-            wasActiveSpawn: activeSpawnId === myId,
+            wasActiveSpawn: wasActive,
             exitCode,
             bytesEmitted: bytesEmittedThisSpawn,
             durationMs: Date.now() - spawnAt,
@@ -255,12 +267,16 @@ const registerWebShellHandlers = (socket) => {
           },
           'web-shell: pty exited'
         );
+        if (!wasActive) {
+          // We've already moved on to a new spawn. Don't emit any
+          // output or exit events for this dead spawn — they would
+          // land on the new spawn's canvas and corrupt it.
+          return;
+        }
         socket.emit('webshell:output', `\r\n\x1b[33m--- Shell exited (${exitCode}) ---\x1b[0m\r\n`);
         socket.emit('webshell:exit', { exitCode, spawnId: myId });
-        if (activeSpawnId === myId) {
-          ptyProcess = null;
-          activeSpawnId = null;
-        }
+        ptyProcess = null;
+        activeSpawnId = null;
       });
     } catch (err) {
       logger.error({ err, spawnId, socketId: socket.id }, 'web-shell PTY spawn error');
