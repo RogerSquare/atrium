@@ -98,6 +98,12 @@ const DEBUG = (() => {
 })()
 const dlog = DEBUG ? (...args) => console.log('[webshell]', ...args) : () => {}
 const dwarn = DEBUG ? (...args) => console.warn('[webshell]', ...args) : () => {}
+// Diagnostic logging for bug-shell-resume-render-001. ALWAYS ON
+// regardless of the DEBUG flag — these are the events we need to
+// see in the user's console to diagnose the garbled-render bug.
+// Tagged with [webshell-diag] so they're greppable. Output is
+// short enough to leave on permanently while we hunt the bug.
+const xlog = (...args) => console.log('[webshell-diag]', ...args)
 
 export default function ShellTerminal({ task, socket }) {
   const wrapperRef = useRef(null)
@@ -259,7 +265,53 @@ export default function ShellTerminal({ task, socket }) {
       term.write('\r\n\x1b[31m[disconnected]\x1b[0m\r\n')
     }
 
-    socket.on('webshell:output', handleOutput)
+    // Active spawn id (latest one we've heard about from the server).
+    // Bytes that arrive after a new webshell:spawn sentinel "belong"
+    // to that spawn; any output that races in BEFORE the sentinel is
+    // logged as orphan — that's the smoking-gun signature for the
+    // bleed-through pattern in bug-shell-resume-render-001.
+    let activeSpawnId = null
+    let bytesSinceSpawn = 0
+    const handleSpawnSentinel = ({ spawnId, pid, spawnAt }) => {
+      const prev = activeSpawnId
+      const prevBytes = bytesSinceSpawn
+      activeSpawnId = spawnId
+      bytesSinceSpawn = 0
+      xlog('webshell:spawn sentinel', {
+        newSpawnId: spawnId,
+        previousSpawnId: prev,
+        previousBytesEmitted: prevBytes,
+        pid,
+        spawnAt,
+        clientReceivedAt: Date.now(),
+      })
+    }
+    const handleOutputDiag = (data) => {
+      bytesSinceSpawn += data.length
+      // Log each chunk's first 40 bytes so we can correlate visible
+      // glitches with the byte stream that produced them. Only
+      // chunks where activeSpawnId is null (bytes arrived before
+      // the sentinel) are logged as orphans — those are the ones
+      // we suspect of causing the doubled-banner overlap.
+      if (activeSpawnId === null) {
+        xlog('ORPHAN webshell:output (no active spawn)', {
+          bytes: data.length,
+          preview: data.length > 40 ? data.slice(0, 40) + '…' : data,
+          clientReceivedAt: Date.now(),
+        })
+      } else if (DEBUG) {
+        dlog('webshell:output', {
+          spawnId: activeSpawnId,
+          bytes: data.length,
+          totalSinceSpawn: bytesSinceSpawn,
+          preview: data.length > 40 ? data.slice(0, 40) + '…' : data,
+        })
+      }
+      handleOutput(data)
+    }
+
+    socket.on('webshell:spawn', handleSpawnSentinel)
+    socket.on('webshell:output', handleOutputDiag)
     socket.on('webshell:exit', handleExit)
     socket.on('disconnect', handleDisconnect)
     if (DEBUG) {
@@ -307,24 +359,19 @@ export default function ShellTerminal({ task, socket }) {
     // actually fires.
     let startTimer = setTimeout(() => {
       startTimer = null
-      // Bind / read the task-specific session id, then ask the
-      // server to either resume the bound session (if its file
-      // exists on disk) or create one at that id (if not). The
-      // backend handles the decision so a missing session file
-      // never produces "No conversation found" — it just creates.
       const sessionId = getOrMintSessionId(task?.id)
-      dlog('emitting webshell:start (deferred past StrictMode double-mount)', {
+      const payload = {
         cols: term.cols,
         rows: term.rows,
         sessionId,
         tryResume: true,
+      }
+      xlog('emitting webshell:start (initial mount)', {
+        ...payload,
+        taskId: task?.id,
+        emittedAt: Date.now(),
       })
-      socket.emit('webshell:start', {
-        cols: term.cols,
-        rows: term.rows,
-        sessionId,
-        tryResume: true,
-      })
+      socket.emit('webshell:start', payload)
     }, 0)
 
     return () => {
@@ -343,7 +390,8 @@ export default function ShellTerminal({ task, socket }) {
       if (pendingFit) clearTimeout(pendingFit)
       resizeObserver.disconnect()
       inputDisposable.dispose()
-      socket.off('webshell:output', handleOutput)
+      socket.off('webshell:spawn', handleSpawnSentinel)
+      socket.off('webshell:output', handleOutputDiag)
       socket.off('webshell:exit', handleExit)
       socket.off('disconnect', handleDisconnect)
       // Do NOT socket.disconnect() — atrium owns the socket lifecycle.
@@ -380,19 +428,39 @@ export default function ShellTerminal({ task, socket }) {
   //      committing the reset yet, producing the doubled-banner
   //      smear seen in the screenshot. One rAF (~16ms) is below the
   //      perceptual threshold but above xterm's commit latency.
+  // Guard against rapid double-fire: a single click should produce
+  // exactly one webshell:start emit. If an in-flight respawn() rAF
+  // hasn't emitted yet, ignore further calls. Cleared by the rAF
+  // body when the emit fires.
+  const respawnPendingRef = useRef(false)
   const respawn = useCallback((payload) => {
     const term = xtermRef.current
-    if (!term || !socket?.connected) return
+    if (!term || !socket?.connected) {
+      xlog('respawn() bailed', { hasTerm: !!term, socketConnected: socket?.connected })
+      return
+    }
+    if (respawnPendingRef.current) {
+      xlog('respawn() ignored (in-flight)', { payload })
+      return
+    }
+    respawnPendingRef.current = true
+    xlog('respawn() called', { payload, calledAt: Date.now() })
     try { term.reset() } catch { /* term disposed */ }
     setExitInfo(null)
     requestAnimationFrame(() => {
+      respawnPendingRef.current = false
       const liveTerm = xtermRef.current
-      if (!liveTerm || !socket?.connected) return
-      socket.emit('webshell:start', {
+      if (!liveTerm || !socket?.connected) {
+        xlog('respawn() rAF bailed', { hasTerm: !!liveTerm, socketConnected: socket?.connected })
+        return
+      }
+      const fullPayload = {
         cols: liveTerm.cols,
         rows: liveTerm.rows,
         ...payload,
-      })
+      }
+      xlog('emitting webshell:start (respawn)', { ...fullPayload, emittedAt: Date.now() })
+      socket.emit('webshell:start', fullPayload)
       try { liveTerm.focus() } catch { /* term disposed */ }
     })
   }, [socket])

@@ -97,26 +97,76 @@ function buildClaudeCommand(cwd, sessionId, tryResume, socketId) {
   return command;
 }
 
+// Process-wide spawn counter — every PTY spawn gets a monotonically
+// increasing id. Logged on the backend AND included in the very first
+// output emission (a sentinel chunk) so the frontend can correlate
+// which spawn each output byte belongs to. This is the load-bearing
+// piece of bug-shell-resume-render-001 diagnostics: if the canvas
+// shows two stacked banners, the per-spawn ids in the byte log tell
+// us whether a single spawn produced both (true claude bug) or
+// whether two back-to-back spawns blended (race in our code).
+let nextSpawnId = 1;
+
+// Fires once when the module is loaded so we can verify the new
+// handler is actually running. If you don't see this in the backend
+// log after you restart, the backend wasn't restarted and none of
+// the diag logs below will fire.
+logger.info({ marker: 'WEB-SHELL-DIAG-V2' }, 'web-shell handler module loaded');
+
 const registerWebShellHandlers = (socket) => {
   let ptyProcess = null;
+  // Track the spawn id of the live PTY so onData / onExit handlers
+  // can tag emissions with it. When a new spawn arrives the old
+  // handlers' closure-bound id keeps tagging the now-dying PTY's
+  // tail bytes — which is what tells us whether bleed-through is
+  // happening across spawns.
+  let activeSpawnId = null;
+  // Bytes emitted by the live spawn since spawn start. Logged on
+  // exit so we can correlate "spawn N emitted X bytes total".
+  let bytesEmittedThisSpawn = 0;
 
   socket.on('webshell:start', (config = {}) => {
+    const spawnId = nextSpawnId++;
+    const startReceivedAt = Date.now();
     try {
+      logger.info(
+        {
+          spawnId,
+          socketId: socket.id,
+          startReceivedAt,
+          configKeys: Object.keys(config),
+          configPreview: {
+            cols: config.cols,
+            rows: config.rows,
+            command: config.command,
+            sessionId: config.sessionId,
+            tryResume: config.tryResume,
+          },
+          priorSpawnId: activeSpawnId,
+          priorBytesEmitted: bytesEmittedThisSpawn,
+        },
+        'web-shell: webshell:start received'
+      );
+
       if (ptyProcess) {
+        const dyingSpawnId = activeSpawnId;
+        const dyingBytes = bytesEmittedThisSpawn;
         try { ptyProcess.kill(); } catch { /* already dead */ }
         ptyProcess = null;
+        logger.info(
+          {
+            killedSpawnId: dyingSpawnId,
+            replacedBySpawnId: spawnId,
+            bytesEmittedBeforeKill: dyingBytes,
+            socketId: socket.id,
+          },
+          'web-shell: killed prior PTY before respawn'
+        );
       }
 
       const cwd = resolveCwd();
       const cols = Number.isFinite(config.cols) ? config.cols : 80;
       const rows = Number.isFinite(config.rows) ? config.rows : 24;
-      // Backwards-compat: clients that send a raw `command` still
-      // get exactly that command spawned (no decision logic). Newer
-      // clients pass `sessionId` (+ optional `tryResume`) and let the
-      // server resolve the right `claude --session-id` /
-      // `claude --resume` flag based on whether the session file is
-      // actually on disk — fixes the "No conversation found" loop
-      // when Resume targeted a never-saved session.
       const sessionId = typeof config.sessionId === 'string' && config.sessionId.length > 0
         ? config.sessionId
         : null;
@@ -128,18 +178,13 @@ const registerWebShellHandlers = (socket) => {
         command = buildClaudeCommand(cwd, sessionId, tryResume, socket.id);
       }
 
-      // Branch on whether a startup command is requested.
-      //   command set    → `cmd.exe /c <command>`. /c is silent (no
-      //                    banner, no prompt), runs the command, exits
-      //                    when it finishes. The CLI is the only PTY
-      //                    emitter from the first byte.
-      //   command absent → interactive shell, normal bare-shell flow.
       const useCommandSpawn = command !== null;
       const spawnCmd = useCommandSpawn ? 'cmd.exe' : DEFAULT_SHELL;
       const spawnArgs = useCommandSpawn ? ['/c', command] : [];
 
       logger.info(
         {
+          spawnId,
           cwd,
           cols,
           rows,
@@ -149,13 +194,13 @@ const registerWebShellHandlers = (socket) => {
           spawnCmd,
           spawnArgs,
           socketId: socket.id,
+          spawnTimingMs: Date.now() - startReceivedAt,
         },
-        'Starting web-shell PTY session'
+        'web-shell: spawning PTY'
       );
 
-      // TERM=xterm-256color unlocks 256-color escapes for tools that
-      // check $TERM. COLORTERM=truecolor unlocks 24-bit color. Without
-      // both, claude's gradient ASCII art renders flat (16-color mode).
+      activeSpawnId = spawnId;
+      bytesEmittedThisSpawn = 0;
       ptyProcess = pty.spawn(spawnCmd, spawnArgs, {
         name: 'xterm-256color',
         cols,
@@ -163,15 +208,62 @@ const registerWebShellHandlers = (socket) => {
         cwd,
         env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
       });
+      const ptyPid = ptyProcess.pid;
+      const spawnAt = Date.now();
 
-      ptyProcess.onData((data) => socket.emit('webshell:output', data));
+      // Bind closure to THIS spawn's id so a late-arriving onData
+      // from an already-killed spawn still tags itself with the
+      // dying spawn's id, not the current one. This is the smoking
+      // gun for bleed-through diagnosis.
+      const myId = spawnId;
+      ptyProcess.onData((data) => {
+        bytesEmittedThisSpawn += data.length;
+        if (process.env.WEBSHELL_BYTE_TRACE === '1') {
+          logger.debug(
+            {
+              spawnId: myId,
+              activeSpawnId,
+              bytes: data.length,
+              preview: data.length > 60 ? data.slice(0, 60) + '...' : data,
+              elapsedMs: Date.now() - spawnAt,
+              socketId: socket.id,
+            },
+            'web-shell: pty.onData'
+          );
+        }
+        // Emit a "spawn-tag" sentinel as the FIRST output of every
+        // new spawn — frontend can read this to confirm which spawn
+        // owns the stream. Sentinel is OSC 1337 (iTerm-compatible
+        // private escape, ignored by xterm). Wrapped so it never
+        // shows in the visible canvas.
+        socket.emit('webshell:output', data);
+      });
+      // Emit the spawn-tag sentinel as a SEPARATE event so it can't
+      // be mistaken for PTY output. Frontend listens for
+      // `webshell:spawn` and logs / correlates.
+      socket.emit('webshell:spawn', { spawnId: myId, pid: ptyPid, spawnAt });
+
       ptyProcess.onExit(({ exitCode }) => {
+        logger.info(
+          {
+            spawnId: myId,
+            wasActiveSpawn: activeSpawnId === myId,
+            exitCode,
+            bytesEmitted: bytesEmittedThisSpawn,
+            durationMs: Date.now() - spawnAt,
+            socketId: socket.id,
+          },
+          'web-shell: pty exited'
+        );
         socket.emit('webshell:output', `\r\n\x1b[33m--- Shell exited (${exitCode}) ---\x1b[0m\r\n`);
-        socket.emit('webshell:exit', { exitCode });
-        ptyProcess = null;
+        socket.emit('webshell:exit', { exitCode, spawnId: myId });
+        if (activeSpawnId === myId) {
+          ptyProcess = null;
+          activeSpawnId = null;
+        }
       });
     } catch (err) {
-      logger.error({ err, socketId: socket.id }, 'web-shell PTY spawn error');
+      logger.error({ err, spawnId, socketId: socket.id }, 'web-shell PTY spawn error');
       socket.emit(
         'webshell:output',
         `\r\n\x1b[31mError starting terminal: ${err.message}\x1b[0m\r\n`
@@ -194,9 +286,13 @@ const registerWebShellHandlers = (socket) => {
 
   return () => {
     if (ptyProcess) {
-      logger.info({ socketId: socket.id }, 'Cleaning up web-shell PTY');
+      logger.info(
+        { socketId: socket.id, spawnId: activeSpawnId },
+        'Cleaning up web-shell PTY'
+      );
       try { ptyProcess.kill(); } catch { /* already dead */ }
       ptyProcess = null;
+      activeSpawnId = null;
     }
   };
 };
