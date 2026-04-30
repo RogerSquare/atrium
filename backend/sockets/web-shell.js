@@ -29,6 +29,8 @@
 // function.
 
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const pty = require('node-pty');
 const { logger } = require('../lib/logger');
 const { SETTINGS_FILE } = require('../lib/constants');
@@ -44,6 +46,57 @@ function resolveCwd() {
   }
 }
 
+// Compute the on-disk session file path claude uses for a given
+// (cwd, sessionId) pair. claude stores sessions under
+// ~/.claude/projects/<slug>/<uuid>.jsonl where the slug is the
+// absolute cwd with every path separator AND `:` replaced by `-`.
+// So `C:\Users\RogerSquare\Documents\opencode` becomes the slug
+// `C--Users-RogerSquare-Documents-opencode`. Resolved relative to
+// the user's home dir.
+function claudeSlugForCwd(cwd) {
+  return cwd.replace(/[\\/:]/g, '-');
+}
+function claudeSessionFile(cwd, sessionId) {
+  return path.join(os.homedir(), '.claude', 'projects', claudeSlugForCwd(cwd), `${sessionId}.jsonl`);
+}
+
+// Pick the right claude command line for the requested session:
+//   - tryResume=true   → if the session file exists on disk, use
+//                        `claude --resume <uuid>` (revives the
+//                        conversation); else fall back to
+//                        `claude --session-id <uuid>` so the spawn
+//                        doesn't error with "No conversation found".
+//   - tryResume=false  → always `claude --session-id <uuid>`
+//                        (used by Start New Session after rotating).
+// The decision is logged so the user can correlate Shell-tab
+// behavior with what the backend actually spawned.
+function buildClaudeCommand(cwd, sessionId, tryResume, socketId) {
+  if (!sessionId) return 'claude';
+  const sessionFile = claudeSessionFile(cwd, sessionId);
+  let exists = false;
+  try { exists = fs.existsSync(sessionFile); } catch { exists = false; }
+  const useResume = tryResume && exists;
+  const command = useResume
+    ? `claude --resume ${sessionId}`
+    : `claude --session-id ${sessionId}`;
+  // Structured log to diagnose per-task session recovery — this is
+  // the trail to look at when "Resume" doesn't behave as expected.
+  logger.info(
+    {
+      socketId,
+      cwd,
+      sessionId,
+      tryResume,
+      sessionFile,
+      sessionFileExists: exists,
+      decision: useResume ? '--resume' : '--session-id',
+      command,
+    },
+    'web-shell: resolved claude command for session'
+  );
+  return command;
+}
+
 const registerWebShellHandlers = (socket) => {
   let ptyProcess = null;
 
@@ -57,9 +110,23 @@ const registerWebShellHandlers = (socket) => {
       const cwd = resolveCwd();
       const cols = Number.isFinite(config.cols) ? config.cols : 80;
       const rows = Number.isFinite(config.rows) ? config.rows : 24;
-      const command = typeof config.command === 'string' && config.command.length > 0
+      // Backwards-compat: clients that send a raw `command` still
+      // get exactly that command spawned (no decision logic). Newer
+      // clients pass `sessionId` (+ optional `tryResume`) and let the
+      // server resolve the right `claude --session-id` /
+      // `claude --resume` flag based on whether the session file is
+      // actually on disk — fixes the "No conversation found" loop
+      // when Resume targeted a never-saved session.
+      const sessionId = typeof config.sessionId === 'string' && config.sessionId.length > 0
+        ? config.sessionId
+        : null;
+      const tryResume = !!config.tryResume;
+      let command = typeof config.command === 'string' && config.command.length > 0
         ? config.command
         : null;
+      if (!command && sessionId) {
+        command = buildClaudeCommand(cwd, sessionId, tryResume, socket.id);
+      }
 
       // Branch on whether a startup command is requested.
       //   command set    → `cmd.exe /c <command>`. /c is silent (no
@@ -72,7 +139,17 @@ const registerWebShellHandlers = (socket) => {
       const spawnArgs = useCommandSpawn ? ['/c', command] : [];
 
       logger.info(
-        { cwd, cols, rows, command, socketId: socket.id },
+        {
+          cwd,
+          cols,
+          rows,
+          command,
+          sessionId,
+          tryResume,
+          spawnCmd,
+          spawnArgs,
+          socketId: socket.id,
+        },
         'Starting web-shell PTY session'
       );
 
