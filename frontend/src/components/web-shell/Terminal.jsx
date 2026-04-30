@@ -36,13 +36,8 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
-
-const TERMINAL_THEME = {
-  background: '#1e1e1e',
-  foreground: '#d4d4d4',
-  cursor: '#ffffff',
-  selectionBackground: 'rgba(255, 255, 255, 0.3)',
-}
+import { useAuth } from '../../contexts/AuthContext'
+import { getXtermTheme } from './terminalThemes'
 
 // Per-task session id binding. The source of truth is the task YAML's
 // `claude_session_id` field — the backend mints/promotes/rotates it on
@@ -127,9 +122,19 @@ function computeWireTaskId(task) {
 }
 
 export default function ShellTerminal({ task, socket, isActive = true }) {
+  const { theme } = useAuth()
   const wireTaskId = computeWireTaskId(task)
   const wrapperRef = useRef(null)
   const containerRef = useRef(null)
+  // Theme is read inside the long mount effect (for the xterm
+  // constructor) and updated live by a separate effect below. We
+  // capture it in a ref so the mount effect doesn't have to list
+  // `theme` in its deps — adding it there would tear down and rebuild
+  // the entire xterm on every theme change, killing scrollback. The
+  // live-update effect (`term.options.theme = ...`) handles change
+  // propagation without remounting.
+  const themeRef = useRef(theme)
+  useEffect(() => { themeRef.current = theme }, [theme])
   // xtermRef is read by the wrapper's onMouseDown handler so clicks
   // anywhere in the visible area (including padding / dead-zones in
   // xterm's own canvas) reliably focus the terminal via the public
@@ -185,7 +190,7 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
     })
 
     const term = new Terminal({
-      theme: TERMINAL_THEME,
+      theme: getXtermTheme(themeRef.current),
       // Cascadia Mono is Windows Terminal's default — full block +
       // box-drawing coverage at exact monospace widths, which matters
       // for ASCII art (claude's startup logo, dialog borders).
@@ -567,6 +572,23 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
     return () => cancelAnimationFrame(id)
   }, [isActive, socket, wireTaskId])
 
+  // Live theme update (bug-shell-theme-colors-001). xterm v6 lets us
+  // mutate `term.options.theme` after construction; the renderer
+  // (WebGL or DOM) repaints the canvas with the new palette on the
+  // next frame without re-mounting, so scrollback, cursor position,
+  // focus, and the active PTY all survive a theme switch. We don't
+  // touch the wrapper div's background here — that's driven by the
+  // CSS variable `--bg-app` (see the inline style below) so it
+  // follows the theme automatically with the same transition timing
+  // as the rest of the app.
+  useEffect(() => {
+    const term = xtermRef.current
+    if (!term) return
+    try {
+      term.options.theme = getXtermTheme(theme)
+    } catch { /* term disposed mid-frame */ }
+  }, [theme])
+
   // Re-launch a shell on top of the existing socket. The server-side
   // handler kills any live PTY before spawning, so this also covers
   // the corner case where the user clicks Resume while the previous
@@ -726,7 +748,12 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
         width: '100%',
         display: 'flex',
         flexDirection: 'column',
-        background: TERMINAL_THEME.background,
+        // CSS-var-driven so the brief pre-paint flash before xterm
+        // commits its first frame matches the active theme — and so
+        // theme switches transition the wrapper alongside the rest of
+        // the app. xterm's own canvas background is updated through
+        // the `term.options.theme = ...` effect above.
+        background: 'var(--bg-app)',
         // position: relative so the recovery overlay below docks to
         // this wrapper rather than escaping up to the tabpanel.
         position: 'relative',
