@@ -122,9 +122,9 @@ const PALETTES = {
 // "auto" is exposed in the AvatarPopover theme picker but
 // AuthContext doesn't (yet) resolve it to a concrete theme — when
 // it's saved, the html attribute is `data-theme="auto"` and no CSS
-// rule matches, so the app falls through to `:root` (dark).
-// Mirror that here: anything we don't recognize maps to dark so
-// the terminal stays in sync with what the rest of the UI shows.
+// rule matches, so the app falls through to `:root` (dark today).
+// Fallback returns the OLED palette to match the app default flipped
+// in ui-oled-default-001.
 export function getXtermTheme(themeName) {
-  return PALETTES[themeName] || PALETTES.dark
+  return PALETTES[themeName] || PALETTES.oled
 }
