@@ -220,27 +220,20 @@ export default function DetailPane({
         {activeTab === 'shell' ? (
           // Shell tab bypasses AnimatePresence: xterm needs an explicit
           // height ancestor before .open() runs, and the framer-motion
-          // wrapper used by other tabs has no defined height. Rendering
-          // directly into a height:100% div inside the tabpanel (which
-          // is `flex-1 min-h-0`, so its height is well-defined) gives
-          // the terminal real dimensions on first paint and lets clicks
-          // + keystrokes land normally.
+          // wrapper used by other tabs has no defined height.
           //
-          // Layout: flex row, terminal flex-1 on the left, CommandCard
-          // ~280px fixed on the right. The card lives in the same
-          // sized box as the terminal, sharing the inset padding.
-          <div
-            style={{
-              position: 'absolute',
-              inset: 'var(--space-4)',
-              display: 'flex',
-              gap: 'var(--space-2)',
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-              <ShellTerminal task={task} socket={socket} />
-            </div>
-            <CommandCard task={task} />
+          // Layout: single positioned container that ShellTerminal
+          // fills (height/width 100%). CommandCard renders absolute
+          // children (floating button + popover) anchored to this
+          // container's bottom-right, layered over the terminal via
+          // z-index. No flex split — the card is out-of-flow until
+          // the user opens it.
+          <div style={{ position: 'absolute', inset: 'var(--space-4)' }}>
+            <ShellTerminal task={task} socket={socket} />
+            {/* key on task.id remounts the card when the user
+                navigates to a different task — resets isOpen +
+                copiedId without a setState-in-effect. */}
+            <CommandCard key={task.id} task={task} />
           </div>
         ) : (
           <AnimatePresence mode="wait" initial={false}>
