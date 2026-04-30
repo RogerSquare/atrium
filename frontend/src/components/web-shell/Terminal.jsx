@@ -13,12 +13,19 @@
 //      one in the new task's context. Matches DetailPane's existing
 //      "reset to Description tab on task change" pattern.
 //
-// Wire format (matches backend/sockets/web-shell.js):
-//   client → server   webshell:start  { cols?, rows?, command? }
-//                     webshell:input  <bytes>
-//                     webshell:resize { cols, rows }
-//   server → client   webshell:output <bytes>
-//                     webshell:exit   { exitCode }
+// Wire format (matches backend/sockets/web-shell.js) — Phase 1 of
+// `feat-shell-background-sessions-001` migrated every event payload to
+// `{ taskId, ... }` so later phases can route N PTYs per socket. Phase 4
+// added webshell:close + webshell:evicted. taskId is null for the global-
+// shell modal (Phase 5 collapses that workaround):
+//   client → server   webshell:start   { taskId, cols?, rows?, command?, sessionId?, tryResume?, rotate? }
+//                     webshell:input   { taskId, data }
+//                     webshell:resize  { taskId, cols, rows }
+//                     webshell:close   { taskId }
+//   server → client   webshell:output  { taskId, data }
+//                     webshell:exit    { taskId, exitCode, spawnId }
+//                     webshell:spawn   { taskId, spawnId, pid, spawnAt, sessionId, sessionSource }
+//                     webshell:evicted { taskId }
 //
 // Default startup command is `claude` so the page boots straight into
 // Claude Code on a clean canvas. The cwd is resolved server-side from
@@ -109,7 +116,18 @@ const dwarn = DEBUG ? (...args) => console.warn('[webshell]', ...args) : () => {
 // short enough to leave on permanently while we hunt the bug.
 const xlog = (...args) => console.log('[webshell-diag]', ...args)
 
-export default function ShellTerminal({ task, socket }) {
+// Wire taskId computation lifted out of the mount effect so multiple
+// effects (the original setup + Phase 3's re-fit-on-activate) share a
+// single source of truth without recomputing in each. For the global
+// shell modal this stays null — Phase 5 collapses that workaround.
+function computeWireTaskId(task) {
+  if (!task) return null
+  if (task.id === GLOBAL_TASK_ID) return null
+  return task.id || null
+}
+
+export default function ShellTerminal({ task, socket, isActive = true }) {
+  const wireTaskId = computeWireTaskId(task)
   const wrapperRef = useRef(null)
   const containerRef = useRef(null)
   // xtermRef is read by the wrapper's onMouseDown handler so clicks
@@ -120,13 +138,20 @@ export default function ShellTerminal({ task, socket }) {
   // active (DOM vs WebGL renderer), the textarea could be reachable,
   // hidden, or moved.
   const xtermRef = useRef(null)
+  // fitAddonRef exposes the fit addon so the Phase 3 re-fit-on-activate
+  // effect (below the main mount effect) can call fit() without owning
+  // the addon's lifecycle. ResizeObserver doesn't fire on
+  // `display: none` elements, so a tab that just became visible needs
+  // an explicit re-fit to match its container's current size.
+  const fitAddonRef = useRef(null)
 
   // exitInfo flips non-null when the server reports webshell:exit and
   // drives the recovery overlay below. Cleared by Resume / New /
-  // Dismiss and by Esc while the overlay is showing. Stale overlays
-  // from a previous task can't leak in: the parent (DetailPane) keys
-  // ShellTerminal on task.id, so navigating remounts the component
-  // and this state resets to null.
+  // Dismiss and by Esc while the overlay is showing. Phase 3 keeps
+  // each ShellTerminal instance alive across task switches (no remount
+  // by parent), so this state survives navigation — but the per-instance
+  // taskId filter on inbound `webshell:exit` ensures only THIS task's
+  // exit re-arms the overlay.
   const [exitInfo, setExitInfo] = useState(null)
 
   // Spawn-correlation state shared between the mount effect (server
@@ -174,6 +199,7 @@ export default function ShellTerminal({ task, socket }) {
 
     xtermRef.current = term
     const fitAddon = new FitAddon()
+    fitAddonRef.current = fitAddon
     term.loadAddon(fitAddon)
     term.open(containerRef.current)
     dlog('term opened', { cols: term.cols, rows: term.rows })
@@ -259,7 +285,7 @@ export default function ShellTerminal({ task, socket }) {
       pendingFit = setTimeout(() => {
         if (!safeFit()) return
         if (socket.connected) {
-          socket.emit('webshell:resize', { cols: term.cols, rows: term.rows })
+          socket.emit('webshell:resize', { taskId: wireTaskId, cols: term.cols, rows: term.rows })
         }
       }, 50)
     })
@@ -272,6 +298,9 @@ export default function ShellTerminal({ task, socket }) {
     // only handleSpawnSentinel + handleOutputDiag read/write it.
     let bytesSinceSpawn = 0
 
+    // handleOutput stays string-in (the unwrap happens in handleOutputDiag,
+    // which is the actual socket listener). Keeping the inner helper as a
+    // pure data-writer makes the diagnostic-vs-debug split easier to follow.
     const handleOutput = (data) => {
       if (DEBUG && data.length > 0) {
         const preview = data.length > 80 ? data.slice(0, 80) + '…' : data
@@ -279,7 +308,11 @@ export default function ShellTerminal({ task, socket }) {
       }
       term.write(data)
     }
-    const handleExit = ({ exitCode, spawnId }) => {
+    const handleExit = ({ exitCode, spawnId, taskId: exitTaskId }) => {
+      // Phase 3 multi-instance filter: drop exit events for other tasks.
+      // Without this, every ShellTerminal instance on the same socket
+      // would re-arm its recovery overlay when ANY task's PTY exits.
+      if (exitTaskId !== wireTaskId) return
       // Filter stale exit events. When the user clicks Resume the
       // server kills the prior PTY (if it was somehow still alive)
       // and spawns a new one. The kill triggers a webshell:exit
@@ -324,11 +357,25 @@ export default function ShellTerminal({ task, socket }) {
       dlog('socket disconnect', { reason })
       term.write('\r\n\x1b[31m[disconnected]\x1b[0m\r\n')
     }
+    // Phase 4 — server tells us our PTY was evicted to make room (cap
+    // pressure). Filter by taskId so each instance only acts on its own
+    // eviction; clear the active spawn ref so the next Resume click
+    // triggers a fresh spawn instead of reattaching to nothing.
+    const handleEvicted = (payload) => {
+      if (!payload || payload.taskId !== wireTaskId) return
+      term.write('\r\n\x1b[33m[session evicted — start a new one to reconnect]\x1b[0m\r\n')
+      activeSpawnIdRef.current = null
+      xlog('webshell:evicted recv', { taskId: payload.taskId, at: Date.now() })
+    }
 
     // (activeSpawnId / bytesSinceSpawn / lastStartEmittedAt are
     // declared above so handleExit can read them for stale-exit
     // filtering. Don't redeclare — these are the same variables.)
     const handleSpawnSentinel = ({ spawnId, pid, spawnAt, sessionId, sessionSource, taskId: spawnTaskId }) => {
+      // Phase 3 multi-instance filter: drop spawn sentinels for other
+      // tasks so each ShellTerminal instance only updates its own
+      // activeSpawnIdRef from sentinels matching its bound taskId.
+      if (spawnTaskId !== wireTaskId) return
       const prev = activeSpawnIdRef.current
       const prevBytes = bytesSinceSpawn
       activeSpawnIdRef.current = spawnId
@@ -352,7 +399,15 @@ export default function ShellTerminal({ task, socket }) {
         clientReceivedAt: Date.now(),
       })
     }
-    const handleOutputDiag = (data) => {
+    // Wire format Phase 1: payload is `{ taskId, data }`. Drop silently if
+    // the shape is wrong (defensive against any in-flight legacy emits while
+    // both sides roll out together).
+    // Phase 3 multi-instance filter: drop output for other tasks so this
+    // xterm only writes bytes addressed to its bound taskId.
+    const handleOutputDiag = (payload) => {
+      if (!payload || payload.taskId !== wireTaskId) return
+      if (typeof payload.data !== 'string') return
+      const data = payload.data
       bytesSinceSpawn += data.length
       // Log each chunk's first 40 bytes so we can correlate visible
       // glitches with the byte stream that produced them. Only
@@ -379,6 +434,7 @@ export default function ShellTerminal({ task, socket }) {
     socket.on('webshell:spawn', handleSpawnSentinel)
     socket.on('webshell:output', handleOutputDiag)
     socket.on('webshell:exit', handleExit)
+    socket.on('webshell:evicted', handleEvicted)
     socket.on('disconnect', handleDisconnect)
     if (DEBUG) {
       socket.on('connect', () => dlog('socket connect'))
@@ -388,7 +444,8 @@ export default function ShellTerminal({ task, socket }) {
     const inputDisposable = term.onData((data) => {
       dlog('term.onData fired', { bytes: data.length, data: JSON.stringify(data), socketConnected: socket.connected })
       if (socket.connected) {
-        socket.emit('webshell:input', data)
+        // Wire format Phase 1: emit as `{ taskId, data }`.
+        socket.emit('webshell:input', { taskId: wireTaskId, data })
         dlog('webshell:input emitted', { data: JSON.stringify(data) })
       } else {
         dwarn('webshell:input DROPPED — socket not connected', { data: JSON.stringify(data) })
@@ -404,7 +461,7 @@ export default function ShellTerminal({ task, socket }) {
       resizeTimer = setTimeout(() => {
         try { fitAddon.fit() } catch { /* xterm not ready yet */ }
         if (socket.connected) {
-          socket.emit('webshell:resize', { cols: term.cols, rows: term.rows })
+          socket.emit('webshell:resize', { taskId: wireTaskId, cols: term.cols, rows: term.rows })
         }
       }, 100)
     }
@@ -471,17 +528,44 @@ export default function ShellTerminal({ task, socket }) {
       socket.off('webshell:spawn', handleSpawnSentinel)
       socket.off('webshell:output', handleOutputDiag)
       socket.off('webshell:exit', handleExit)
+      socket.off('webshell:evicted', handleEvicted)
       socket.off('disconnect', handleDisconnect)
       // Do NOT socket.disconnect() — atrium owns the socket lifecycle.
       try { webglAddon?.dispose() } catch { /* already disposed */ }
       try { term.dispose() } catch { /* already disposed */ }
       xtermRef.current = null
+      fitAddonRef.current = null
     }
-    // task?.id in deps so navigating to a different task restarts the
-    // shell in the new task's context (server still resolves cwd from
-    // settings.workingDirectory; if a future feature adds per-task
-    // folder mapping, this dep guarantees it picks up the change).
-  }, [task?.id, socket])
+    // task?.id in deps so a (rare) parent passing a different task object
+    // would still set up the right context. wireTaskId is derived from
+    // task.id but listed explicitly to satisfy exhaustive-deps. Phase 3
+    // changed the lifecycle: ShellManager keeps each ShellTerminal alive
+    // across activeTask changes by passing it the SAME task across renders,
+    // so this effect typically runs once per instance lifetime.
+  }, [task?.id, socket, wireTaskId])
+
+  // Phase 3 re-fit-on-activate: ResizeObserver doesn't fire on `display:
+  // none` elements, so when this terminal just became visible we need to
+  // explicitly refit the canvas to the container's current size and tell
+  // the backend the new dims via webshell:resize. Also re-acquire focus
+  // so keystrokes land without an extra click.
+  useEffect(() => {
+    if (!isActive) return
+    const id = requestAnimationFrame(() => {
+      const term = xtermRef.current
+      const el = containerRef.current
+      const fit = fitAddonRef.current
+      if (!term || !el || !fit) return
+      if (el.clientWidth < 4 || el.clientHeight < 4) return
+      try { fit.fit() } catch { /* xterm internals not ready */ }
+      try { term.focus() } catch { /* term disposed */ }
+      if (socket?.connected) {
+        socket.emit('webshell:resize', { taskId: wireTaskId, cols: term.cols, rows: term.rows })
+      }
+      dlog('refit-on-activate', { cols: term.cols, rows: term.rows, wireTaskId })
+    })
+    return () => cancelAnimationFrame(id)
+  }, [isActive, socket, wireTaskId])
 
   // Re-launch a shell on top of the existing socket. The server-side
   // handler kills any live PTY before spawning, so this also covers

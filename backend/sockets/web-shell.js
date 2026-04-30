@@ -14,19 +14,30 @@
 //      opencode flow. Both handlers run per-socket; the prefixes
 //      keep their event streams from interfering.
 //
-// Wire format (client ↔ server):
-//   client → server   webshell:start  { cols?, rows?, command? }
-//                     webshell:input  <bytes>
-//                     webshell:resize { cols, rows }
-//   server → client   webshell:output <bytes>
-//                     webshell:exit   { exitCode }
+// Wire format (client ↔ server) — `feat-shell-background-sessions-001` Phase 1
+// migrated every event payload to a `{ taskId, ... }` discriminator shape so
+// later phases can route N PTYs per socket. Phase 4 added the close + evicted
+// events. taskId is null for the legacy non-task callers (and for the global-
+// shell modal until Phase 5):
+//   client → server   webshell:start  { taskId, cols?, rows?, command?, sessionId?, tryResume?, rotate? }
+//                     webshell:input  { taskId, data }
+//                     webshell:resize { taskId, cols, rows }
+//                     webshell:close  { taskId }
+//   server → client   webshell:output { taskId, data }
+//                     webshell:exit   { taskId, exitCode, spawnId }
+//                     webshell:spawn  { taskId, spawnId, pid, spawnAt, sessionId, sessionSource }
+//                     webshell:evicted { taskId }
 //
 // `command` (optional): when set, server spawns `cmd.exe /c <command>`
 // directly so there's no banner/prompt before the launched CLI takes
 // over the canvas. When unset, an interactive cmd.exe is spawned.
 //
-// One PTY per socket; killed on disconnect via the returned cleanup
-// function.
+// Phase 2 introduced a `Map<taskId, ptyEntry>` per socket so background
+// sessions stay alive when the user navigates to a different task: a
+// `webshell:start` for an existing taskId with `tryResume:true` reattaches
+// (no kill, sentinel emit) instead of respawning. `tryResume:false` or
+// `rotate:true` still kill+respawn that taskId's entry. Cap is soft in
+// phase 2 (warning log at `WEB_SHELL_MAX_PTYS`); phase 4 enforces eviction.
 
 const fs = require('fs');
 const os = require('os');
@@ -38,6 +49,16 @@ const { SETTINGS_FILE } = require('../lib/constants');
 const { getAllTasks, updateTaskField } = require('../lib/tasks');
 
 const DEFAULT_SHELL = process.env.WEB_SHELL_DEFAULT_SHELL || 'cmd.exe';
+
+// Soft cap on concurrent PTYs per socket (`feat-shell-background-sessions-001`
+// Phase 2). Phase 2 only LOGS a warning when ptyMap.size >= MAX_PTYS so the
+// behavior change is small (PTYs survive task switches) without yet adding
+// the full eviction loop. Phase 4 enforces eviction (kill the longest-idle
+// entry to make room) and adds the user-visible "session evicted" badge.
+const MAX_PTYS = (() => {
+  const raw = parseInt(process.env.WEB_SHELL_MAX_PTYS, 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 10;
+})();
 
 function resolveCwd() {
   try {
@@ -166,59 +187,70 @@ let nextSpawnId = 1;
 // the diag logs below will fire.
 logger.info({ marker: 'WEB-SHELL-DIAG-V2' }, 'web-shell handler module loaded');
 
+// Find the entry with smallest lastActivityTs, kill its PTY, remove it
+// from the map, and emit `webshell:evicted { taskId }` so the frontend
+// can render a "session evicted" badge in the affected xterm. Returns
+// `{ taskId, idleMs }` for the caller to log, or null if the map was
+// empty.
+//
+// Eviction is silent at the wire level (no webshell:exit fires) — the
+// killed PTY's onExit will see the entry is already gone (we delete
+// here) and bail via its `wasActive` guard. This is intentional: the
+// user-visible signal is the evicted badge, not the recovery overlay.
+// Manual close via `webshell:close` takes a different path so the user
+// gets the recovery overlay (see the close handler in
+// registerWebShellHandlers).
+function evictLongestIdleEntry(ptyMap, socket) {
+  let oldestKey = null;
+  let oldestTs = Infinity;
+  for (const [key, entry] of ptyMap) {
+    if (entry.lastActivityTs < oldestTs) {
+      oldestTs = entry.lastActivityTs;
+      oldestKey = key;
+    }
+  }
+  if (oldestKey === null) return null;
+  const entry = ptyMap.get(oldestKey);
+  const evictedTaskId = entry.taskId;
+  const idleMs = Date.now() - oldestTs;
+  try { entry.ptyProcess.kill(); } catch { /* already dead */ }
+  ptyMap.delete(oldestKey);
+  socket.emit('webshell:evicted', { taskId: evictedTaskId });
+  return { taskId: evictedTaskId, idleMs };
+}
+
 const registerWebShellHandlers = (socket) => {
-  let ptyProcess = null;
-  // Track the spawn id of the live PTY so onData / onExit handlers
-  // can tag emissions with it. When a new spawn arrives the old
-  // handlers' closure-bound id keeps tagging the now-dying PTY's
-  // tail bytes — which is what tells us whether bleed-through is
-  // happening across spawns.
-  let activeSpawnId = null;
-  // Bytes emitted by the live spawn since spawn start. Logged on
-  // exit so we can correlate "spawn N emitted X bytes total".
-  let bytesEmittedThisSpawn = 0;
+  // Map<key, ptyEntry> — one entry per (socket, taskId). taskId may be null
+  // for legacy callers and the global-shell modal (until Phase 5 collapses
+  // that workaround); NULL_KEY collapses null/undefined into a single entry.
+  //
+  // ptyEntry shape:
+  //   ptyProcess              — node-pty handle.
+  //   activeSpawnId           — current spawn's id. Per-PTY stale-emission
+  //                             filter (`bug-shell-resume-render-001`): a
+  //                             respawn within the SAME taskId replaces
+  //                             entry.activeSpawnId, so late onData/onExit
+  //                             from the dying PTY (carrying the old myId
+  //                             in their closure) get dropped. Cross-taskId
+  //                             bleed is impossible because each taskId has
+  //                             its own entry.
+  //   bytesEmittedThisSpawn   — running counter for diagnostic logs.
+  //   lastActivityTs          — updated on input received, output emitted,
+  //                             or resize. Phase 4 reads this to pick the
+  //                             eviction victim; phase 2 just keeps it warm.
+  //   sessionId / spawnAt     — captured at spawn time; reused by the
+  //                             reattach sentinel emitted when the user
+  //                             returns to a task whose PTY is still alive.
+  //   taskId                  — original taskId (may be null); kept on the
+  //                             entry alongside the key so emit stamping
+  //                             doesn't have to undo the NULL_KEY mapping.
+  const ptyMap = new Map();
+  const NULL_KEY = '__null_taskid__';
+  const keyFor = (taskId) => (taskId == null ? NULL_KEY : taskId);
 
   socket.on('webshell:start', async (config = {}) => {
-    const spawnId = nextSpawnId++;
     const startReceivedAt = Date.now();
     try {
-      logger.info(
-        {
-          spawnId,
-          socketId: socket.id,
-          startReceivedAt,
-          configKeys: Object.keys(config),
-          configPreview: {
-            cols: config.cols,
-            rows: config.rows,
-            command: config.command,
-            sessionId: config.sessionId,
-            taskId: config.taskId,
-            tryResume: config.tryResume,
-            rotate: config.rotate,
-          },
-          priorSpawnId: activeSpawnId,
-          priorBytesEmitted: bytesEmittedThisSpawn,
-        },
-        'web-shell: webshell:start received'
-      );
-
-      if (ptyProcess) {
-        const dyingSpawnId = activeSpawnId;
-        const dyingBytes = bytesEmittedThisSpawn;
-        try { ptyProcess.kill(); } catch { /* already dead */ }
-        ptyProcess = null;
-        logger.info(
-          {
-            killedSpawnId: dyingSpawnId,
-            replacedBySpawnId: spawnId,
-            bytesEmittedBeforeKill: dyingBytes,
-            socketId: socket.id,
-          },
-          'web-shell: killed prior PTY before respawn'
-        );
-      }
-
       const cwd = resolveCwd();
       const cols = Number.isFinite(config.cols) ? config.cols : 80;
       const rows = Number.isFinite(config.rows) ? config.rows : 24;
@@ -230,6 +262,123 @@ const registerWebShellHandlers = (socket) => {
         : null;
       const rotate = !!config.rotate;
       const tryResume = !!config.tryResume;
+      const key = keyFor(taskId);
+      const existing = ptyMap.get(key);
+
+      // Reattach path: existing entry + caller wants the existing session
+      // (default tryResume + !rotate). Don't kill, don't respawn — emit a
+      // fresh spawn sentinel so the frontend can resync and treat the live
+      // PTY as its connected source. This is the load-bearing piece of
+      // background-session preservation: switching back to a task picks up
+      // the live claude conversation instead of starting fresh. Frontend
+      // xterm scrollback fidelity comes in Phase 3 (multi-instance manager
+      // keeps the xterm alive across switches); until then, the reattached
+      // canvas may look blank because the old xterm was unmounted on
+      // task-switch — but the underlying PTY and its claude state survive,
+      // which is the whole point of this phase.
+      if (existing && tryResume && !rotate) {
+        existing.lastActivityTs = Date.now();
+        socket.emit('webshell:spawn', {
+          spawnId: existing.activeSpawnId,
+          pid: existing.ptyProcess.pid,
+          spawnAt: existing.spawnAt,
+          sessionId: existing.sessionId,
+          sessionSource: 'reattach',
+          taskId,
+        });
+        logger.info(
+          {
+            socketId: socket.id,
+            taskId,
+            spawnId: existing.activeSpawnId,
+            sessionId: existing.sessionId,
+            ptyMapSize: ptyMap.size,
+            action: 'reattach',
+          },
+          'web-shell: reattached to existing PTY for this taskId'
+        );
+        return;
+      }
+
+      // Reserve a fresh spawn id for the spawn (or replace) path below.
+      const spawnId = nextSpawnId++;
+      logger.info(
+        {
+          spawnId,
+          socketId: socket.id,
+          startReceivedAt,
+          configKeys: Object.keys(config),
+          configPreview: {
+            cols, rows,
+            command: config.command,
+            sessionId: config.sessionId,
+            taskId,
+            tryResume,
+            rotate,
+          },
+          existingEntry: existing
+            ? { spawnId: existing.activeSpawnId, bytesEmitted: existing.bytesEmittedThisSpawn }
+            : null,
+          ptyMapSize: ptyMap.size,
+        },
+        'web-shell: webshell:start received'
+      );
+
+      if (existing) {
+        // tryResume:false OR rotate:true → user wants a fresh spawn for THIS
+        // taskId (e.g., clicking "Start New Session" on the recovery overlay).
+        // Kill the existing entry; the new spawn replaces it below.
+        const dyingSpawnId = existing.activeSpawnId;
+        const dyingBytes = existing.bytesEmittedThisSpawn;
+        try { existing.ptyProcess.kill(); } catch { /* already dead */ }
+        ptyMap.delete(key);
+        logger.info(
+          {
+            killedSpawnId: dyingSpawnId,
+            replacedBySpawnId: spawnId,
+            bytesEmittedBeforeKill: dyingBytes,
+            socketId: socket.id,
+            taskId,
+            reason: rotate ? 'rotate' : 'tryResume:false',
+          },
+          'web-shell: killed prior PTY before respawn (same taskId)'
+        );
+      }
+
+      // Cap enforcement (`feat-shell-background-sessions-001` Phase 4).
+      // Eviction only fires when we're about to ADD a new entry — replace
+      // (`existing` and `tryResume:false || rotate`) doesn't grow the map,
+      // and reattach already returned early above. So evict only on the
+      // !existing path.
+      if (!existing && ptyMap.size >= MAX_PTYS) {
+        const evicted = evictLongestIdleEntry(ptyMap, socket);
+        if (evicted) {
+          logger.info(
+            {
+              socketId: socket.id,
+              evictedTaskId: evicted.taskId,
+              idleMs: evicted.idleMs,
+              replacedByTaskId: taskId,
+              spawnId,
+              ptyMapSizeAfter: ptyMap.size,
+            },
+            'web-shell: evicted longest-idle PTY at cap'
+          );
+        }
+      } else if (!existing && ptyMap.size >= MAX_PTYS - 1) {
+        // One slot away from the cap — log so the user can correlate
+        // upcoming evictions with their task-shell churn (per QP3).
+        logger.info(
+          {
+            socketId: socket.id,
+            currentSize: ptyMap.size,
+            max: MAX_PTYS,
+            taskId,
+            spawnId,
+          },
+          'web-shell: PTY count approaching cap; next new task will evict the longest-idle'
+        );
+      }
 
       // When a taskId is present, the task YAML is the source of truth for
       // the bound session UUID. resolveTaskSessionId mints / promotes /
@@ -257,15 +406,7 @@ const registerWebShellHandlers = (socket) => {
         }
       }
       logger.info(
-        {
-          spawnId,
-          taskId,
-          sessionId,
-          sessionSource,
-          rotate,
-          tryResume,
-          socketId: socket.id,
-        },
+        { spawnId, taskId, sessionId, sessionSource, rotate, tryResume, socketId: socket.id },
         'web-shell: resolved session binding'
       );
 
@@ -282,24 +423,14 @@ const registerWebShellHandlers = (socket) => {
 
       logger.info(
         {
-          spawnId,
-          cwd,
-          cols,
-          rows,
-          command,
-          sessionId,
-          tryResume,
-          spawnCmd,
-          spawnArgs,
-          socketId: socket.id,
+          spawnId, cwd, cols, rows, command, sessionId, tryResume,
+          spawnCmd, spawnArgs, socketId: socket.id, taskId,
           spawnTimingMs: Date.now() - startReceivedAt,
         },
         'web-shell: spawning PTY'
       );
 
-      activeSpawnId = spawnId;
-      bytesEmittedThisSpawn = 0;
-      ptyProcess = pty.spawn(spawnCmd, spawnArgs, {
+      const ptyProcess = pty.spawn(spawnCmd, spawnArgs, {
         name: 'xterm-256color',
         cols,
         rows,
@@ -309,107 +440,169 @@ const registerWebShellHandlers = (socket) => {
       const ptyPid = ptyProcess.pid;
       const spawnAt = Date.now();
 
-      // Bind closure to THIS spawn's id. node-pty queues onExit on
-      // the next tick; if the user clicks Resume before that tick
-      // runs, we'll have already killed-and-respawned by the time
-      // the queued onExit fires. Without the activeSpawnId guard
-      // below, that late onExit emits "--- Shell exited ---" output
-      // + an exit event AFTER the new banner started rendering on
-      // the freshly-reset client canvas — exactly the corruption
-      // pattern from bug-shell-resume-render-001. Same guard for
-      // late onData bytes from the dying spawn.
+      const entry = {
+        ptyProcess,
+        activeSpawnId: spawnId,
+        bytesEmittedThisSpawn: 0,
+        lastActivityTs: spawnAt,
+        sessionId,
+        spawnAt,
+        taskId,
+      };
+      ptyMap.set(key, entry);
+
+      // Bind closures to (myKey, myId) — Map lookup re-resolves the entry
+      // each emit so a respawn that replaced the entry is observed (the
+      // new entry has a different activeSpawnId and the old closure's
+      // myId no longer matches → drop). The guard logic carries forward
+      // bug-shell-resume-render-001's per-spawn filter, just per-PTY now.
       const myId = spawnId;
+      const myKey = key;
       ptyProcess.onData((data) => {
-        if (activeSpawnId !== myId) {
+        const liveEntry = ptyMap.get(myKey);
+        if (!liveEntry || liveEntry.activeSpawnId !== myId) {
           if (process.env.WEBSHELL_BYTE_TRACE === '1') {
             logger.debug(
               {
                 spawnId: myId,
-                activeSpawnId,
+                liveSpawnId: liveEntry?.activeSpawnId ?? null,
                 bytes: data.length,
                 socketId: socket.id,
+                taskId,
               },
               'web-shell: dropped onData from non-active spawn'
             );
           }
           return;
         }
-        bytesEmittedThisSpawn += data.length;
+        liveEntry.bytesEmittedThisSpawn += data.length;
+        liveEntry.lastActivityTs = Date.now();
         if (process.env.WEBSHELL_BYTE_TRACE === '1') {
           logger.debug(
             {
               spawnId: myId,
-              activeSpawnId,
               bytes: data.length,
               preview: data.length > 60 ? data.slice(0, 60) + '...' : data,
               elapsedMs: Date.now() - spawnAt,
               socketId: socket.id,
+              taskId,
             },
             'web-shell: pty.onData'
           );
         }
-        socket.emit('webshell:output', data);
+        socket.emit('webshell:output', { taskId, data });
       });
-      // Include resolved sessionId on the spawn sentinel so the frontend
-      // can mirror it into localStorage (cache + offline-fallback) and
-      // surface it in the exit-recovery overlay's session-id chip.
+
+      // Spawn sentinel: tells the frontend a new PTY is live for this
+      // taskId; carries the resolved sessionId so the recovery overlay
+      // and localStorage cache stay in sync with the task YAML.
       socket.emit('webshell:spawn', { spawnId: myId, pid: ptyPid, spawnAt, sessionId, sessionSource, taskId });
 
       ptyProcess.onExit(({ exitCode }) => {
-        const wasActive = activeSpawnId === myId;
+        const liveEntry = ptyMap.get(myKey);
+        const wasActive = !!liveEntry && liveEntry.activeSpawnId === myId;
         logger.info(
           {
             spawnId: myId,
             wasActiveSpawn: wasActive,
             exitCode,
-            bytesEmitted: bytesEmittedThisSpawn,
+            bytesEmitted: liveEntry?.bytesEmittedThisSpawn ?? 0,
             durationMs: Date.now() - spawnAt,
             socketId: socket.id,
+            taskId,
           },
           'web-shell: pty exited'
         );
         if (!wasActive) {
-          // We've already moved on to a new spawn. Don't emit any
-          // output or exit events for this dead spawn — they would
-          // land on the new spawn's canvas and corrupt it.
+          // We've already moved on to a new spawn for this taskId. Don't
+          // emit any output or exit events for this dead spawn — they
+          // would land on the new spawn's canvas and corrupt it.
           return;
         }
-        socket.emit('webshell:output', `\r\n\x1b[33m--- Shell exited (${exitCode}) ---\x1b[0m\r\n`);
-        socket.emit('webshell:exit', { exitCode, spawnId: myId });
-        ptyProcess = null;
-        activeSpawnId = null;
+        socket.emit('webshell:output', { taskId, data: `\r\n\x1b[33m--- Shell exited (${exitCode}) ---\x1b[0m\r\n` });
+        socket.emit('webshell:exit', { exitCode, spawnId: myId, taskId });
+        ptyMap.delete(myKey);
       });
     } catch (err) {
-      logger.error({ err, spawnId, socketId: socket.id }, 'web-shell PTY spawn error');
-      socket.emit(
-        'webshell:output',
-        `\r\n\x1b[31mError starting terminal: ${err.message}\x1b[0m\r\n`
-      );
+      logger.error({ err, socketId: socket.id }, 'web-shell PTY spawn error');
+      // No active entry to attribute the error to — emit with whatever
+      // taskId came in on the start config (may be null).
+      const errTaskId = typeof config?.taskId === 'string' ? config.taskId : null;
+      socket.emit('webshell:output', {
+        taskId: errTaskId,
+        data: `\r\n\x1b[31mError starting terminal: ${err.message}\x1b[0m\r\n`,
+      });
     }
   });
 
-  socket.on('webshell:input', (data) => {
-    if (ptyProcess) ptyProcess.write(data);
+  // Wire format (`feat-shell-background-sessions-001` Phase 1): payload is
+  // `{ taskId, data }` instead of raw bytes. Phase 2 routes via the Map —
+  // missing entry means we got input for a taskId whose PTY isn't on this
+  // socket (closed, evicted, or never spawned); drop silently rather than
+  // crashing on an undefined ptyProcess.
+  socket.on('webshell:input', (payload) => {
+    if (!payload || typeof payload.data !== 'string') return;
+    const entry = ptyMap.get(keyFor(payload.taskId));
+    if (!entry) return;
+    entry.lastActivityTs = Date.now();
+    entry.ptyProcess.write(payload.data);
   });
 
+  // User-initiated close (`feat-shell-background-sessions-001` Phase 4).
+  // Kill the PTY and let the existing onExit handler handle the rest:
+  // it sees `wasActive` true (entry still in map at this point), emits
+  // the standard "Shell exited" output + webshell:exit, then deletes the
+  // entry. Frontend's existing handleExit path arms the recovery overlay,
+  // so manual close → recovery overlay → user clicks Resume to spawn
+  // fresh. No special-case wire event for "manual close" needed.
+  socket.on('webshell:close', (payload) => {
+    if (!payload) return;
+    const entry = ptyMap.get(keyFor(payload.taskId));
+    if (!entry) return;
+    logger.info(
+      {
+        socketId: socket.id,
+        closedTaskId: entry.taskId,
+        spawnId: entry.activeSpawnId,
+        bytesEmitted: entry.bytesEmittedThisSpawn,
+        ptyMapSize: ptyMap.size,
+        reason: 'manual',
+      },
+      'web-shell: PTY close requested by user'
+    );
+    try { entry.ptyProcess.kill(); } catch { /* already dead */ }
+    // Don't delete from map here — onExit handles cleanup AFTER it emits
+    // webshell:exit so the frontend gets the recovery overlay.
+  });
+
+  // Wire format Phase 1: payload is `{ taskId, cols, rows }`. Phase 2 routes
+  // via the Map. taskId-less resizes are dropped; cols/rows still read at
+  // the top level for backwards-compat with the wrapper shape.
   socket.on('webshell:resize', (size) => {
-    if (!ptyProcess || !size) return;
+    if (!size) return;
+    const entry = ptyMap.get(keyFor(size.taskId));
+    if (!entry) return;
+    entry.lastActivityTs = Date.now();
     try {
-      ptyProcess.resize(size.cols, size.rows);
+      entry.ptyProcess.resize(size.cols, size.rows);
     } catch {
       // resize on a dead pty throws — safe to ignore
     }
   });
 
+  // Socket disconnect kills every PTY on this socket. Phase 2 doesn't
+  // change disconnect semantics (page reload still drops everything);
+  // persistence-across-reload is explicitly out of scope per parent Q8.
   return () => {
-    if (ptyProcess) {
+    if (ptyMap.size > 0) {
       logger.info(
-        { socketId: socket.id, spawnId: activeSpawnId },
-        'Cleaning up web-shell PTY'
+        { socketId: socket.id, count: ptyMap.size, keys: Array.from(ptyMap.keys()) },
+        'Cleaning up web-shell PTYs (socket disconnect)'
       );
-      try { ptyProcess.kill(); } catch { /* already dead */ }
-      ptyProcess = null;
-      activeSpawnId = null;
+      for (const [, entry] of ptyMap) {
+        try { entry.ptyProcess.kill(); } catch { /* already dead */ }
+      }
+      ptyMap.clear();
     }
   };
 };
