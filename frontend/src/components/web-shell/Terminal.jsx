@@ -125,6 +125,23 @@ export default function ShellTerminal({ task, socket }) {
   // and this state resets to null.
   const [exitInfo, setExitInfo] = useState(null)
 
+  // Spawn-correlation state shared between the mount effect (server
+  // events arrive there) and the respawn callback (button click
+  // emits webshell:start). Refs so both paths see the same values
+  // without depending on closures or component re-renders.
+  //   activeSpawnIdRef   — latest server-side spawnId we've heard
+  //                        from via the webshell:spawn sentinel.
+  //   lastStartEmittedAtRef — Date.now() of the last webshell:start
+  //                        we sent. Used to drop stale exit events
+  //                        whose underlying PTY was the prior one
+  //                        (server kills the prior PTY before
+  //                        spawning the new one — the kill emits a
+  //                        webshell:exit that, naively handled,
+  //                        re-arms the overlay seconds after the
+  //                        user clicked Resume).
+  const activeSpawnIdRef = useRef(null)
+  const lastStartEmittedAtRef = useRef(0)
+
   useEffect(() => {
     if (!containerRef.current || !socket) return
 
@@ -244,6 +261,13 @@ export default function ShellTerminal({ task, socket }) {
     })
     if (wrapperRef.current) resizeObserver.observe(wrapperRef.current)
 
+    // Spawn correlation state. activeSpawnIdRef + lastStartEmittedAtRef
+    // are component-level so the respawn() callback (defined outside
+    // this effect) can stamp lastStartEmittedAtRef when a Resume /
+    // New click emits webshell:start. bytesSinceSpawn is local —
+    // only handleSpawnSentinel + handleOutputDiag read/write it.
+    let bytesSinceSpawn = 0
+
     const handleOutput = (data) => {
       if (DEBUG && data.length > 0) {
         const preview = data.length > 80 ? data.slice(0, 80) + '…' : data
@@ -251,13 +275,45 @@ export default function ShellTerminal({ task, socket }) {
       }
       term.write(data)
     }
-    const handleExit = ({ exitCode }) => {
-      dlog('webshell:exit recv', { exitCode })
+    const handleExit = ({ exitCode, spawnId }) => {
+      // Filter stale exit events. When the user clicks Resume the
+      // server kills the prior PTY (if it was somehow still alive)
+      // and spawns a new one. The kill triggers a webshell:exit
+      // tagged with the DYING PTY's spawnId — if we naively re-arm
+      // the overlay on that, the popup pops back up instantly and
+      // looks like the click was ignored.
+      //
+      // Two-part filter:
+      //   1. If we have a known activeSpawnId (sentinel arrived for
+      //      a newer spawn), and this exit is for an OLDER spawn,
+      //      it's stale — log + drop.
+      //   2. If we just emitted a webshell:start in the last ~250ms,
+      //      any exit arriving without its own spawnId is most likely
+      //      the dying-prior-PTY exit. Drop and warn.
+      const now = Date.now()
+      const isOlder = typeof spawnId === 'number' && activeSpawnIdRef.current != null && spawnId < activeSpawnIdRef.current
+      const recentStart = now - lastStartEmittedAtRef.current < 250
+      if (isOlder || (spawnId == null && recentStart)) {
+        xlog('webshell:exit DROPPED (stale, prior PTY death)', {
+          exitSpawnId: spawnId,
+          activeSpawnId: activeSpawnIdRef.current,
+          isOlder,
+          recentStart,
+          msSinceLastStart: now - lastStartEmittedAtRef.current,
+          exitCode,
+        })
+        // Still write the canvas exit marker so scrollback shows
+        // what happened, but DON'T re-arm the overlay.
+        term.write(`\r\n\x1b[33m[shell exited (${exitCode}) — stale, ignored]\x1b[0m\r\n`)
+        return
+      }
+      xlog('webshell:exit recv (re-arming overlay)', {
+        exitSpawnId: spawnId,
+        activeSpawnId: activeSpawnIdRef.current,
+        msSinceLastStart: now - lastStartEmittedAtRef.current,
+        exitCode,
+      })
       term.write(`\r\n\x1b[33m[shell exited (${exitCode})]\x1b[0m\r\n`)
-      // Surface the recovery overlay. We don't auto-restart on any
-      // exit code: silent restart on Ctrl+C / crash would mask real
-      // failures, and on a clean /exit the user might genuinely want
-      // to read the scrollback before deciding.
       setExitInfo({ exitCode })
     }
     const handleDisconnect = (reason) => {
@@ -265,17 +321,13 @@ export default function ShellTerminal({ task, socket }) {
       term.write('\r\n\x1b[31m[disconnected]\x1b[0m\r\n')
     }
 
-    // Active spawn id (latest one we've heard about from the server).
-    // Bytes that arrive after a new webshell:spawn sentinel "belong"
-    // to that spawn; any output that races in BEFORE the sentinel is
-    // logged as orphan — that's the smoking-gun signature for the
-    // bleed-through pattern in bug-shell-resume-render-001.
-    let activeSpawnId = null
-    let bytesSinceSpawn = 0
+    // (activeSpawnId / bytesSinceSpawn / lastStartEmittedAt are
+    // declared above so handleExit can read them for stale-exit
+    // filtering. Don't redeclare — these are the same variables.)
     const handleSpawnSentinel = ({ spawnId, pid, spawnAt }) => {
-      const prev = activeSpawnId
+      const prev = activeSpawnIdRef.current
       const prevBytes = bytesSinceSpawn
-      activeSpawnId = spawnId
+      activeSpawnIdRef.current = spawnId
       bytesSinceSpawn = 0
       xlog('webshell:spawn sentinel', {
         newSpawnId: spawnId,
@@ -290,10 +342,10 @@ export default function ShellTerminal({ task, socket }) {
       bytesSinceSpawn += data.length
       // Log each chunk's first 40 bytes so we can correlate visible
       // glitches with the byte stream that produced them. Only
-      // chunks where activeSpawnId is null (bytes arrived before
+      // chunks where activeSpawnIdRef is null (bytes arrived before
       // the sentinel) are logged as orphans — those are the ones
       // we suspect of causing the doubled-banner overlap.
-      if (activeSpawnId === null) {
+      if (activeSpawnIdRef.current === null) {
         xlog('ORPHAN webshell:output (no active spawn)', {
           bytes: data.length,
           preview: data.length > 40 ? data.slice(0, 40) + '…' : data,
@@ -301,7 +353,7 @@ export default function ShellTerminal({ task, socket }) {
         })
       } else if (DEBUG) {
         dlog('webshell:output', {
-          spawnId: activeSpawnId,
+          spawnId: activeSpawnIdRef.current,
           bytes: data.length,
           totalSinceSpawn: bytesSinceSpawn,
           preview: data.length > 40 ? data.slice(0, 40) + '…' : data,
@@ -366,10 +418,11 @@ export default function ShellTerminal({ task, socket }) {
         sessionId,
         tryResume: true,
       }
+      lastStartEmittedAtRef.current = Date.now()
       xlog('emitting webshell:start (initial mount)', {
         ...payload,
         taskId: task?.id,
-        emittedAt: Date.now(),
+        emittedAt: lastStartEmittedAtRef.current,
       })
       socket.emit('webshell:start', payload)
     }, 0)
@@ -458,7 +511,8 @@ export default function ShellTerminal({ task, socket }) {
         rows: liveTerm.rows,
         ...payload,
       }
-      xlog('emitting webshell:start (respawn)', { ...fullPayload, emittedAt: Date.now() })
+      lastStartEmittedAtRef.current = Date.now()
+      xlog('emitting webshell:start (respawn)', { ...fullPayload, emittedAt: lastStartEmittedAtRef.current })
       socket.emit('webshell:start', fullPayload)
       try { liveTerm.focus() } catch { /* term disposed */ }
     })
@@ -470,19 +524,19 @@ export default function ShellTerminal({ task, socket }) {
   // logged at info level — check the backend log if Resume isn't
   // doing what's expected.
   const handleResume = useCallback(() => {
+    xlog('handleResume() invoked', { taskId: task?.id, at: Date.now() })
     const sessionId = getOrMintSessionId(task?.id)
     respawn({ sessionId, tryResume: true })
   }, [respawn, task?.id])
-  // New session: rotate to a fresh id BEFORE spawning, and force the
-  // server to skip the resume check (the new id won't have a session
-  // file yet anyway, but tryResume=false makes the intent explicit
-  // in the backend logs). Old session file stays on disk; the user
-  // can still recover it manually via `claude --resume <old-id>`.
   const handleNewSession = useCallback(() => {
+    xlog('handleNewSession() invoked', { taskId: task?.id, at: Date.now() })
     const sessionId = rotateSessionId(task?.id)
     respawn({ sessionId, tryResume: false })
   }, [respawn, task?.id])
-  const handleDismiss = useCallback(() => setExitInfo(null), [])
+  const handleDismiss = useCallback(() => {
+    xlog('handleDismiss() invoked', { at: Date.now() })
+    setExitInfo(null)
+  }, [])
 
   // Esc on the recovery overlay = Dismiss. We do not auto-resume on
   // Esc — silent restart hides real failures (Q5 default in the task
@@ -581,6 +635,25 @@ function ExitRecoveryOverlay({ taskId, sessionId, exitCode, onResume, onNewSessi
   // Last 8 chars of the session uuid is enough to disambiguate
   // visually without filling the whole popover with a 36-char id.
   const sessionSuffix = sessionId ? sessionId.slice(-8) : null
+  // Breadcrumb on overlay mount + every prop change. Confirms the
+  // overlay is visible and shows when it (re)appears in response to
+  // an exit event — so we can correlate a click that "didn't take"
+  // with subsequent re-arms.
+  useEffect(() => {
+    console.log('[webshell-diag] ExitRecoveryOverlay rendered', {
+      taskId,
+      exitCode,
+      sessionSuffix,
+      at: Date.now(),
+    })
+  }, [taskId, exitCode, sessionSuffix])
+  // Wrap each action handler with a click breadcrumb at the DOM
+  // level — confirms the button onClick fired with the right handler
+  // even before React re-renders.
+  const wrap = (label, fn) => () => {
+    console.log('[webshell-diag] overlay button click', { label, at: Date.now() })
+    fn()
+  }
   return (
     <div
       // Backdrop swallows clicks on the dead canvas so a stray click
@@ -667,7 +740,7 @@ function ExitRecoveryOverlay({ taskId, sessionId, exitCode, onResume, onNewSessi
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
           <button
             type="button"
-            onClick={onResume}
+            onClick={wrap('Resume', onResume)}
             className="apple-press"
             style={{
               padding: 'var(--space-2) var(--space-3)',
@@ -685,7 +758,7 @@ function ExitRecoveryOverlay({ taskId, sessionId, exitCode, onResume, onNewSessi
           </button>
           <button
             type="button"
-            onClick={onNewSession}
+            onClick={wrap('NewSession', onNewSession)}
             className="apple-press"
             style={{
               padding: 'var(--space-2) var(--space-3)',
@@ -705,7 +778,7 @@ function ExitRecoveryOverlay({ taskId, sessionId, exitCode, onResume, onNewSessi
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
           <button
             type="button"
-            onClick={onDismiss}
+            onClick={wrap('Dismiss', onDismiss)}
             className="apple-press"
             title="Close (Esc)"
             style={{
