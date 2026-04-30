@@ -46,6 +46,13 @@ const TERMINAL_THEME = {
 // uuid; the old session file stays on disk and remains recoverable
 // via `claude --resume <old-uuid>` from another shell.
 const SESSION_ID_KEY_PREFIX = 'webshell:session:'
+// Per-task "has had real conversation activity" flag. Flipped to '1'
+// when the user actually types into the shell. Drives the Resume
+// path: `claude --resume <uuid>` errors with "No conversation found"
+// when the session never received any messages, so we use the flag
+// to decide between `--resume` (real conversation to revive) and
+// `--session-id` (no prior input; just create/reuse the bound id).
+const ACTIVITY_KEY_PREFIX = 'webshell:active:'
 
 function readSessionId(taskId) {
   if (!taskId) return null
@@ -54,6 +61,18 @@ function readSessionId(taskId) {
 function writeSessionId(taskId, id) {
   if (!taskId) return
   try { window.localStorage.setItem(SESSION_ID_KEY_PREFIX + taskId, id) } catch { /* storage full or disabled */ }
+}
+function readHasActivity(taskId) {
+  if (!taskId) return false
+  try { return window.localStorage.getItem(ACTIVITY_KEY_PREFIX + taskId) === '1' } catch { return false }
+}
+function markHasActivity(taskId) {
+  if (!taskId) return
+  try { window.localStorage.setItem(ACTIVITY_KEY_PREFIX + taskId, '1') } catch { /* storage full or disabled */ }
+}
+function clearHasActivity(taskId) {
+  if (!taskId) return
+  try { window.localStorage.removeItem(ACTIVITY_KEY_PREFIX + taskId) } catch { /* storage full or disabled */ }
 }
 function mintUuid() {
   // crypto.randomUUID is available in all browsers atrium targets
@@ -79,6 +98,9 @@ function getOrMintSessionId(taskId) {
 function rotateSessionId(taskId) {
   const fresh = mintUuid()
   writeSessionId(taskId, fresh)
+  // Activity belongs to the OLD session that just got rotated away.
+  // The new id starts with no recorded conversation.
+  clearHasActivity(taskId)
   return fresh
 }
 function buildStartupCommand(sessionId) { return `claude --session-id ${sessionId}` }
@@ -268,6 +290,15 @@ export default function ShellTerminal({ task, socket }) {
       if (socket.connected) {
         socket.emit('webshell:input', data)
         dlog('webshell:input emitted', { data: JSON.stringify(data) })
+        // Mark this task's session as having had real conversation
+        // activity so Resume knows whether `claude --resume <uuid>`
+        // can succeed (claude errors with "No conversation found"
+        // when the session never received any messages). This
+        // overcounts slightly — arrow keys at the prompt count as
+        // input — but the cost of overcounting is one harmless
+        // resume attempt, while the cost of undercounting is the
+        // user losing their actual conversation.
+        if (data.length > 0) markHasActivity(task?.id)
       } else {
         dwarn('webshell:input DROPPED — socket not connected', { data: JSON.stringify(data) })
       }
@@ -371,15 +402,23 @@ export default function ShellTerminal({ task, socket }) {
     try { term.focus() } catch { /* term disposed */ }
   }, [socket])
 
-  // Resume: target the session id this task is bound to. If the user
-  // pressed Resume on a task that had never spawned before, getOrMint
-  // returns a fresh id and `claude --resume <id>` will error against
-  // a non-existent session file — the canvas surfaces that error and
-  // the overlay re-arms on the resulting exit (Q3 default: surface,
-  // don't auto-fallback to fresh).
+  // Resume: target the session id this task is bound to. Two paths:
+  //   - The user actually had a conversation (any input recorded for
+  //     this task's current session id) → `claude --resume <uuid>`
+  //     restores the prior context.
+  //   - The user never sent any input (e.g., typed /exit before any
+  //     message) → `claude --session-id <uuid>` creates / reuses the
+  //     session without claude erroring with "No conversation found".
+  // Without this branch, the second path produces an immediate exit
+  // with the user-visible message:
+  //   "No conversation found with session ID: <uuid>"
+  // which then re-arms the overlay in a loop.
   const handleResume = useCallback(() => {
     const sessionId = getOrMintSessionId(task?.id)
-    respawn(buildResumeCommand(sessionId))
+    const command = readHasActivity(task?.id)
+      ? buildResumeCommand(sessionId)
+      : buildStartupCommand(sessionId)
+    respawn(command)
   }, [respawn, task?.id])
   // New session: rotate to a fresh id BEFORE spawning. The old session
   // file stays on disk; the user can still recover it manually via
