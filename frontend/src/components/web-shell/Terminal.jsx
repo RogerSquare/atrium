@@ -42,6 +42,17 @@ const TERMINAL_THEME = {
 // the empty string to opt into a bare interactive shell.
 const STARTUP_COMMAND = 'claude'
 
+// Verbose tracing for the input/focus chain. Enable by running
+// `localStorage.setItem('webshell:debug','1')` in devtools and
+// reloading. Disable with `localStorage.removeItem('webshell:debug')`.
+// Logs are tagged so they're greppable.
+const DEBUG = (() => {
+  if (typeof window === 'undefined') return false
+  try { return window.localStorage.getItem('webshell:debug') === '1' } catch { return false }
+})()
+const dlog = DEBUG ? (...args) => console.log('[webshell]', ...args) : () => {}
+const dwarn = DEBUG ? (...args) => console.warn('[webshell]', ...args) : () => {}
+
 export default function ShellTerminal({ task, socket }) {
   const wrapperRef = useRef(null)
   const containerRef = useRef(null)
@@ -56,6 +67,16 @@ export default function ShellTerminal({ task, socket }) {
 
   useEffect(() => {
     if (!containerRef.current || !socket) return
+
+    dlog('mount effect start', {
+      taskId: task?.id,
+      socketConnected: socket.connected,
+      socketId: socket.id,
+      containerSize: {
+        w: containerRef.current.clientWidth,
+        h: containerRef.current.clientHeight,
+      },
+    })
 
     const term = new Terminal({
       theme: TERMINAL_THEME,
@@ -74,6 +95,37 @@ export default function ShellTerminal({ task, socket }) {
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
     term.open(containerRef.current)
+    dlog('term opened', { cols: term.cols, rows: term.rows })
+
+    if (DEBUG) {
+      // After term.open(), inspect the helper textarea xterm uses to
+      // capture input. If this is missing, hidden, or sized 0×0, that's
+      // the smoking gun for "I see the terminal but typing does
+      // nothing."
+      const ta = containerRef.current.querySelector('.xterm-helper-textarea')
+      if (ta) {
+        const rect = ta.getBoundingClientRect()
+        const cs = window.getComputedStyle(ta)
+        dlog('helper textarea found', {
+          rect: { x: rect.x, y: rect.y, w: rect.width, h: rect.height },
+          display: cs.display,
+          visibility: cs.visibility,
+          opacity: cs.opacity,
+          pointerEvents: cs.pointerEvents,
+          tabIndex: ta.tabIndex,
+        })
+        ta.addEventListener('focus', () => dlog('textarea focus'))
+        ta.addEventListener('blur', () => dlog('textarea blur'))
+        ta.addEventListener('keydown', (e) =>
+          dlog('textarea keydown', { key: e.key, code: e.code, keyCode: e.keyCode })
+        )
+        ta.addEventListener('input', (e) =>
+          dlog('textarea input', { data: e.data, inputType: e.inputType, value: ta.value })
+        )
+      } else {
+        dwarn('helper textarea NOT found after term.open() — input cannot reach xterm')
+      }
+    }
 
     // Defensive fit + focus: the parent (motion.div inside tabpanel)
     // can have no explicit height on first mount, which would leave
@@ -92,6 +144,12 @@ export default function ShellTerminal({ task, socket }) {
     }
     safeFit()
     term.focus()
+    dlog('initial focus called', {
+      cols: term.cols,
+      rows: term.rows,
+      activeElement: document.activeElement?.tagName,
+      activeElementClass: document.activeElement?.className,
+    })
 
     // WebGL renderer matches Windows Terminal's rendering path —
     // glyph atlas at exact pixel positions, no hairline gaps in
@@ -126,18 +184,38 @@ export default function ShellTerminal({ task, socket }) {
     })
     if (wrapperRef.current) resizeObserver.observe(wrapperRef.current)
 
-    const handleOutput = (data) => term.write(data)
-    const handleExit = ({ exitCode }) =>
+    const handleOutput = (data) => {
+      if (DEBUG && data.length > 0) {
+        const preview = data.length > 80 ? data.slice(0, 80) + '…' : data
+        dlog('webshell:output recv', { bytes: data.length, preview: JSON.stringify(preview) })
+      }
+      term.write(data)
+    }
+    const handleExit = ({ exitCode }) => {
+      dlog('webshell:exit recv', { exitCode })
       term.write(`\r\n\x1b[33m[shell exited (${exitCode})]\x1b[0m\r\n`)
-    const handleDisconnect = () =>
+    }
+    const handleDisconnect = (reason) => {
+      dlog('socket disconnect', { reason })
       term.write('\r\n\x1b[31m[disconnected]\x1b[0m\r\n')
+    }
 
     socket.on('webshell:output', handleOutput)
     socket.on('webshell:exit', handleExit)
     socket.on('disconnect', handleDisconnect)
+    if (DEBUG) {
+      socket.on('connect', () => dlog('socket connect'))
+      socket.on('reconnect', () => dlog('socket reconnect'))
+    }
 
     const inputDisposable = term.onData((data) => {
-      if (socket.connected) socket.emit('webshell:input', data)
+      dlog('term.onData fired', { bytes: data.length, data: JSON.stringify(data), socketConnected: socket.connected })
+      if (socket.connected) {
+        socket.emit('webshell:input', data)
+        dlog('webshell:input emitted', { data: JSON.stringify(data) })
+      } else {
+        dwarn('webshell:input DROPPED — socket not connected', { data: JSON.stringify(data) })
+      }
     })
 
     // Resize: refit the canvas, then notify the server so the PTY's
@@ -200,13 +278,22 @@ export default function ShellTerminal({ task, socket }) {
     <div
       ref={wrapperRef}
       onMouseDown={(e) => {
+        const onWrapper = e.target === wrapperRef.current
+        const onContainer = e.target === containerRef.current
+        dlog('wrapper mousedown', {
+          targetTag: e.target?.tagName,
+          targetClass: e.target?.className,
+          onWrapper,
+          onContainer,
+        })
         // Only steal focus when the click landed on the wrapper or
         // the padding ring — clicks inside xterm's own DOM/canvas
-        // are already handled by xterm. Filtering by target avoids
-        // the focus race that swallows keystrokes during the
-        // browser's own focus transition.
-        if (e.target === wrapperRef.current || e.target === containerRef.current) {
-          try { xtermRef.current?.focus() } catch { /* term disposed */ }
+        // are already handled by xterm.
+        if (onWrapper || onContainer) {
+          try {
+            xtermRef.current?.focus()
+            dlog('forced term.focus() from wrapper mousedown')
+          } catch { /* term disposed */ }
         }
       }}
       style={{
