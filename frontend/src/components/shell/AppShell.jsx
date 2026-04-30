@@ -36,7 +36,7 @@ import ErrorToast from '../ErrorToast'
 import UndoToast from '../UndoToast'
 
 const WIDTH_STORAGE_KEY = 'taskBoardDetailWidth'
-const DEFAULT_WIDTH = 520
+const DEFAULT_WIDTH = 720
 const MIN_WIDTH = 380
 const MAX_WIDTH = 720
 
