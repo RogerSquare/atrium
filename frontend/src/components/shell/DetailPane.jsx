@@ -222,14 +222,18 @@ export default function DetailPane({
           // height ancestor before .open() runs, and the framer-motion
           // wrapper used by other tabs has no defined height.
           //
-          // Layout: single positioned container that ShellTerminal
-          // fills (height/width 100%). CommandCard renders absolute
-          // children (floating button + popover) anchored to this
-          // container's bottom-right, layered over the terminal via
-          // z-index. No flex split — the card is out-of-flow until
-          // the user opens it.
+          // Layout: single positioned container. ShellTerminal fills
+          // the upper area; the bottom 56px is reserved exclusively
+          // for the floating CommandCard pill so claude code's
+          // bottom-of-screen status text (the `❯` prompt) doesn't
+          // visually overlap with the button. The pill itself
+          // anchors to the OUTER wrapper (still 100% size), so the
+          // expanded popover can grow up + right over the terminal
+          // when opened — only the *button row* gets reserved.
           <div style={{ position: 'absolute', inset: 'var(--space-4)' }}>
-            <ShellTerminal task={task} socket={socket} />
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 56 }}>
+              <ShellTerminal task={task} socket={socket} />
+            </div>
             {/* key on task.id remounts the card when the user
                 navigates to a different task — resets isOpen +
                 copiedId without a setState-in-effect. */}
