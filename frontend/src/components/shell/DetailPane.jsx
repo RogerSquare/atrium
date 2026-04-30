@@ -18,7 +18,7 @@ import DetailDescription from '../detail/DetailDescription'
 import DetailComments from '../detail/DetailComments'
 import DetailActivity from '../detail/DetailActivity'
 import DetailChanges from '../detail/DetailChanges'
-import ShellTerminal from '../web-shell/Terminal'
+import ShellManager from '../web-shell/ShellManager'
 import CommandCard from '../web-shell/CommandCard'
 import StatusSegmentedControl from '../StatusSegmentedControl'
 import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
@@ -237,32 +237,34 @@ export default function DetailPane({
         style={{ padding: 'var(--space-4)' }}
         role="tabpanel"
       >
-        {activeTab === 'shell' ? (
-          // Shell tab bypasses AnimatePresence: xterm needs an explicit
-          // height ancestor before .open() runs, and the framer-motion
-          // wrapper used by other tabs has no defined height.
-          //
-          // Layout: single positioned container. ShellTerminal fills
-          // the upper area; the bottom 56px is reserved exclusively
-          // for the floating CommandCard pill so claude code's
-          // bottom-of-screen status text (the `❯` prompt) doesn't
-          // visually overlap with the button. The pill itself
-          // anchors to the OUTER wrapper (still 100% size), so the
-          // expanded popover can grow up + right over the terminal
-          // when opened — only the *button row* gets reserved.
-          <div style={{ position: 'absolute', inset: 'var(--space-4)' }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 56 }}>
-              {/* key on task.id remounts the terminal when the user
-                  navigates to a different task — resets the recovery
-                  overlay's exitInfo state alongside the live PTY. */}
-              <ShellTerminal key={task.id} task={task} socket={socket} />
-            </div>
-            {/* key on task.id remounts the card when the user
-                navigates to a different task — resets isOpen +
-                copiedId without a setState-in-effect. */}
-            <CommandCard key={task.id} task={task} />
+        {/* Always-mounted shell pane (`feat-shell-background-sessions-001`
+            Phase 3). ShellManager keeps every opened task's xterm alive,
+            even when the user switches between tasks OR between the Shell
+            tab and other tabs. Visibility is toggled by activeTab; the
+            children stay mounted across both axes so the underlying PTYs
+            and their claude conversations survive navigation. xterm needs
+            an explicit height ancestor before .open() runs, which the
+            inset:var(--space-4) wrapper provides; the bottom 56px is
+            reserved for the floating CommandCard pill so claude's status
+            row doesn't visually overlap. */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 'var(--space-4)',
+            display: activeTab === 'shell' ? 'block' : 'none',
+          }}
+          aria-hidden={activeTab !== 'shell'}
+        >
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 56 }}>
+            <ShellManager activeTask={task} socket={socket} />
           </div>
-        ) : (
+          {/* CommandCard still keys on task.id — its state (popover open,
+              copy flash) is per-task and resetting on task switch is the
+              right behavior. */}
+          <CommandCard key={task.id} task={task} />
+        </div>
+
+        {activeTab !== 'shell' && (
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={activeTab}
