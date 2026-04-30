@@ -43,6 +43,7 @@ const TERMINAL_THEME = {
 const STARTUP_COMMAND = 'claude'
 
 export default function ShellTerminal({ task, socket }) {
+  const wrapperRef = useRef(null)
   const containerRef = useRef(null)
 
   useEffect(() => {
@@ -64,7 +65,24 @@ export default function ShellTerminal({ task, socket }) {
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
     term.open(containerRef.current)
-    fitAddon.fit()
+
+    // Defensive fit + focus: the parent (motion.div inside tabpanel)
+    // can have no explicit height on first mount, which would leave
+    // term at 0 cols/0 rows — visible but completely uninteractive.
+    // safeFit only runs when the container has real dimensions; we
+    // call it here, again on rAF, and again whenever ResizeObserver
+    // sees the wrapper change size. Then term.focus() so keystrokes
+    // start landing without requiring a click.
+    const safeFit = () => {
+      const el = containerRef.current
+      if (!el) return false
+      const { clientWidth, clientHeight } = el
+      if (clientWidth < 4 || clientHeight < 4) return false
+      try { fitAddon.fit() } catch { /* xterm internals not ready */ }
+      return true
+    }
+    safeFit()
+    term.focus()
 
     // WebGL renderer matches Windows Terminal's rendering path —
     // glyph atlas at exact pixel positions, no hairline gaps in
@@ -77,6 +95,20 @@ export default function ShellTerminal({ task, socket }) {
     } catch {
       /* WebGL unavailable — DOM renderer still works. */
     }
+
+    // Watch the wrapper for size changes — covers the "tabpanel had
+    // 0 height on mount, then got real size" race AND the regular
+    // case where the user drags the DetailPane edge.
+    let pendingFit = null
+    const resizeObserver = new ResizeObserver(() => {
+      if (pendingFit) clearTimeout(pendingFit)
+      pendingFit = setTimeout(() => {
+        if (safeFit() && socket.connected) {
+          socket.emit('webshell:resize', { cols: term.cols, rows: term.rows })
+        }
+      }, 50)
+    })
+    if (wrapperRef.current) resizeObserver.observe(wrapperRef.current)
 
     const handleOutput = (data) => term.write(data)
     const handleExit = ({ exitCode }) =>
@@ -117,6 +149,8 @@ export default function ShellTerminal({ task, socket }) {
     return () => {
       window.removeEventListener('resize', handleResize)
       if (resizeTimer) clearTimeout(resizeTimer)
+      if (pendingFit) clearTimeout(pendingFit)
+      resizeObserver.disconnect()
       inputDisposable.dispose()
       socket.off('webshell:output', handleOutput)
       socket.off('webshell:exit', handleExit)
@@ -131,16 +165,43 @@ export default function ShellTerminal({ task, socket }) {
     // folder mapping, this dep guarantees it picks up the change).
   }, [task?.id, socket])
 
+  // Outer wrapper is absolutely-positioned to inset:0 so it always
+  // fills the nearest positioned ancestor (DetailPane's tabpanel,
+  // which has `position: relative`). This is the fix for the
+  // "rendered but no interaction" symptom — the intermediate
+  // motion.div from AnimatePresence has no explicit height, so a
+  // plain `height: 100%` on the inner div collapses to 0 and
+  // xterm initializes at 0 cols/0 rows. Absolute positioning
+  // bypasses the motion.div's content-sized height entirely.
+  // Inner ref'd div is what xterm.open()s into.
   return (
     <div
-      ref={containerRef}
-      style={{
-        height: '100%',
-        width: '100%',
-        minHeight: 0,
-        minWidth: 0,
-        background: TERMINAL_THEME.background,
+      ref={wrapperRef}
+      onClick={() => {
+        // Clicking anywhere in the terminal area should focus the
+        // input; xterm normally handles this on its own canvas, but
+        // clicks on padding/borders end up here and would otherwise
+        // do nothing.
+        const term = containerRef.current?.querySelector('.xterm-helper-textarea')
+        if (term && typeof term.focus === 'function') term.focus()
       }}
-    />
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: TERMINAL_THEME.background,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <div
+        ref={containerRef}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          padding: 4,
+        }}
+      />
+    </div>
   )
 }
