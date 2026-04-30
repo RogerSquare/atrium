@@ -428,30 +428,29 @@ export default function ShellTerminal({ task, socket }) {
   //      committing the reset yet, producing the doubled-banner
   //      smear seen in the screenshot. One rAF (~16ms) is below the
   //      perceptual threshold but above xterm's commit latency.
-  // Guard against rapid double-fire: a single click should produce
-  // exactly one webshell:start emit. If an in-flight respawn() rAF
-  // hasn't emitted yet, ignore further calls. Cleared by the rAF
-  // body when the emit fires.
-  const respawnPendingRef = useRef(false)
   const respawn = useCallback((payload) => {
+    // Always close the overlay first, regardless of whether the
+    // spawn actually fires. The user clicked a button — they expect
+    // visible feedback. Any guard that prevents the spawn must NOT
+    // prevent the overlay close, otherwise the popup looks frozen.
+    setExitInfo(null)
+    xlog('respawn() called', { payload, calledAt: Date.now() })
     const term = xtermRef.current
     if (!term || !socket?.connected) {
-      xlog('respawn() bailed', { hasTerm: !!term, socketConnected: socket?.connected })
+      xlog('respawn() bailed (no term or disconnected)', {
+        hasTerm: !!term,
+        socketConnected: socket?.connected,
+      })
       return
     }
-    if (respawnPendingRef.current) {
-      xlog('respawn() ignored (in-flight)', { payload })
-      return
-    }
-    respawnPendingRef.current = true
-    xlog('respawn() called', { payload, calledAt: Date.now() })
     try { term.reset() } catch { /* term disposed */ }
-    setExitInfo(null)
     requestAnimationFrame(() => {
-      respawnPendingRef.current = false
       const liveTerm = xtermRef.current
       if (!liveTerm || !socket?.connected) {
-        xlog('respawn() rAF bailed', { hasTerm: !!liveTerm, socketConnected: socket?.connected })
+        xlog('respawn() rAF bailed', {
+          hasTerm: !!liveTerm,
+          socketConnected: socket?.connected,
+        })
         return
       }
       const fullPayload = {
