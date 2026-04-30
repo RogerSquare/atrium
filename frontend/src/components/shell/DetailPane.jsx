@@ -11,7 +11,7 @@
 // Close: X button or Escape key (escape handled in AppShell for global reach).
 // Resize: drag handle on the left edge persists to localStorage.
 
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { X, FileText, MessageSquare, Activity, Terminal, GitCommit } from 'lucide-react'
 import { IconButton } from '../ui'
 import DetailDescription from '../detail/DetailDescription'
@@ -31,8 +31,20 @@ const TABS = [
 ]
 
 const WIDTH_STORAGE_KEY = 'taskBoardDetailWidth'
+const ACTIVE_TAB_STORAGE_KEY = 'taskBoardDetailActiveTab'
 const MIN_WIDTH = 380
 const MAX_WIDTH = 720
+
+// Lazy-load the persisted tab id. Validates against the TABS list
+// so a renamed tab or hand-edited localStorage value doesn't strand
+// the user on a non-existent tab; invalid → 'description'.
+function loadInitialActiveTab() {
+  try {
+    const stored = window.localStorage.getItem(ACTIVE_TAB_STORAGE_KEY)
+    if (stored && TABS.some(t => t.id === stored)) return stored
+  } catch { /* localStorage disabled / unavailable */ }
+  return 'description'
+}
 
 // `activeAgents`, `onStartAgent`, `onStopAgent`, `agentsEnabled`,
 // `canRunAgents`, and `aiChatEnabled` are still threaded in from the
@@ -62,12 +74,19 @@ export default function DetailPane({
   // eslint-disable-next-line no-unused-vars
   aiChatEnabled,
 }) {
-  const [activeTab, setActiveTab] = useState('description')
+  // Lazy initial state from localStorage so navigating between tasks
+  // preserves the user's tab choice. The previous reset-on-task-id
+  // effect was annoying for cross-task workflows (Shell-mode review,
+  // Comments audit, etc.). Persistence is global, not per-task —
+  // matches the "I'm in Shell-mode right now" mental model and avoids
+  // cluttering localStorage with one entry per task ever viewed.
+  const [activeTab, setActiveTabState] = useState(loadInitialActiveTab)
+  const setActiveTab = (next) => {
+    setActiveTabState(next)
+    try { window.localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, next) } catch { /* storage disabled */ }
+  }
   const dragStartX = useRef(null)
   const dragStartWidth = useRef(null)
-
-  // Reset to Description tab whenever task changes
-  useEffect(() => { setActiveTab('description') }, [task?.id])
 
   const handleDragStart = (e) => {
     dragStartX.current = e.clientX
