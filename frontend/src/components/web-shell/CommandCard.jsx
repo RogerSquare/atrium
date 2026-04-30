@@ -113,7 +113,7 @@ export default function CommandCard({ task }) {
           style={{
             position: 'absolute',
             bottom: 'var(--space-3)',
-            right: 'var(--space-3)',
+            left: 'var(--space-3)',
             zIndex: 10,
             display: 'inline-flex',
             alignItems: 'center',
@@ -146,7 +146,7 @@ export default function CommandCard({ task }) {
       )}
 
       {/* Expanded popover — anchored to the same corner as the button.
-          Grows up + left from bottom-right. Max-height bounded so it
+          Grows up + right from bottom-left. Max-height bounded so it
           doesn't escape the Shell-tab area; internal scroll handles
           long command lists. */}
       {isOpen && (
@@ -154,7 +154,7 @@ export default function CommandCard({ task }) {
           style={{
             position: 'absolute',
             bottom: 'var(--space-3)',
-            right: 'var(--space-3)',
+            left: 'var(--space-3)',
             zIndex: 10,
             width: 320,
             maxWidth: 'calc(100% - var(--space-6))',
