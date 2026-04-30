@@ -7,9 +7,17 @@ const AuthContext = createContext(null)
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [theme, setTheme] = useState(() => {
-    const saved = localStorage.getItem('taskBoardTheme')
     const validThemes = ['dark', 'light', 'oled', 'paper']
-    return saved && validThemes.includes(saved) ? saved : 'dark'
+    // One-time hard-flip migration: every existing browser gets bumped to
+    // OLED on next load. After the flag is set, future picks from the
+    // AvatarPopover stick (the migration only runs once per browser).
+    if (localStorage.getItem('taskBoardThemeMigratedToOled') !== '1') {
+      localStorage.setItem('taskBoardTheme', 'oled')
+      localStorage.setItem('taskBoardThemeMigratedToOled', '1')
+      return 'oled'
+    }
+    const saved = localStorage.getItem('taskBoardTheme')
+    return saved && validThemes.includes(saved) ? saved : 'oled'
   })
   const socketRef = useRef(null)
 
