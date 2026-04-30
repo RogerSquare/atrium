@@ -289,6 +289,14 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
   // sync to perform the upsert (defensive — keeps reset/remount
   // clean).
   const prevSyncedTasksRef = useRef(null)
+  // Auto-recenter on filter / hub-set changes. Debounce timer so
+  // toggling several chips in a row collapses into a single fit.
+  // Cleared on network rebuild + unmount.
+  const autoFitTimerRef = useRef(null)
+  // prefers-reduced-motion subscription — drives whether the auto-fit
+  // animates or snaps. Updated live via the matchMedia change listener
+  // below so toggling the OS-level setting doesn't require a refresh.
+  const prefersReducedMotionRef = useRef(false)
 
   // --- Saved node positions (persistence) --------------------------------
   // Stored as { taskId | hubId: {x, y} }. Lazy-loaded once via useState's
@@ -518,6 +526,51 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleTasks, projects, showHubs, resetVersion])
 
+  // --- prefers-reduced-motion subscription -------------------------------
+  // Read once on mount, subscribe for live changes. Used by the auto-fit
+  // path below to swap the camera animation for an instant snap when the
+  // user has reduced motion enabled.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    prefersReducedMotionRef.current = mq.matches
+    const onChange = (e) => { prefersReducedMotionRef.current = e.matches }
+    // Older Safari uses addListener; modern browsers use addEventListener.
+    if (mq.addEventListener) mq.addEventListener('change', onChange)
+    else mq.addListener(onChange)
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange)
+      else mq.removeListener(onChange)
+    }
+  }, [])
+
+  // --- Auto-recenter on structural change --------------------------------
+  // Called from the incremental sync effect when the visible node/edge set
+  // changed (filters toggled or a project hub appeared / disappeared).
+  // Debounced 150ms so several chip toggles in a row collapse into one
+  // fit; the trailing-edge timer also gives the physics engine a moment
+  // to start relaxing the new layout before the camera moves, which makes
+  // the fit feel like it's framing the settled state rather than the
+  // mid-jump positions. The actual fit is suppressed when the user is
+  // mid-drag (so we don't yank the camera out from under them) or when
+  // the visible set is empty (vis-network throws on a zero-bounding-box).
+  const scheduleAutoFit = useCallback(() => {
+    if (autoFitTimerRef.current) clearTimeout(autoFitTimerRef.current)
+    autoFitTimerRef.current = setTimeout(() => {
+      autoFitTimerRef.current = null
+      const net = networkRef.current
+      const ds = datasetRef.current
+      if (!net || !ds || !ds.nodes) return
+      if (ds.nodes.length === 0) return
+      if (draggedRef.current.size > 0) return
+      net.fit({
+        animation: prefersReducedMotionRef.current
+          ? false
+          : { duration: 250, easingFunction: 'easeInOutQuad' },
+      })
+    }, 150)
+  }, [])
+
   // --- Init / refresh network --------------------------------------------
   // Builds the vis-network instance ONCE on mount, and again only when the
   // user clicks "Reset positions" (which bumps `resetVersion`). Filter chip
@@ -670,6 +723,12 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
       datasetRef.current = null
       prevGraphDataRef.current = null
       prevSyncedTasksRef.current = null
+      // Cancel any pending auto-fit so a tear-down + rebuild doesn't
+      // fire fit() against the new (empty / mid-construction) network.
+      if (autoFitTimerRef.current) {
+        clearTimeout(autoFitTimerRef.current)
+        autoFitTimerRef.current = null
+      }
     }
     // graphData is read inside the effect but is intentionally NOT a
     // dependency — Effect B handles graphData changes incrementally so
@@ -711,6 +770,21 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
       : diff
     applyDiff(ds.nodes, ds.edges, effectiveDiff)
 
+    // Auto-recenter trigger: fire only when the visible set's membership
+    // changed (a node/edge was added or removed). Pure attribute drift
+    // via `updateNodes` is excluded — bumping a task's status from todo
+    // → in_progress shouldn't move the camera. The build effect seeds
+    // prevGraphDataRef === graphData on mount so the very first run of
+    // this sync effect produces an empty diff and skips the fit, which
+    // means we never double-fit on top of the stabilization-pass auto-
+    // fit (`{ enabled: true, iterations: 200, fit: true }` in options).
+    const isStructural =
+      diff.removeNodeIds.length > 0 ||
+      diff.addNodes.length > 0 ||
+      diff.removeEdgeIds.length > 0 ||
+      diff.addEdges.length > 0
+    if (isStructural) scheduleAutoFit()
+
     // Reconcile hub list + per-hub velocity map. Hubs that disappeared
     // (project lost its last visible task) lose their velocity entry;
     // newly-visible hubs get a zero entry so the rAF loop integrates
@@ -729,7 +803,9 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     // identity check above. In practice graphData re-derives whenever
     // tasks changes (transitive dep through visibleTasks), so it's
     // never an extra trigger — just an explicit one.
-  }, [graphData, tasks])
+    // `scheduleAutoFit` is a stable useCallback (empty deps) — listed
+    // here only to satisfy the exhaustive-deps lint rule.
+  }, [graphData, tasks, scheduleAutoFit])
 
   // --- Live spring-length updates ----------------------------------------
   // Avoid rebuilding the network on every slider tick: walk the existing
