@@ -4,19 +4,21 @@
 // presentation for a selected task (TaskModal stays as Cmd+Shift+Enter
 // focus mode — see AppShell).
 //
-// 5 tabs: Description / Comments / Activity / AI / Agent Log.
+// 5 tabs: Description / Comments / Activity / Changes / Shell.
+// (The previous AI + Agent Log tabs were replaced by the Shell tab —
+// see feat-atrium-shell-tab-001. AIChatPanel + AgentLogPanel still live
+// in TaskModal's focus-mode 'ai' tab, opened via Cmd+Shift+Enter.)
 // Close: X button or Escape key (escape handled in AppShell for global reach).
 // Resize: drag handle on the left edge persists to localStorage.
 
 import { useEffect, useRef, useState } from 'react'
-import { X, FileText, MessageSquare, Activity, Sparkles, Terminal, GitCommit } from 'lucide-react'
+import { X, FileText, MessageSquare, Activity, Terminal, GitCommit } from 'lucide-react'
 import { IconButton } from '../ui'
 import DetailDescription from '../detail/DetailDescription'
 import DetailComments from '../detail/DetailComments'
 import DetailActivity from '../detail/DetailActivity'
 import DetailChanges from '../detail/DetailChanges'
-import DetailAI from '../detail/DetailAI'
-import DetailAgentLog from '../detail/DetailAgentLog'
+import ShellTerminal from '../web-shell/Terminal'
 import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
 
 const TABS = [
@@ -24,29 +26,40 @@ const TABS = [
   { id: 'comments', label: 'Comments', icon: MessageSquare },
   { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'changes', label: 'Changes', icon: GitCommit },
-  { id: 'ai', label: 'AI', icon: Sparkles },
-  { id: 'agent', label: 'Agent Log', icon: Terminal },
+  { id: 'shell', label: 'Shell', icon: Terminal },
 ]
 
 const WIDTH_STORAGE_KEY = 'taskBoardDetailWidth'
 const MIN_WIDTH = 380
 const MAX_WIDTH = 720
 
+// `activeAgents`, `onStartAgent`, `onStopAgent`, `agentsEnabled`,
+// `canRunAgents`, and `aiChatEnabled` are still threaded in from the
+// parent (AppShell) for the DetailAgentLog + DetailAI tabs that used
+// to live here. Those are gone now (replaced by the Shell tab); the
+// parent's prop list is left untouched on purpose so this diff stays
+// small. Future cleanup can prune the parent's threading too.
 export default function DetailPane({
   task,
   currentUser,
   onClose,
   onUpdateTask,
-  activeAgents,
-  onStartAgent,
-  onStopAgent,
   socket,
-  agentsEnabled,
-  canRunAgents,
-  aiChatEnabled,
   width,
   onWidthChange,
   narrow = false,
+  // eslint-disable-next-line no-unused-vars
+  activeAgents,
+  // eslint-disable-next-line no-unused-vars
+  onStartAgent,
+  // eslint-disable-next-line no-unused-vars
+  onStopAgent,
+  // eslint-disable-next-line no-unused-vars
+  agentsEnabled,
+  // eslint-disable-next-line no-unused-vars
+  canRunAgents,
+  // eslint-disable-next-line no-unused-vars
+  aiChatEnabled,
 }) {
   const [activeTab, setActiveTab] = useState('description')
   const dragStartX = useRef(null)
@@ -80,8 +93,6 @@ export default function DetailPane({
   const tabTransition = useMotionTransition({ duration: MOTION_DURATIONS.tabFade, ease: 'easeOut' })
 
   if (!task) return null
-
-  const agentRunning = activeAgents?.some((a) => a.taskId === task.id)
 
   const asideStyle = narrow
     ? {
@@ -172,7 +183,6 @@ export default function DetailPane({
       >
         {TABS.map(({ id, label, icon: Icon }) => {
           const isActive = activeTab === id
-          const showAgentDot = id === 'ai' && agentRunning
           return (
             <button
               key={id}
@@ -195,21 +205,6 @@ export default function DetailPane({
             >
               <Icon className="w-3.5 h-3.5" />
               {label}
-              {showAgentDot && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: '4px',
-                    right: '0',
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    background: 'var(--apple-green)',
-                    boxShadow: '0 0 6px var(--apple-green)',
-                  }}
-                  className="animate-gentle-pulse"
-                />
-              )}
             </button>
           )
         })}
@@ -241,20 +236,8 @@ export default function DetailPane({
             {activeTab === 'changes' && (
               <DetailChanges task={task} />
             )}
-            {activeTab === 'ai' && (
-              <DetailAI task={task} currentUser={currentUser} aiChatEnabled={aiChatEnabled} />
-            )}
-            {activeTab === 'agent' && (
-              <DetailAgentLog
-                task={task}
-                socket={socket}
-                agentRunning={agentRunning}
-                onStartAgent={onStartAgent}
-                onStopAgent={onStopAgent}
-                currentUser={currentUser}
-                agentsEnabled={agentsEnabled}
-                canRunAgents={canRunAgents}
-              />
+            {activeTab === 'shell' && (
+              <ShellTerminal task={task} socket={socket} />
             )}
           </motion.div>
         </AnimatePresence>
