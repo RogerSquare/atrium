@@ -60,6 +60,16 @@ describe('tailMatchesPrompt — should fire', () => {
     ['wizard "Enable Remote Control"',
       'Enable Remote Control?\n  ❯ 1. Yes\n  2. No'],
     ['ANSI-wrapped prompt', '\x1b[1m\x1b[33mContinue?\x1b[0m '],
+    // bug-autoenter-cc-hint-line-001 — captured snippets from real CC
+    // Bash-permission prompts where the body pushed the cursor past
+    // the 200-char tail window. The hint line is the only marker
+    // that's still in view; ANSI-stripped versions of the actual logs.
+    ['CC hint-line tail (bash command 1)',
+      '-tabjs.py"\n   3. No\n Esc to cancel · Tab to amend · ctrl+e to explain'],
+    ['CC hint-line tail (bash command 2)',
+      "t.get('url','')[:80]) for t in json.load(sys.stdin)]\"\n   3. No\n Esc to cancel · Tab to amend · ctrl+e to explain"],
+    ['CC hint-line tail (bash command 3)',
+      '-osktest.py"\n   3. No\n Esc to cancel · Tab to amend · ctrl+e to explain'],
   ])('matches: %s', (_label, output) => {
     expect(tailMatchesPrompt(output)).toBe(true)
   })

@@ -38,6 +38,15 @@ export const PROMPT_PATTERNS = [
   // prompts whose preceding question phrasing doesn't match the rules
   // above.
   /❯\s+\d+\.\s+\S/,
+  // Claude Code's hint line — rendered at the BOTTOM of every
+  // permission prompt, regardless of the question body length. Pairs
+  // with the cursor rule (top-of-prompt) so prompts whose body pushes
+  // the cursor past the 200-char tail window still match via the
+  // hint at the bottom. Empirical fix from bug-autoenter-cc-hint-line-001
+  // — long bash command approvals were silently missing because both
+  // "Do you want to proceed?" and "❯ 1. Yes" fell out of the tail
+  // window when the rendered command was tall enough.
+  /Esc\s+to\s+cancel/i,
 ]
 
 // Denylist — wins over the allowlist. Prompts here either have a
