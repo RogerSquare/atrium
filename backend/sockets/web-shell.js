@@ -455,25 +455,21 @@ const registerWebShellHandlers = (socket) => {
         existing.socket = socket;
         existing.detachedAt = null;
         existing.lastActivityTs = Date.now();
-        // Cross-tab reattach gets a brand-new xterm whose cols/rows
-        // (computed from window size + fit-addon) almost never match the
-        // PTY's stored dimensions from the original spawn. Resize NOW,
-        // before the spawn sentinel, so SIGWINCH fires and claude/cmd
-        // redraw to the new viewport. Without this, full-screen TUIs
-        // render absolute-positioned cursors at coordinates from the OLD
-        // screen → cursor jumps to the wrong corner. The tail-end
-        // webshell:resize the frontend sends after mount is too late;
-        // the redraw races against the wrong-dim render.
-        try {
-          if (Number.isFinite(config.cols) && Number.isFinite(config.rows)) {
-            existing.ptyProcess.resize(config.cols, config.rows);
-          }
-        } catch {
-          // resize on a dead pty throws — onExit will reap it
-        }
-        // Slice 2: attached/detached state changed — broadcast so every
-        // client's "active terminals" view + kanban indicator updates.
-        broadcastSessions();
+        // Order matters here. Resize triggers SIGWINCH → the running TUI
+        // (claude) responds by emitting a full-screen redraw via onData,
+        // which races toward webshell:output emits on the SAME socket.
+        // The frontend handles 'reattach' spawn sentinels by calling
+        // term.reset() to return the xterm to a known-clean state — if
+        // redraw bytes arrive before the sentinel does, they land in the
+        // not-yet-reset xterm and the cursor parks at the wrong corner.
+        //
+        // To make the ordering bulletproof we:
+        //   1. Emit the spawn sentinel FIRST so it's queued on the socket
+        //      ahead of any output bytes (Socket.IO maintains FIFO order
+        //      per-socket).
+        //   2. Broadcast the snapshot for the live indicator.
+        //   3. Resize LAST so the SIGWINCH-triggered redraw output is
+        //      always emitted after the sentinel.
         socket.emit('webshell:spawn', {
           spawnId: existing.activeSpawnId,
           pid: existing.ptyProcess.pid,
@@ -482,6 +478,16 @@ const registerWebShellHandlers = (socket) => {
           sessionSource: 'reattach',
           taskId,
         });
+        // Slice 2: attached/detached state changed — broadcast so every
+        // client's "active terminals" view + kanban indicator updates.
+        broadcastSessions();
+        try {
+          if (Number.isFinite(config.cols) && Number.isFinite(config.rows)) {
+            existing.ptyProcess.resize(config.cols, config.rows);
+          }
+        } catch {
+          // resize on a dead pty throws — onExit will reap it
+        }
         logger.info(
           {
             socketId: socket.id,
