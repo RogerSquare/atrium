@@ -50,11 +50,10 @@ const { getAllTasks, updateTaskField } = require('../lib/tasks');
 
 const DEFAULT_SHELL = process.env.WEB_SHELL_DEFAULT_SHELL || 'cmd.exe';
 
-// Soft cap on concurrent PTYs per socket (`feat-shell-background-sessions-001`
-// Phase 2). Phase 2 only LOGS a warning when ptyMap.size >= MAX_PTYS so the
-// behavior change is small (PTYs survive task switches) without yet adding
-// the full eviction loop. Phase 4 enforces eviction (kill the longest-idle
-// entry to make room) and adds the user-visible "session evicted" badge.
+// Soft cap on concurrent taskId-bound PTYs (`feat-shell-background-sessions-001`
+// Phase 2 introduced; `feat-shell-lifecycle-001` Slice 1 made it global).
+// Eviction kills the longest-idle entry in `taskPtyRegistry` to make room
+// when a brand-new taskId is being spawned. NULL_KEY entries don't count.
 const MAX_PTYS = (() => {
   const raw = parseInt(process.env.WEB_SHELL_MAX_PTYS, 10);
   return Number.isFinite(raw) && raw > 0 ? raw : 10;
@@ -187,42 +186,101 @@ let nextSpawnId = 1;
 // the diag logs below will fire.
 logger.info({ marker: 'WEB-SHELL-DIAG-V2' }, 'web-shell handler module loaded');
 
-// Find the entry with smallest lastActivityTs, kill its PTY, remove it
-// from the map, and emit `webshell:evicted { taskId }` so the frontend
-// can render a "session evicted" badge in the affected xterm. Returns
-// `{ taskId, idleMs }` for the caller to log, or null if the map was
-// empty.
+// === Module-global PTY registry (`feat-shell-lifecycle-001` Slice 1) ===
+//
+// taskId-bound PTYs outlive the originating socket. When the user closes
+// the browser tab (socket disconnect), the entry's `socket` ref is cleared
+// and `detachedAt` is stamped, but the PTY keeps running. A subsequent
+// webshell:start for the same taskId from any socket atomically reattaches
+// to the live PTY. Single-user assumption per project memory — one global
+// registry, no per-user partitioning.
+//
+// NULL_KEY entries (legacy non-task callers, global-shell modal) remain
+// per-socket and ephemeral. They live in a Map<NULL_KEY, entry> inside
+// each registerWebShellHandlers closure and die with their socket — the
+// modal flow has no notion of "the same modal session" across page loads.
+//
+// Entry shape gains two fields vs. pre-Slice-1:
+//   socket       — currently-attached Socket.IO socket, or null when
+//                  detached. Read by onData/onExit each emit so a
+//                  reattach to a different socket routes new output to
+//                  the live attachment.
+//   detachedAt   — ms timestamp of the detach event, null while attached.
+//                  Idle-GC reads this to pick teardown victims.
+const taskPtyRegistry = new Map();
+
+// Idle GC: walk the registry every WEB_SHELL_GC_INTERVAL_MS; kill any
+// entry that has been detached for WEB_SHELL_DETACHED_MAX_MS, OR that has
+// produced no PTY output for WEB_SHELL_IDLE_MAX_MS. Defaults: 60s walk,
+// 24h thresholds. Both window envs are checked independently so an
+// always-attached but truly-idle PTY (e.g. a forgotten interactive shell
+// nobody is typing into) still ages out.
+const GC_INTERVAL_MS = Number.parseInt(process.env.WEB_SHELL_GC_INTERVAL_MS, 10) || 60_000;
+const DETACHED_MAX_MS = Number.parseInt(process.env.WEB_SHELL_DETACHED_MAX_MS, 10) || 24 * 60 * 60 * 1000;
+const IDLE_MAX_MS = Number.parseInt(process.env.WEB_SHELL_IDLE_MAX_MS, 10) || 24 * 60 * 60 * 1000;
+
+const gcTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [taskId, entry] of taskPtyRegistry) {
+    const detachedTooLong = entry.detachedAt != null && now - entry.detachedAt > DETACHED_MAX_MS;
+    const idleTooLong = now - entry.lastActivityTs > IDLE_MAX_MS;
+    if (!detachedTooLong && !idleTooLong) continue;
+    try { entry.ptyProcess.kill(); } catch { /* already dead */ }
+    taskPtyRegistry.delete(taskId);
+    logger.info(
+      {
+        taskId,
+        spawnId: entry.activeSpawnId,
+        reason: detachedTooLong ? 'detached-too-long' : 'idle-too-long',
+        detachedAt: entry.detachedAt,
+        lastActivityTs: entry.lastActivityTs,
+        ageMs: detachedTooLong ? now - entry.detachedAt : now - entry.lastActivityTs,
+      },
+      'web-shell: idle-GC killed PTY'
+    );
+  }
+}, GC_INTERVAL_MS);
+if (typeof gcTimer.unref === 'function') gcTimer.unref();
+
+// Find the entry with smallest lastActivityTs in the module-global
+// registry, kill its PTY, remove it, and emit `webshell:evicted` to
+// the entry's currently-attached socket (if any) so the frontend can
+// render the "session evicted" badge. Returns `{ taskId, idleMs }` for
+// the caller to log, or null if the registry was empty.
 //
 // Eviction is silent at the wire level (no webshell:exit fires) — the
-// killed PTY's onExit will see the entry is already gone (we delete
-// here) and bail via its `wasActive` guard. This is intentional: the
-// user-visible signal is the evicted badge, not the recovery overlay.
-// Manual close via `webshell:close` takes a different path so the user
-// gets the recovery overlay (see the close handler in
-// registerWebShellHandlers).
-function evictLongestIdleEntry(ptyMap, socket) {
+// killed PTY's onExit sees the entry is already gone and bails via its
+// `wasActive` guard. NULL_KEY entries are NOT eligible for eviction;
+// they're per-socket ephemeral and only the registry counts toward
+// MAX_PTYS.
+function evictLongestIdleEntry() {
   let oldestKey = null;
   let oldestTs = Infinity;
-  for (const [key, entry] of ptyMap) {
+  for (const [key, entry] of taskPtyRegistry) {
     if (entry.lastActivityTs < oldestTs) {
       oldestTs = entry.lastActivityTs;
       oldestKey = key;
     }
   }
   if (oldestKey === null) return null;
-  const entry = ptyMap.get(oldestKey);
+  const entry = taskPtyRegistry.get(oldestKey);
   const evictedTaskId = entry.taskId;
   const idleMs = Date.now() - oldestTs;
   try { entry.ptyProcess.kill(); } catch { /* already dead */ }
-  ptyMap.delete(oldestKey);
-  socket.emit('webshell:evicted', { taskId: evictedTaskId });
+  taskPtyRegistry.delete(oldestKey);
+  if (entry.socket) {
+    try { entry.socket.emit('webshell:evicted', { taskId: evictedTaskId }); } catch { /* socket dead */ }
+  }
   return { taskId: evictedTaskId, idleMs };
 }
 
 const registerWebShellHandlers = (socket) => {
-  // Map<key, ptyEntry> — one entry per (socket, taskId). taskId may be null
-  // for legacy callers and the global-shell modal (until Phase 5 collapses
-  // that workaround); NULL_KEY collapses null/undefined into a single entry.
+  // Per-socket map of NULL_KEY entries (legacy non-task callers + global
+  // shell modal). These are ephemeral — killed on socket disconnect, same
+  // as pre-Slice-1 behavior. They never participate in eviction or idle GC.
+  // taskId-bound entries live in the module-global `taskPtyRegistry` (above)
+  // and outlive the socket; getEntry/setEntry/deleteEntry dispatch to the
+  // right store based on `taskId == null`.
   //
   // ptyEntry shape:
   //   ptyProcess              — node-pty handle.
@@ -236,17 +294,33 @@ const registerWebShellHandlers = (socket) => {
   //                             its own entry.
   //   bytesEmittedThisSpawn   — running counter for diagnostic logs.
   //   lastActivityTs          — updated on input received, output emitted,
-  //                             or resize. Phase 4 reads this to pick the
-  //                             eviction victim; phase 2 just keeps it warm.
+  //                             or resize. Eviction + idle-GC read this.
   //   sessionId / spawnAt     — captured at spawn time; reused by the
   //                             reattach sentinel emitted when the user
   //                             returns to a task whose PTY is still alive.
   //   taskId                  — original taskId (may be null); kept on the
-  //                             entry alongside the key so emit stamping
-  //                             doesn't have to undo the NULL_KEY mapping.
-  const ptyMap = new Map();
+  //                             entry so emit stamping doesn't have to undo
+  //                             the NULL_KEY mapping.
+  //   socket                  — Slice 1: currently-attached Socket.IO socket
+  //                             (or null when detached). Read by onData /
+  //                             onExit each emit so cross-socket reattach
+  //                             reroutes output to the new attachment.
+  //   detachedAt              — Slice 1: ms timestamp of detach (null while
+  //                             attached). Always null for NULL_KEY entries
+  //                             since they're killed on disconnect.
+  const nullPtyMap = new Map();
   const NULL_KEY = '__null_taskid__';
-  const keyFor = (taskId) => (taskId == null ? NULL_KEY : taskId);
+
+  const getEntry = (taskId) =>
+    (taskId == null ? nullPtyMap.get(NULL_KEY) : taskPtyRegistry.get(taskId));
+  const setEntry = (taskId, entry) => {
+    if (taskId == null) nullPtyMap.set(NULL_KEY, entry);
+    else taskPtyRegistry.set(taskId, entry);
+  };
+  const deleteEntry = (taskId) => {
+    if (taskId == null) nullPtyMap.delete(NULL_KEY);
+    else taskPtyRegistry.delete(taskId);
+  };
 
   socket.on('webshell:start', async (config = {}) => {
     const startReceivedAt = Date.now();
@@ -262,21 +336,25 @@ const registerWebShellHandlers = (socket) => {
         : null;
       const rotate = !!config.rotate;
       const tryResume = !!config.tryResume;
-      const key = keyFor(taskId);
-      const existing = ptyMap.get(key);
+      const existing = getEntry(taskId);
 
       // Reattach path: existing entry + caller wants the existing session
       // (default tryResume + !rotate). Don't kill, don't respawn — emit a
       // fresh spawn sentinel so the frontend can resync and treat the live
-      // PTY as its connected source. This is the load-bearing piece of
-      // background-session preservation: switching back to a task picks up
-      // the live claude conversation instead of starting fresh. Frontend
-      // xterm scrollback fidelity comes in Phase 3 (multi-instance manager
-      // keeps the xterm alive across switches); until then, the reattached
-      // canvas may look blank because the old xterm was unmounted on
-      // task-switch — but the underlying PTY and its claude state survive,
-      // which is the whole point of this phase.
+      // PTY as its connected source.
+      //
+      // Slice 1 widened reattach to cross-socket: the existing entry may be
+      // currently attached to a DIFFERENT socket (separate browser tab) or
+      // detached (its prior socket disconnected). Either way, this start
+      // takes over the attachment — entry.socket flips to `socket`, and
+      // entry.detachedAt clears. Subsequent onData emits route to the new
+      // socket. The prior socket (if any) goes silent for this taskId; the
+      // user-visible effect is "shell follows you to the active tab".
       if (existing && tryResume && !rotate) {
+        const wasDetached = existing.detachedAt != null;
+        const priorSocketId = existing.socket?.id ?? null;
+        existing.socket = socket;
+        existing.detachedAt = null;
         existing.lastActivityTs = Date.now();
         socket.emit('webshell:spawn', {
           spawnId: existing.activeSpawnId,
@@ -292,8 +370,10 @@ const registerWebShellHandlers = (socket) => {
             taskId,
             spawnId: existing.activeSpawnId,
             sessionId: existing.sessionId,
-            ptyMapSize: ptyMap.size,
-            action: 'reattach',
+            registrySize: taskPtyRegistry.size,
+            wasDetached,
+            priorSocketId,
+            action: wasDetached ? 'reattach-after-detach' : (priorSocketId && priorSocketId !== socket.id ? 'reattach-cross-socket' : 'reattach'),
           },
           'web-shell: reattached to existing PTY for this taskId'
         );
@@ -317,9 +397,9 @@ const registerWebShellHandlers = (socket) => {
             rotate,
           },
           existingEntry: existing
-            ? { spawnId: existing.activeSpawnId, bytesEmitted: existing.bytesEmittedThisSpawn }
+            ? { spawnId: existing.activeSpawnId, bytesEmitted: existing.bytesEmittedThisSpawn, detached: existing.detachedAt != null }
             : null,
-          ptyMapSize: ptyMap.size,
+          registrySize: taskPtyRegistry.size,
         },
         'web-shell: webshell:start received'
       );
@@ -331,7 +411,7 @@ const registerWebShellHandlers = (socket) => {
         const dyingSpawnId = existing.activeSpawnId;
         const dyingBytes = existing.bytesEmittedThisSpawn;
         try { existing.ptyProcess.kill(); } catch { /* already dead */ }
-        ptyMap.delete(key);
+        deleteEntry(taskId);
         logger.info(
           {
             killedSpawnId: dyingSpawnId,
@@ -345,13 +425,14 @@ const registerWebShellHandlers = (socket) => {
         );
       }
 
-      // Cap enforcement (`feat-shell-background-sessions-001` Phase 4).
-      // Eviction only fires when we're about to ADD a new entry — replace
-      // (`existing` and `tryResume:false || rotate`) doesn't grow the map,
-      // and reattach already returned early above. So evict only on the
-      // !existing path.
-      if (!existing && ptyMap.size >= MAX_PTYS) {
-        const evicted = evictLongestIdleEntry(ptyMap, socket);
+      // Cap enforcement (`feat-shell-background-sessions-001` Phase 4,
+      // updated for Slice 1). The cap now applies to the module-global
+      // `taskPtyRegistry` only — NULL_KEY entries are per-socket and
+      // ephemeral, so they don't count. Eviction fires when we're about to
+      // ADD a new taskId entry. Replace (existing && rotate/!tryResume)
+      // doesn't grow the registry; reattach returned early above.
+      if (taskId != null && !existing && taskPtyRegistry.size >= MAX_PTYS) {
+        const evicted = evictLongestIdleEntry();
         if (evicted) {
           logger.info(
             {
@@ -360,18 +441,16 @@ const registerWebShellHandlers = (socket) => {
               idleMs: evicted.idleMs,
               replacedByTaskId: taskId,
               spawnId,
-              ptyMapSizeAfter: ptyMap.size,
+              registrySizeAfter: taskPtyRegistry.size,
             },
             'web-shell: evicted longest-idle PTY at cap'
           );
         }
-      } else if (!existing && ptyMap.size >= MAX_PTYS - 1) {
-        // One slot away from the cap — log so the user can correlate
-        // upcoming evictions with their task-shell churn (per QP3).
+      } else if (taskId != null && !existing && taskPtyRegistry.size >= MAX_PTYS - 1) {
         logger.info(
           {
             socketId: socket.id,
-            currentSize: ptyMap.size,
+            currentSize: taskPtyRegistry.size,
             max: MAX_PTYS,
             taskId,
             spawnId,
@@ -448,18 +527,26 @@ const registerWebShellHandlers = (socket) => {
         sessionId,
         spawnAt,
         taskId,
+        // Slice 1: which socket is currently bound to this entry, and
+        // when (if ever) it was last detached. Cross-socket reattach
+        // mutates these; idle-GC reads detachedAt to age out zombies.
+        socket,
+        detachedAt: null,
       };
-      ptyMap.set(key, entry);
+      setEntry(taskId, entry);
 
-      // Bind closures to (myKey, myId) — Map lookup re-resolves the entry
-      // each emit so a respawn that replaced the entry is observed (the
-      // new entry has a different activeSpawnId and the old closure's
-      // myId no longer matches → drop). The guard logic carries forward
-      // bug-shell-resume-render-001's per-spawn filter, just per-PTY now.
+      // Bind closures to (myTaskId, myId). onData/onExit re-resolve the
+      // entry from getEntry each emit so:
+      //   1. Stale-spawn-id filter (`bug-shell-resume-render-001`) still
+      //      works — a respawn within the same taskId replaces the entry,
+      //      its activeSpawnId differs from the old closure's myId, drop.
+      //   2. Cross-socket reattach (Slice 1) is observed — onData reads
+      //      liveEntry.socket each call, so output routes to the
+      //      currently-attached socket (or no-op when detached).
       const myId = spawnId;
-      const myKey = key;
+      const myTaskId = taskId;
       ptyProcess.onData((data) => {
-        const liveEntry = ptyMap.get(myKey);
+        const liveEntry = getEntry(myTaskId);
         if (!liveEntry || liveEntry.activeSpawnId !== myId) {
           if (process.env.WEBSHELL_BYTE_TRACE === '1') {
             logger.debug(
@@ -467,8 +554,7 @@ const registerWebShellHandlers = (socket) => {
                 spawnId: myId,
                 liveSpawnId: liveEntry?.activeSpawnId ?? null,
                 bytes: data.length,
-                socketId: socket.id,
-                taskId,
+                taskId: myTaskId,
               },
               'web-shell: dropped onData from non-active spawn'
             );
@@ -484,13 +570,21 @@ const registerWebShellHandlers = (socket) => {
               bytes: data.length,
               preview: data.length > 60 ? data.slice(0, 60) + '...' : data,
               elapsedMs: Date.now() - spawnAt,
-              socketId: socket.id,
-              taskId,
+              attachedSocketId: liveEntry.socket?.id ?? null,
+              taskId: myTaskId,
             },
             'web-shell: pty.onData'
           );
         }
-        socket.emit('webshell:output', { taskId, data });
+        // Detached entries (no attached socket) silently buffer-by-dropping
+        // — output is lost rather than queued. This matches the existing
+        // "scrollback fidelity is xterm-side" model: PTY state survives
+        // tab close, but transient bytes between detach and reattach do
+        // not. The reattach sentinel hands off, and any active claude
+        // process that needs the user can re-prompt.
+        if (liveEntry.socket) {
+          try { liveEntry.socket.emit('webshell:output', { taskId: myTaskId, data }); } catch { /* socket dead */ }
+        }
       });
 
       // Spawn sentinel: tells the frontend a new PTY is live for this
@@ -499,7 +593,7 @@ const registerWebShellHandlers = (socket) => {
       socket.emit('webshell:spawn', { spawnId: myId, pid: ptyPid, spawnAt, sessionId, sessionSource, taskId });
 
       ptyProcess.onExit(({ exitCode }) => {
-        const liveEntry = ptyMap.get(myKey);
+        const liveEntry = getEntry(myTaskId);
         const wasActive = !!liveEntry && liveEntry.activeSpawnId === myId;
         logger.info(
           {
@@ -508,8 +602,8 @@ const registerWebShellHandlers = (socket) => {
             exitCode,
             bytesEmitted: liveEntry?.bytesEmittedThisSpawn ?? 0,
             durationMs: Date.now() - spawnAt,
-            socketId: socket.id,
-            taskId,
+            attachedSocketId: liveEntry?.socket?.id ?? null,
+            taskId: myTaskId,
           },
           'web-shell: pty exited'
         );
@@ -519,9 +613,13 @@ const registerWebShellHandlers = (socket) => {
           // would land on the new spawn's canvas and corrupt it.
           return;
         }
-        socket.emit('webshell:output', { taskId, data: `\r\n\x1b[33m--- Shell exited (${exitCode}) ---\x1b[0m\r\n` });
-        socket.emit('webshell:exit', { exitCode, spawnId: myId, taskId });
-        ptyMap.delete(myKey);
+        if (liveEntry.socket) {
+          try {
+            liveEntry.socket.emit('webshell:output', { taskId: myTaskId, data: `\r\n\x1b[33m--- Shell exited (${exitCode}) ---\x1b[0m\r\n` });
+            liveEntry.socket.emit('webshell:exit', { exitCode, spawnId: myId, taskId: myTaskId });
+          } catch { /* socket dead */ }
+        }
+        deleteEntry(myTaskId);
       });
     } catch (err) {
       logger.error({ err, socketId: socket.id }, 'web-shell PTY spawn error');
@@ -536,13 +634,12 @@ const registerWebShellHandlers = (socket) => {
   });
 
   // Wire format (`feat-shell-background-sessions-001` Phase 1): payload is
-  // `{ taskId, data }` instead of raw bytes. Phase 2 routes via the Map —
-  // missing entry means we got input for a taskId whose PTY isn't on this
-  // socket (closed, evicted, or never spawned); drop silently rather than
-  // crashing on an undefined ptyProcess.
+  // `{ taskId, data }` instead of raw bytes. Slice 1 routes via getEntry —
+  // missing entry means we got input for a taskId whose PTY isn't alive
+  // anywhere (closed, evicted, GC'd, or never spawned). Drop silently.
   socket.on('webshell:input', (payload) => {
     if (!payload || typeof payload.data !== 'string') return;
-    const entry = ptyMap.get(keyFor(payload.taskId));
+    const entry = getEntry(payload.taskId);
     if (!entry) return;
     entry.lastActivityTs = Date.now();
     entry.ptyProcess.write(payload.data);
@@ -550,14 +647,14 @@ const registerWebShellHandlers = (socket) => {
 
   // User-initiated close (`feat-shell-background-sessions-001` Phase 4).
   // Kill the PTY and let the existing onExit handler handle the rest:
-  // it sees `wasActive` true (entry still in map at this point), emits
-  // the standard "Shell exited" output + webshell:exit, then deletes the
-  // entry. Frontend's existing handleExit path arms the recovery overlay,
-  // so manual close → recovery overlay → user clicks Resume to spawn
-  // fresh. No special-case wire event for "manual close" needed.
+  // it sees `wasActive` true (entry still in registry at this point),
+  // emits the standard "Shell exited" output + webshell:exit, then deletes
+  // the entry. Frontend's existing handleExit path arms the recovery
+  // overlay, so manual close → recovery overlay → user clicks Resume to
+  // spawn fresh. No special-case wire event for "manual close" needed.
   socket.on('webshell:close', (payload) => {
     if (!payload) return;
-    const entry = ptyMap.get(keyFor(payload.taskId));
+    const entry = getEntry(payload.taskId);
     if (!entry) return;
     logger.info(
       {
@@ -565,22 +662,20 @@ const registerWebShellHandlers = (socket) => {
         closedTaskId: entry.taskId,
         spawnId: entry.activeSpawnId,
         bytesEmitted: entry.bytesEmittedThisSpawn,
-        ptyMapSize: ptyMap.size,
+        registrySize: taskPtyRegistry.size,
         reason: 'manual',
       },
       'web-shell: PTY close requested by user'
     );
     try { entry.ptyProcess.kill(); } catch { /* already dead */ }
-    // Don't delete from map here — onExit handles cleanup AFTER it emits
+    // Don't delete here — onExit handles cleanup AFTER it emits
     // webshell:exit so the frontend gets the recovery overlay.
   });
 
-  // Wire format Phase 1: payload is `{ taskId, cols, rows }`. Phase 2 routes
-  // via the Map. taskId-less resizes are dropped; cols/rows still read at
-  // the top level for backwards-compat with the wrapper shape.
+  // Wire format Phase 1: payload is `{ taskId, cols, rows }`.
   socket.on('webshell:resize', (size) => {
     if (!size) return;
-    const entry = ptyMap.get(keyFor(size.taskId));
+    const entry = getEntry(size.taskId);
     if (!entry) return;
     entry.lastActivityTs = Date.now();
     try {
@@ -590,21 +685,45 @@ const registerWebShellHandlers = (socket) => {
     }
   });
 
-  // Socket disconnect kills every PTY on this socket. Phase 2 doesn't
-  // change disconnect semantics (page reload still drops everything);
-  // persistence-across-reload is explicitly out of scope per parent Q8.
+  // Socket disconnect (Slice 1).
+  //   - taskId-bound entries owned by THIS socket: detach (clear socket
+  //     ref + stamp detachedAt). PTY keeps running. A future webshell:start
+  //     for the same taskId will reattach (cross-socket reattach branch).
+  //     Idle-GC kills entries that stay detached past WEB_SHELL_DETACHED_MAX_MS.
+  //   - NULL_KEY entries (per-socket, modal flow): killed. The modal has no
+  //     resume semantics, so death-on-disconnect matches the original UX.
   return () => {
-    if (ptyMap.size > 0) {
-      logger.info(
-        { socketId: socket.id, count: ptyMap.size, keys: Array.from(ptyMap.keys()) },
-        'Cleaning up web-shell PTYs (socket disconnect)'
-      );
-      for (const [, entry] of ptyMap) {
-        try { entry.ptyProcess.kill(); } catch { /* already dead */ }
+    const detachedTaskIds = [];
+    const detachAt = Date.now();
+    for (const [taskId, entry] of taskPtyRegistry) {
+      if (entry.socket === socket) {
+        entry.socket = null;
+        entry.detachedAt = detachAt;
+        detachedTaskIds.push(taskId);
       }
-      ptyMap.clear();
+    }
+
+    const killedNullCount = nullPtyMap.size;
+    for (const [, entry] of nullPtyMap) {
+      try { entry.ptyProcess.kill(); } catch { /* already dead */ }
+    }
+    nullPtyMap.clear();
+
+    if (detachedTaskIds.length > 0 || killedNullCount > 0) {
+      logger.info(
+        {
+          socketId: socket.id,
+          detachedTaskIds,
+          killedNullEntries: killedNullCount,
+          registrySize: taskPtyRegistry.size,
+        },
+        'web-shell: socket disconnect — taskId entries detached, null entries killed'
+      );
     }
   };
 };
 
-module.exports = { registerWebShellHandlers };
+// Slice 2 (sessions registry REST + broadcast) reads taskPtyRegistry to
+// list alive sessions and to look up entries for kill. Exported here so
+// routes/shell.js doesn't have to duplicate the data structure.
+module.exports = { registerWebShellHandlers, taskPtyRegistry };
