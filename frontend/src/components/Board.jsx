@@ -33,7 +33,7 @@ function isTaskStale(task) {
   return daysSince >= threshold
 }
 
-function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAgent, onStopAgent, taskViewers = {}, currentUser, selectable, selectedIds = [], onToggleSelect, onShiftSelect, onToggleSelectColumn, recentlyUpdatedIds = [], onToggleBulkSelect, githubLinks = {} }) {
+function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAgent, onStopAgent, taskViewers = {}, shellSessions = {}, currentUser, selectable, selectedIds = [], onToggleSelect, onShiftSelect, onToggleSelectColumn, recentlyUpdatedIds = [], onToggleBulkSelect, githubLinks = {} }) {
   const priorityOrder = { high: 0, medium: 1, low: 2 }
   const isMobile = useIsMobile()
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem('taskBoardCompact') === 'true')
@@ -152,6 +152,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
       isDragging={isDragging}
       agentRunning={activeAgents.some(a => a.taskId === task.id)}
       viewers={(taskViewers[task.id] || []).filter(u => u !== currentUser)}
+      shellSession={shellSessions[task.id]}
       selectable={selectable}
       selected={selectedIds.includes(task.id)}
       onToggleSelect={onToggleSelect}

@@ -1,5 +1,5 @@
 import { memo, useState, useCallback } from 'react'
-import { AlertCircle, AlignLeft, CheckCircle2, Circle, Copy, Check, UserCircle2, Link, Loader2, CalendarClock, Clock } from 'lucide-react'
+import { AlertCircle, AlignLeft, CheckCircle2, Circle, Copy, Check, UserCircle2, Link, Loader2, CalendarClock, Clock, Terminal } from 'lucide-react'
 import { STATUS_OPTIONS, PRIORITY_COLOR, TYPE_STYLE, VIEWER_COLORS, MERGE_STATUS } from '../constants'
 import { Badge, Select, Checkbox, Avatar } from './ui'
 
@@ -9,7 +9,7 @@ const PRIORITY_ICONS = {
   high: <AlertCircle className="w-3 h-3" fill="currentColor" />
 }
 
-function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewers = [], selectable, selected, onToggleSelect, onShiftSelect, orderedTaskIds, justUpdated, compact, isStale, githubLinks = {} }) {
+function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewers = [], shellSession, selectable, selected, onToggleSelect, onShiftSelect, orderedTaskIds, justUpdated, compact, isStale, githubLinks = {} }) {
   const [copied, setCopied] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
   const hasComments = task.content && task.content.includes('### Comments') && task.content.split('### Comments')[1].trim().length > 0
@@ -86,6 +86,22 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
         )}
         <span className="truncate flex-1" style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-medium)', color: 'var(--text-app)' }}>{task.title}</span>
         {agentRunning && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: 'var(--accent-app)' }} />}
+        {shellSession && (
+          <Terminal
+            className={`w-3.5 h-3.5 shrink-0 ${shellSession.processing ? 'animate-gentle-pulse' : ''}`}
+            style={{
+              color: shellSession.processing
+                ? 'var(--apple-green)'
+                : (shellSession.attached ? 'var(--accent-app)' : 'var(--text-muted)'),
+              opacity: shellSession.attached ? 1 : 0.6,
+            }}
+            title={
+              shellSession.processing
+                ? 'Shell processing'
+                : (shellSession.attached ? 'Shell attached' : 'Shell detached — alive in background')
+            }
+          />
+        )}
         {isStale && <Clock className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--apple-orange)' }} title="Stale — no recent activity" />}
         {task.assignee && (
           <Avatar
@@ -268,6 +284,11 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
 function taskCardPropsAreEqual(prev, next) {
   if (prev.isDragging !== next.isDragging) return false
   if (prev.agentRunning !== next.agentRunning) return false
+  // shellSession identity changes whenever the broadcast snapshot replaces
+  // the entry, OR when webshell:processing toggles and we shallow-clone
+  // it. Cheap reference check is enough; field-level diff would only
+  // help if the hook over-rendered, which it doesn't.
+  if (prev.shellSession !== next.shellSession) return false
   if (prev.onClick !== next.onClick) return false
   if (prev.onUpdateTask !== next.onUpdateTask) return false
   if (prev.selectable !== next.selectable) return false

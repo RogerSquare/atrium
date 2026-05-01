@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useEffect, useRef, us
 import { API_URL, apiFetch } from '../config'
 import useTasks from '../hooks/useTasks'
 import useAgents from '../hooks/useAgents'
+import useShellSessions from '../hooks/useShellSessions'
 import useUndoRedo from '../hooks/useUndoRedo'
 
 // Two-context split (Phase 2 of opt-perf-audit-001-implement, Path C from
@@ -28,6 +29,7 @@ const TaskStableContext = createContext(null)
 export function TaskProvider({ user, socketRef, children }) {
   const taskState = useTasks(user, socketRef)
   const agents = useAgents(user, socketRef, taskState.fetchData)
+  const shell = useShellSessions(user, socketRef)
   const undoRedo = useUndoRedo(taskState.tasks, taskState.handleUpdateTask)
 
   // --- Bulk selection ---
@@ -199,6 +201,7 @@ export function TaskProvider({ user, socketRef, children }) {
     agentsEnabled: agents.agentsEnabled,
     aiChatEnabled: agents.aiChatEnabled,
     taskViewers: agents.taskViewers,
+    shellSessions: shell.shellSessions,
     bulkSelectMode,
     selectedTaskIds,
     batchLoading,
@@ -215,6 +218,7 @@ export function TaskProvider({ user, socketRef, children }) {
     taskState.filteredTasks, taskState.uniqueAssignees, taskState.activeFilterCount,
     taskState.recentlyUpdatedIds, taskState.githubLinks,
     agents.activeAgents, agents.agentsEnabled, agents.aiChatEnabled, agents.taskViewers,
+    shell.shellSessions,
     bulkSelectMode, selectedTaskIds, batchLoading, errorToast,
   ])
 
