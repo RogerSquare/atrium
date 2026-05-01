@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   PROMPT_PATTERNS,
+  DENY_PATTERNS,
   stripAnsi,
   tailMatchesPrompt,
 } from '../web-shell/autoEnterPatterns.js'
@@ -26,26 +27,35 @@ describe('stripAnsi', () => {
 describe('tailMatchesPrompt — should fire', () => {
   it.each([
     ['(y/N) literal', 'Continue? (y/N) '],
-    ['(Y/n) flipped default', 'Are you sure? (Y/n) '],
-    ['[y/N] bracketed', 'Delete file? [y/N] '],
+    ['[y/N] bracketed', 'Generate config? [y/N] '],
     ['Press Enter prompt', 'Press Enter to continue...'],
     ['Continue? alone', 'All done. Continue? '],
-    ['Proceed? alone', 'About to overwrite. Proceed? '],
-    ['Are you sure', 'This is destructive. Are you sure? '],
+    ['Proceed? alone', 'About to write. Proceed? '],
     ['Claude Code "Do you want to proceed"',
       'Do you want to proceed?\n  1. Yes\n  2. No\n  ❯ 1. Yes'],
     ['Claude Code "Do you want to make this edit"',
       'Do you want to make this edit to README.md?\n  1. Yes\n'],
-    // bug-autoenter-claude-prompts-001 — broadened "do you want to" verb
     ['Claude Code "Do you want to allow ... fetch"',
       'Do you want to allow Claude to fetch this content?\n  1. Yes\n  ❯ 2. Yes, and don\'t ask again\n  3. No'],
     ['Claude Code "Do you want to run"',
       'Do you want to run this command?\n  1. Yes\n  2. No'],
+    ['Claude Code "Do you want to use this API key"',
+      'Do you want to use this API key?\n  ❯ 1. Yes\n  2. No'],
     // Numbered-menu cursor — fires even if the question text doesn't match
     ['cursor on option 1',
       '  ❯ 1. Yes\n    2. No'],
     ['cursor on option 2 (sticky variant highlighted)',
       '  1. Yes\n  ❯ 2. Yes, and don\'t ask again for raw.githubusercontent.com\n  3. No'],
+    // Wizard prompts — user is actively driving the wizard, auto-Enter
+    // takes the highlighted default (usually "Yes" / sensible choice)
+    ['wizard "Connect Claude on the web to GitHub"',
+      'Connect Claude on the web to GitHub?\n  ❯ 1. Yes\n  2. No'],
+    ['wizard "Apply these edits"',
+      'Apply these edits?\n  ❯ 1. Yes\n  2. No'],
+    ['wizard "Install as a service now"',
+      'Install as a service now?\n  ❯ 1. Yes\n  2. No'],
+    ['wizard "Enable Remote Control"',
+      'Enable Remote Control?\n  ❯ 1. Yes\n  2. No'],
     ['ANSI-wrapped prompt', '\x1b[1m\x1b[33mContinue?\x1b[0m '],
   ])('matches: %s', (_label, output) => {
     expect(tailMatchesPrompt(output)).toBe(true)
@@ -64,6 +74,36 @@ describe('tailMatchesPrompt — should NOT fire', () => {
     // Plain numbered list without the ❯ cursor must NOT trigger the
     // menu-cursor rule — false-positive guard for regular CLI output.
     ['plain numbered list', '1. First step\n2. Second step\n3. Third step'],
+
+    // === Denylist: destructive prompts ===
+    // "Are you sure" is a universal destructive-guard phrase — both
+    // CC's delete confirmations and plain shell scripts use it.
+    ['"Are you sure" alone', 'This is destructive. Are you sure? '],
+    ['"Are you sure" with (Y/n)', 'Are you sure? (Y/n) '],
+    ['CC "Are you sure you want to delete the agent"',
+      'Are you sure you want to delete the agent foo?\n  ❯ 1. Yes\n  2. No'],
+    ['CC "Are you sure you want to delete this permission rule"',
+      'Are you sure you want to delete this permission rule?\n  ❯ 1. Yes\n  2. No'],
+    ['CC "Delete N item(s) for ALL projects"',
+      'Delete 3 item(s) for ALL projects?\n  ❯ 1. Yes\n  2. No'],
+    ['CC "Delete N item(s) for project"',
+      'Delete 3 item(s) for myproject?\n  ❯ 1. Yes\n  2. No'],
+    ['CC "Overwrite?" alone',
+      'Overwrite?\n  ❯ 1. Yes\n  2. No'],
+    ['CC "Remove server"',
+      'Remove server foo-server?\n  ❯ 1. Yes\n  2. No'],
+    ['CC "Remove marketplace"',
+      'Remove marketplace?\n  ❯ 1. Yes\n  2. No'],
+    ['CC "Remove a marketplace"',
+      'Remove a marketplace?\n  ❯ 1. Yes\n  2. No'],
+    ['CC "Remove directory from workspace"',
+      'Remove directory from workspace?\n  ❯ 1. Yes\n  2. No'],
+
+    // === Denylist: plan-mode prompts ===
+    ['CC plan-mode execute gate',
+      'Claude has written up a plan and is ready to execute. Would you like to proceed?\n  ❯ 1. Yes\n  2. No'],
+    ['CC scope reconfirmation',
+      'Before I start editing, can you confirm the scope?\n  ❯ 1. Yes\n  2. No'],
   ])('does not match: %s', (_label, output) => {
     expect(tailMatchesPrompt(output)).toBe(false)
   })
@@ -88,5 +128,12 @@ describe('PROMPT_PATTERNS shape', () => {
   it('is a non-empty list of RegExp instances', () => {
     expect(PROMPT_PATTERNS.length).toBeGreaterThan(0)
     PROMPT_PATTERNS.forEach((re) => expect(re).toBeInstanceOf(RegExp))
+  })
+})
+
+describe('DENY_PATTERNS shape', () => {
+  it('is a non-empty list of RegExp instances', () => {
+    expect(DENY_PATTERNS.length).toBeGreaterThan(0)
+    DENY_PATTERNS.forEach((re) => expect(re).toBeInstanceOf(RegExp))
   })
 })
