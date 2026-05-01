@@ -11,7 +11,17 @@ export const PROMPT_PATTERNS = [
   /continue\?/i,
   /proceed\?/i,
   /are\s+you\s+sure/i,
-  /do\s+you\s+want\s+to\s+(proceed|continue|make\s+this\s+edit)/i,
+  // Claude Code prompts: every permission/confirmation the CLI emits
+  // begins with "Do you want to ..." (proceed, allow, run, make this
+  // edit, etc.). The earlier narrow verb-list missed "Do you want to
+  // allow Claude to fetch this content?" — bug-autoenter-claude-prompts-001.
+  /do\s+you\s+want\s+to\b/i,
+  // Claude Code's numbered-menu cursor (U+276F HEAVY RIGHT-POINTING
+  // ANGLE QUOTATION MARK ORNAMENT). Strong second signal — when the
+  // cursor sits on a numbered option, Enter selects it. Catches menu
+  // prompts whose preceding question phrasing doesn't match the rules
+  // above.
+  /❯\s+\d+\.\s+\S/,
 ]
 
 export function stripAnsi(s) {

@@ -36,6 +36,16 @@ describe('tailMatchesPrompt — should fire', () => {
       'Do you want to proceed?\n  1. Yes\n  2. No\n  ❯ 1. Yes'],
     ['Claude Code "Do you want to make this edit"',
       'Do you want to make this edit to README.md?\n  1. Yes\n'],
+    // bug-autoenter-claude-prompts-001 — broadened "do you want to" verb
+    ['Claude Code "Do you want to allow ... fetch"',
+      'Do you want to allow Claude to fetch this content?\n  1. Yes\n  ❯ 2. Yes, and don\'t ask again\n  3. No'],
+    ['Claude Code "Do you want to run"',
+      'Do you want to run this command?\n  1. Yes\n  2. No'],
+    // Numbered-menu cursor — fires even if the question text doesn't match
+    ['cursor on option 1',
+      '  ❯ 1. Yes\n    2. No'],
+    ['cursor on option 2 (sticky variant highlighted)',
+      '  1. Yes\n  ❯ 2. Yes, and don\'t ask again for raw.githubusercontent.com\n  3. No'],
     ['ANSI-wrapped prompt', '\x1b[1m\x1b[33mContinue?\x1b[0m '],
   ])('matches: %s', (_label, output) => {
     expect(tailMatchesPrompt(output)).toBe(true)
@@ -51,6 +61,9 @@ describe('tailMatchesPrompt — should NOT fire', () => {
     ['code-style output', "const result = doThing('foo', 'bar')"],
     ['file listing', 'README.md  package.json  src/'],
     ['version banner', 'Node.js v20.10.0\nnpm 10.2.3'],
+    // Plain numbered list without the ❯ cursor must NOT trigger the
+    // menu-cursor rule — false-positive guard for regular CLI output.
+    ['plain numbered list', '1. First step\n2. Second step\n3. Third step'],
   ])('does not match: %s', (_label, output) => {
     expect(tailMatchesPrompt(output)).toBe(false)
   })
