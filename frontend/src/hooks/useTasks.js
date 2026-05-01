@@ -14,6 +14,11 @@ export default function useTasks(user, socketRef) {
   const [filterAssignee, setFilterAssignee] = useState('all')
   const [filterToday, setFilterToday] = useState(false)
   const [filterStale, setFilterStale] = useState(false)
+  // Slice 5: opt-in filter to narrow the board to tasks with an alive
+  // web-shell PTY (per useShellSessions). State lives here for parity
+  // with the other filters; the actual list intersection happens in
+  // TaskContext where shellSessions is also in scope.
+  const [filterShellActive, setFilterShellActive] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [selectedTask, setSelectedTask] = useState(null)
@@ -366,6 +371,7 @@ export default function useTasks(user, socketRef) {
     filterAssignee !== 'all',
     filterToday,
     filterStale,
+    filterShellActive,
     searchQuery !== ''
   ].filter(Boolean).length
 
@@ -375,6 +381,7 @@ export default function useTasks(user, socketRef) {
     setFilterAssignee('all')
     setFilterToday(false)
     setFilterStale(false)
+    setFilterShellActive(false)
     setSearchQuery('')
   }, [])
 
@@ -447,6 +454,8 @@ export default function useTasks(user, socketRef) {
     setFilterToday,
     filterStale,
     setFilterStale,
+    filterShellActive,
+    setFilterShellActive,
     filteredTasks,
     uniqueAssignees,
     activeFilterCount,

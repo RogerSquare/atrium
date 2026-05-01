@@ -66,6 +66,7 @@ export default function AppShell() {
     filterType, setFilterType, filterPriority, setFilterPriority,
     filterAssignee, setFilterAssignee, filterToday, setFilterToday,
     filterStale, setFilterStale,
+    filterShellActive, setFilterShellActive,
     uniqueAssignees, activeFilterCount,
     activeAgents, taskViewers,
     bulkSelectMode, selectedTaskIds, batchLoading,
@@ -285,6 +286,8 @@ export default function AppShell() {
         setFilterToday={setFilterToday}
         filterStale={filterStale}
         setFilterStale={setFilterStale}
+        filterShellActive={filterShellActive}
+        setFilterShellActive={setFilterShellActive}
         uniqueAssignees={uniqueAssignees}
         activeFilterCount={activeFilterCount}
         resetAllFilters={resetAllFilters}
