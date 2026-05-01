@@ -6,8 +6,11 @@ import { describe, it, expect } from 'vitest'
 import {
   PROMPT_PATTERNS,
   DENY_PATTERNS,
+  IDLE_PATTERNS,
   stripAnsi,
   tailMatchesPrompt,
+  tailMatchesInputField,
+  classifyTail,
 } from '../web-shell/autoEnterPatterns.js'
 
 describe('stripAnsi', () => {
@@ -135,5 +138,91 @@ describe('DENY_PATTERNS shape', () => {
   it('is a non-empty list of RegExp instances', () => {
     expect(DENY_PATTERNS.length).toBeGreaterThan(0)
     DENY_PATTERNS.forEach((re) => expect(re).toBeInstanceOf(RegExp))
+  })
+})
+
+describe('IDLE_PATTERNS shape', () => {
+  it('is a non-empty list of RegExp instances', () => {
+    expect(IDLE_PATTERNS.length).toBeGreaterThan(0)
+    IDLE_PATTERNS.forEach((re) => expect(re).toBeInstanceOf(RegExp))
+  })
+})
+
+describe('tailMatchesInputField — should match', () => {
+  it.each([
+    ['CC top box border',
+      'output\n╭─────────────────╮\n│ >              │\n╰─────────────────╯'],
+    ['CC bottom box border alone',
+      'something\n╰─────────────────╯\n  ? for shortcuts'],
+    ['CC hint line',
+      'idle state\n  ? for shortcuts | type / for commands'],
+    ['bash prompt at end', 'output finished\nuser@host:~$ '],
+    ['cmd.exe prompt at end', 'compiled\nC:\\Users\\foo\\project>'],
+    ['PowerShell prompt at end', 'done\nPS C:\\Users\\foo>'],
+    ['zsh prompt at end', 'job done\n~ %'],
+  ])('matches: %s', (_label, output) => {
+    expect(tailMatchesInputField(output)).toBe(true)
+  })
+})
+
+describe('tailMatchesInputField — should NOT match', () => {
+  it.each([
+    ['empty', ''],
+    ['null', null],
+    ['undefined', undefined],
+    ['plain output without prompt at end',
+      'Cloning into atrium...\nremote: Counting objects: 100%'],
+    ['CC permission prompt (input field replaced)',
+      'Do you want to proceed?\n  ❯ 1. Yes\n  2. No'],
+    ['box border in scrollback past the 100-char idle window',
+      '╭─────────────╮\n' + 'x'.repeat(120) + '\nDoing work...'],
+  ])('does not match: %s', (_label, output) => {
+    expect(tailMatchesInputField(output)).toBe(false)
+  })
+})
+
+describe('classifyTail', () => {
+  it('returns "denied" for denylist matches', () => {
+    expect(classifyTail('Are you sure you want to delete the agent foo?\n  ❯ 1. Yes')).toBe('denied')
+    expect(classifyTail('Overwrite?\n  ❯ 1. Yes')).toBe('denied')
+    expect(classifyTail('Claude has written up a plan and is ready to execute. Would you like to proceed?\n  ❯ 1. Yes')).toBe('denied')
+  })
+
+  it('returns "fire" for allowlist matches', () => {
+    expect(classifyTail('Do you want to proceed?\n  ❯ 1. Yes')).toBe('fire')
+    expect(classifyTail('Continue? (y/N) ')).toBe('fire')
+    expect(classifyTail('  ❯ 1. Yes\n    2. No')).toBe('fire')
+  })
+
+  it('returns "input-field" for the idle CC input box', () => {
+    expect(classifyTail('output\n╭─────────╮\n│ >       │\n╰─────────╯\n  ? for shortcuts')).toBe('input-field')
+  })
+
+  it('returns "input-field" for bare shell prompts', () => {
+    expect(classifyTail('done\nuser@host:~$ ')).toBe('input-field')
+    expect(classifyTail('done\nC:\\Users\\foo>')).toBe('input-field')
+  })
+
+  it('returns "unknown" when nothing matches', () => {
+    expect(classifyTail('Frobnicate the widget? ')).toBe('unknown')
+    expect(classifyTail('Custom prompt: enter password ')).toBe('unknown')
+    expect(classifyTail('A wild prompt appears!')).toBe('unknown')
+  })
+
+  it('returns "unknown" for empty / null / undefined', () => {
+    expect(classifyTail('')).toBe('unknown')
+    expect(classifyTail(null)).toBe('unknown')
+    expect(classifyTail(undefined)).toBe('unknown')
+  })
+
+  it('denylist wins over fire when both match', () => {
+    // Tail has both "are you sure" (deny) and the cursor (allow).
+    expect(classifyTail('Are you sure you want to delete?\n  ❯ 1. Yes')).toBe('denied')
+  })
+
+  it('fire wins over input-field when both signals are in the tail', () => {
+    // A box border in scrollback shouldn't suppress a real permission prompt.
+    const tail = '╭─────╮\n' + 'x'.repeat(50) + '\nDo you want to proceed?\n  ❯ 1. Yes'
+    expect(classifyTail(tail)).toBe('fire')
   })
 })

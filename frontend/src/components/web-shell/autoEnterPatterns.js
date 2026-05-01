@@ -2,13 +2,20 @@
 // module (no React, no DOM) so the regex set can be unit-tested without
 // pulling in component machinery.
 //
-// Two-tier matching: a tail buffer fires Enter only if it matches an
-// allowlist pattern AND no denylist pattern. The denylist exists to
-// keep the auto-presser away from prompts whose default option is
-// destructive or whose context demands a human glance — confirmed
-// deletes, overwrites, plan-mode execute gates, scope reconfirmations.
+// Three-class classifier: a tail buffer is one of
+//   - 'denied'      — denylist match; never fire
+//   - 'fire'        — allowlist match (and no denylist); send Enter
+//   - 'input-field' — recognized idle state (CC input box, shell prompt)
+//   - 'unknown'     — none of the above; capture for review (feat-
+//                     autoenter-unknown-capture-001)
+// Allowlist/denylist drive the auto-Enter behavior; the input-field /
+// unknown distinction drives the capture loop that surfaces undocumented
+// prompts the pattern set should learn.
 
 export const TAIL_WINDOW = 200
+// Smaller window for "idle" detection — input-field markers should be
+// at the most recent edge of output, not somewhere in scrollback.
+export const IDLE_TAIL_WINDOW = 100
 
 // Allowlist — generic shell prompts and Claude Code's standard
 // permission framings. The cursor pattern is the universal CC v2
@@ -63,6 +70,27 @@ export const DENY_PATTERNS = [
   /can\s+you\s+confirm\s+the\s+scope/i,
 ]
 
+// Idle-state markers — distinguish "the CLI is sitting at its normal
+// input affordance" from "we're stuck somewhere unrecognized". Used by
+// the capture loop to skip captures when the shell is just waiting for
+// the user to type something.
+export const IDLE_PATTERNS = [
+  // Claude Code v2's text-input box: top + bottom borders use light-arc
+  // box-drawing chars. Either one in the recent tail is a strong signal.
+  /╭─{2,}/,
+  /╰─{2,}/,
+  // The hint line CC renders below the input box — strongest unique
+  // marker since no other CLI emits this exact phrase.
+  /\?\s+for\s+shortcuts/i,
+  // Unix shell prompts ($/#/%) at end of buffer with optional trailing
+  // whitespace. Negative lookbehind on digits keeps values like "100%"
+  // from false-positiving as a zsh prompt.
+  /(?<!\d)[$#%]\s*$/,
+  // Windows path-style prompts (cmd.exe / PowerShell): drive letter +
+  // separator + path + trailing > at end of buffer.
+  /[A-Z]:[\\\/][^\n>]*>$/,
+]
+
 export function stripAnsi(s) {
   return s
     .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')
@@ -76,4 +104,25 @@ export function tailMatchesPrompt(buffer) {
   // an allowlist pattern (e.g., the cursor) also matches.
   if (DENY_PATTERNS.some((re) => re.test(tail))) return false
   return PROMPT_PATTERNS.some((re) => re.test(tail))
+}
+
+export function tailMatchesInputField(buffer) {
+  if (!buffer) return false
+  const tail = stripAnsi(buffer).slice(-IDLE_TAIL_WINDOW)
+  return IDLE_PATTERNS.some((re) => re.test(tail))
+}
+
+// Single source of truth for the four classes. Order matters: denylist
+// wins over fire (a delete prompt that also has the cursor must be
+// skipped), and fire wins over input-field (a permission prompt that
+// briefly overlaps with input-field paint must still fire).
+export function classifyTail(buffer) {
+  if (!buffer) return 'unknown'
+  const stripped = stripAnsi(buffer)
+  const tail200 = stripped.slice(-TAIL_WINDOW)
+  const tail100 = stripped.slice(-IDLE_TAIL_WINDOW)
+  if (DENY_PATTERNS.some((re) => re.test(tail200))) return 'denied'
+  if (PROMPT_PATTERNS.some((re) => re.test(tail200))) return 'fire'
+  if (IDLE_PATTERNS.some((re) => re.test(tail100))) return 'input-field'
+  return 'unknown'
 }
