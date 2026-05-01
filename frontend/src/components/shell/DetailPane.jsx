@@ -20,6 +20,7 @@ import DetailActivity from '../detail/DetailActivity'
 import DetailChanges from '../detail/DetailChanges'
 import ShellManager from '../web-shell/ShellManager'
 import CommandCard from '../web-shell/CommandCard'
+import AutoEnterToggle from '../web-shell/AutoEnterToggle'
 import StatusSegmentedControl from '../StatusSegmentedControl'
 import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
 
@@ -262,6 +263,11 @@ export default function DetailPane({
               copy flash) is per-task and resetting on task switch is the
               right behavior. */}
           <CommandCard key={task.id} task={task} />
+          {/* AutoEnterToggle: floating pill at bottom-right that watches
+              webshell:output for permission prompts and auto-fires Enter
+              on the active shell. Per-task armed state lives in
+              localStorage. */}
+          <AutoEnterToggle key={`autoenter-${task.id}`} task={task} socket={socket} />
         </div>
 
         {activeTab !== 'shell' && (
