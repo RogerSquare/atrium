@@ -442,14 +442,34 @@ const registerWebShellHandlers = (socket) => {
       // fresh spawn sentinel so the frontend can resync and treat the live
       // PTY as its connected source.
       //
-      // Slice 1 widened reattach to cross-socket: the existing entry may be
-      // currently attached to a DIFFERENT socket (separate browser tab) or
-      // detached (its prior socket disconnected). Either way, this start
-      // takes over the attachment — entry.socket flips to `socket`, and
-      // entry.detachedAt clears. Subsequent onData emits route to the new
-      // socket. The prior socket (if any) goes silent for this taskId; the
-      // user-visible effect is "shell follows you to the active tab".
-      if (existing && tryResume && !rotate) {
+      // Slice 1 widened reattach to cross-socket. There are TWO distinct
+      // cross-socket cases that look similar but want different handling:
+      //
+      //   (a) MULTI-TAB STEAL — entry.socket is non-null and points at a
+      //       different (still-alive) socket. The user has the session
+      //       open in tab A and just navigated to it in tab B. Reattach
+      //       (steal the attachment) so both tabs converge on the same
+      //       live PTY; tab A goes silent for this taskId.
+      //
+      //   (b) TAB-CLOSE-AND-REOPEN — entry.socket is null and detachedAt
+      //       is set. The user closed the tab and is now reopening it.
+      //       Reattach asks the running claude to redraw into a brand-new
+      //       xterm via SIGWINCH, but claude's redraw doesn't emit a
+      //       final cursor-position-to-input escape — cursor parks at
+      //       the bottom-right corner. The X-button + Resume flow works
+      //       cleanly because it kills + respawns `claude --resume <id>`
+      //       which rebuilds the UI from the session file. Apply the
+      //       same treatment here: fall through to the replace path
+      //       below so we kill the detached entry and let the standard
+      //       fresh-spawn logic mint a new claude --resume process.
+      //
+      // The cost of (b) is that any in-flight claude response not yet
+      // saved to the session file is lost. Acceptable trade since the
+      // typical close+reopen scenario is "I want to come back to this
+      // task, doesn't matter if mid-stream output is interrupted" — and
+      // the reattach visual was unusable.
+      const isDetachedReattach = existing && existing.detachedAt != null && existing.socket == null;
+      if (existing && tryResume && !rotate && !isDetachedReattach) {
         const wasDetached = existing.detachedAt != null;
         const priorSocketId = existing.socket?.id ?? null;
         existing.socket = socket;
@@ -488,23 +508,6 @@ const registerWebShellHandlers = (socket) => {
         } catch {
           // resize on a dead pty throws — onExit will reap it
         }
-        // Cursor-jump fix #3: SIGWINCH alone gets claude to redraw, but
-        // claude's SIGWINCH-redraw doesn't always emit a final cursor-
-        // position-to-input-field escape — the cursor lands wherever the
-        // last rendered character finished, which for a 96x36 screen is
-        // typically the bottom-right corner. Write Ctrl+L (form feed,
-        // \x0c) into claude's stdin so its readline-style handler does
-        // a clean clear+redraw+restore-input flow that DOES end with the
-        // cursor at the input prompt position. Bare cmd.exe will print
-        // a literal form-feed char (small cosmetic blip; acceptable for
-        // the trade since the typical reattach target is a claude
-        // session). Writing on a slight delay so SIGWINCH propagates
-        // first and the resulting redraw doesn't fight the Ctrl+L
-        // redraw.
-        const _entry = existing;
-        setTimeout(() => {
-          try { _entry.ptyProcess.write('\x0c'); } catch { /* dead */ }
-        }, 80);
         logger.info(
           {
             socketId: socket.id,
@@ -546,9 +549,21 @@ const registerWebShellHandlers = (socket) => {
       );
 
       if (existing) {
-        // tryResume:false OR rotate:true → user wants a fresh spawn for THIS
-        // taskId (e.g., clicking "Start New Session" on the recovery overlay).
-        // Kill the existing entry; the new spawn replaces it below.
+        // Kill + respawn paths:
+        //   - rotate:true              → "Start New Session" on the
+        //                                recovery overlay; mint a fresh
+        //                                session id and start a new
+        //                                claude run.
+        //   - tryResume:false          → user wants a fresh spawn for
+        //                                this taskId (no resume hint).
+        //   - isDetachedReattach       → tab-close+reopen path. Kill the
+        //                                detached PTY and respawn with
+        //                                `claude --resume <id>` so the
+        //                                new tab sees a cleanly-rebuilt
+        //                                UI from the on-disk session
+        //                                rather than the visually-broken
+        //                                SIGWINCH redraw of a live
+        //                                claude.
         const dyingSpawnId = existing.activeSpawnId;
         const dyingBytes = existing.bytesEmittedThisSpawn;
         try { existing.ptyProcess.kill(); } catch { /* already dead */ }
@@ -560,7 +575,7 @@ const registerWebShellHandlers = (socket) => {
             bytesEmittedBeforeKill: dyingBytes,
             socketId: socket.id,
             taskId,
-            reason: rotate ? 'rotate' : 'tryResume:false',
+            reason: rotate ? 'rotate' : (isDetachedReattach ? 'detached-reattach' : 'tryResume:false'),
           },
           'web-shell: killed prior PTY before respawn (same taskId)'
         );
