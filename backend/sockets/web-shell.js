@@ -488,6 +488,23 @@ const registerWebShellHandlers = (socket) => {
         } catch {
           // resize on a dead pty throws — onExit will reap it
         }
+        // Cursor-jump fix #3: SIGWINCH alone gets claude to redraw, but
+        // claude's SIGWINCH-redraw doesn't always emit a final cursor-
+        // position-to-input-field escape — the cursor lands wherever the
+        // last rendered character finished, which for a 96x36 screen is
+        // typically the bottom-right corner. Write Ctrl+L (form feed,
+        // \x0c) into claude's stdin so its readline-style handler does
+        // a clean clear+redraw+restore-input flow that DOES end with the
+        // cursor at the input prompt position. Bare cmd.exe will print
+        // a literal form-feed char (small cosmetic blip; acceptable for
+        // the trade since the typical reattach target is a claude
+        // session). Writing on a slight delay so SIGWINCH propagates
+        // first and the resulting redraw doesn't fight the Ctrl+L
+        // redraw.
+        const _entry = existing;
+        setTimeout(() => {
+          try { _entry.ptyProcess.write('\x0c'); } catch { /* dead */ }
+        }, 80);
         logger.info(
           {
             socketId: socket.id,
