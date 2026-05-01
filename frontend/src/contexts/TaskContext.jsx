@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useEffect, useRef, us
 import { API_URL, apiFetch } from '../config'
 import useTasks from '../hooks/useTasks'
 import useAgents from '../hooks/useAgents'
+import useShellSessions from '../hooks/useShellSessions'
 import useUndoRedo from '../hooks/useUndoRedo'
 
 // Two-context split (Phase 2 of opt-perf-audit-001-implement, Path C from
@@ -28,7 +29,19 @@ const TaskStableContext = createContext(null)
 export function TaskProvider({ user, socketRef, children }) {
   const taskState = useTasks(user, socketRef)
   const agents = useAgents(user, socketRef, taskState.fetchData)
+  const shell = useShellSessions(user, socketRef)
   const undoRedo = useUndoRedo(taskState.tasks, taskState.handleUpdateTask)
+
+  // Slice 5: when filterShellActive is on, narrow taskState.filteredTasks
+  // to tasks that have an alive web-shell PTY in the registry. The base
+  // filteredTasks is computed inside useTasks (which doesn't see
+  // shellSessions); the intersection happens here so both inputs are in
+  // scope. Pass-through identity when the filter is off, so consumers
+  // don't see a fresh array reference on every snapshot tick.
+  const filteredTasksWithShell = useMemo(() => {
+    if (!taskState.filterShellActive) return taskState.filteredTasks
+    return taskState.filteredTasks.filter(t => shell.shellSessions[t.id])
+  }, [taskState.filteredTasks, taskState.filterShellActive, shell.shellSessions])
 
   // --- Bulk selection ---
   const [bulkSelectMode, setBulkSelectMode] = useState(false)
@@ -188,9 +201,11 @@ export function TaskProvider({ user, socketRef, children }) {
     setFilterToday: taskState.setFilterToday,
     filterStale: taskState.filterStale,
     setFilterStale: taskState.setFilterStale,
+    filterShellActive: taskState.filterShellActive,
+    setFilterShellActive: taskState.setFilterShellActive,
     searchQuery: taskState.searchQuery,
     setSearchQuery: taskState.setSearchQuery,
-    filteredTasks: taskState.filteredTasks,
+    filteredTasks: filteredTasksWithShell,
     uniqueAssignees: taskState.uniqueAssignees,
     activeFilterCount: taskState.activeFilterCount,
     recentlyUpdatedIds: taskState.recentlyUpdatedIds,
@@ -199,6 +214,7 @@ export function TaskProvider({ user, socketRef, children }) {
     agentsEnabled: agents.agentsEnabled,
     aiChatEnabled: agents.aiChatEnabled,
     taskViewers: agents.taskViewers,
+    shellSessions: shell.shellSessions,
     bulkSelectMode,
     selectedTaskIds,
     batchLoading,
@@ -211,10 +227,12 @@ export function TaskProvider({ user, socketRef, children }) {
     taskState.filterAssignee, taskState.setFilterAssignee,
     taskState.filterToday, taskState.setFilterToday,
     taskState.filterStale, taskState.setFilterStale,
+    taskState.filterShellActive, taskState.setFilterShellActive,
     taskState.searchQuery, taskState.setSearchQuery,
-    taskState.filteredTasks, taskState.uniqueAssignees, taskState.activeFilterCount,
+    filteredTasksWithShell, taskState.uniqueAssignees, taskState.activeFilterCount,
     taskState.recentlyUpdatedIds, taskState.githubLinks,
     agents.activeAgents, agents.agentsEnabled, agents.aiChatEnabled, agents.taskViewers,
+    shell.shellSessions,
     bulkSelectMode, selectedTaskIds, batchLoading, errorToast,
   ])
 

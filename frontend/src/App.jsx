@@ -53,7 +53,7 @@ function AppContent() {
     filterToday, setFilterToday, filterStale, setFilterStale,
     filteredTasks, uniqueAssignees, activeFilterCount,
     archivedProjects,
-    activeAgents, agentsEnabled, aiChatEnabled, taskViewers,
+    activeAgents, agentsEnabled, aiChatEnabled, taskViewers, shellSessions,
     bulkSelectMode, selectedTaskIds, batchLoading,
     errorToast,
     recentlyUpdatedIds,
@@ -383,7 +383,7 @@ function AppContent() {
           {loading ? (
             <div className="text-center text-app-text-muted py-12 italic animate-pulse">Loading workspace...</div>
           ) : activeView === 'list' ? (
-            <ListView tasks={filteredTasks} onSelectTask={selectTask} onUpdateTask={undoRedo.updateTaskWithUndo} activeAgents={activeAgents} taskViewers={taskViewers} currentUser={user?.username} selectable={bulkSelectMode} selectedIds={selectedTaskIds} onToggleSelect={toggleSelectTask} recentlyUpdatedIds={recentlyUpdatedIds} githubLinks={githubLinks} />
+            <ListView tasks={filteredTasks} onSelectTask={selectTask} onUpdateTask={undoRedo.updateTaskWithUndo} activeAgents={activeAgents} taskViewers={taskViewers} shellSessions={shellSessions} currentUser={user?.username} selectable={bulkSelectMode} selectedIds={selectedTaskIds} onToggleSelect={toggleSelectTask} recentlyUpdatedIds={recentlyUpdatedIds} githubLinks={githubLinks} />
           ) : activeView === 'changes' ? (
             <ChangesView tasks={filteredTasks} projects={projects} activeProject={activeProject} onSelectTask={selectTask} recentlyUpdatedIds={recentlyUpdatedIds} />
           ) : activeView === 'graph' ? (
@@ -394,7 +394,7 @@ function AppContent() {
             <Board
               tasks={filteredTasks} onUpdateTask={undoRedo.updateTaskWithUndo} onSelectTask={selectTask}
               activeAgents={activeAgents} onStartAgent={handleStartAgent} onStopAgent={handleStopAgent}
-              taskViewers={taskViewers} currentUser={user?.username}
+              taskViewers={taskViewers} shellSessions={shellSessions} currentUser={user?.username}
               selectable={bulkSelectMode} selectedIds={selectedTaskIds}
               onToggleSelect={toggleSelectTask} onShiftSelect={shiftSelectTask} onToggleSelectColumn={toggleSelectColumn}
               recentlyUpdatedIds={recentlyUpdatedIds}

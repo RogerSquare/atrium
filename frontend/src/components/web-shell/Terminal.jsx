@@ -381,6 +381,24 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
       // tasks so each ShellTerminal instance only updates its own
       // activeSpawnIdRef from sentinels matching its bound taskId.
       if (spawnTaskId !== wireTaskId) return
+      // Cross-tab reattach (`feat-shell-lifecycle-001`): the backend kept
+      // the PTY alive across the tab close, so this xterm is brand new
+      // but the running TUI (claude) is still in its original alt-buffer
+      // mindset. The backend's reattach branch resizes the PTY to the new
+      // dims, which fires SIGWINCH and triggers a redraw — but claude's
+      // redraw escapes use absolute cursor positioning that assumes its
+      // existing screen state. Without resetting the xterm first, those
+      // escapes land in our blank regular-buffer canvas at coordinates
+      // that don't match anything visible → cursor jumps and parks at
+      // the wrong corner. term.reset() returns the xterm to a known
+      // clean state (cursor home, regular buffer, default attributes)
+      // so claude's redraw renders cleanly. Within-socket reattaches
+      // (Phase 2 background sessions) keep the same xterm via
+      // ShellManager and never need this — the xterm state is already
+      // consistent with what claude expects.
+      if (sessionSource === 'reattach') {
+        try { term.reset() } catch { /* xterm disposed */ }
+      }
       const prev = activeSpawnIdRef.current
       const prevBytes = bytesSinceSpawn
       activeSpawnIdRef.current = spawnId

@@ -4,7 +4,7 @@
 // always-visible even when the detail pane is open, so filters remain
 // accessible during task review.
 
-import { UserCircle2, Clock, AlertCircle, X, Search } from 'lucide-react'
+import { UserCircle2, Clock, AlertCircle, X, Search, Terminal } from 'lucide-react'
 import { Button } from '../ui'
 
 const TYPE_OPTIONS = ['all', 'frontend', 'backend', 'fullstack', 'devops']
@@ -22,6 +22,7 @@ export default function FilterBar({
   filterAssignee, setFilterAssignee,
   filterToday, setFilterToday,
   filterStale, setFilterStale,
+  filterShellActive, setFilterShellActive,
   uniqueAssignees = [],
   activeFilterCount = 0,
   resetAllFilters,
@@ -164,6 +165,23 @@ export default function FilterBar({
       >
         <AlertCircle className="w-3.5 h-3.5" />
         Stale
+      </Button>
+
+      {/* Active shells */}
+      <Button
+        variant={filterShellActive ? 'secondary' : 'ghost'}
+        pill={false}
+        size="sm"
+        className="facelift-pill"
+        onClick={() => setFilterShellActive((v) => !v)}
+        title="Show only tasks with an alive shell session"
+        style={{
+          color: filterShellActive ? 'var(--accent-app)' : undefined,
+          background: filterShellActive ? 'color-mix(in srgb, var(--accent-app) 10%, transparent)' : undefined,
+        }}
+      >
+        <Terminal className="w-3.5 h-3.5" />
+        Active shells
       </Button>
 
       {/* Reset */}
