@@ -212,6 +212,7 @@ function getSessionsSnapshot() {
       lastActivityTs: entry.lastActivityTs,
       spawnAt: entry.spawnAt,
       bytesEmitted: entry.bytesEmittedThisSpawn,
+      processing: !!entry.processing,
     });
   }
   return out;
@@ -259,12 +260,54 @@ const GC_INTERVAL_MS = Number.parseInt(process.env.WEB_SHELL_GC_INTERVAL_MS, 10)
 const DETACHED_MAX_MS = Number.parseInt(process.env.WEB_SHELL_DETACHED_MAX_MS, 10) || 24 * 60 * 60 * 1000;
 const IDLE_MAX_MS = Number.parseInt(process.env.WEB_SHELL_IDLE_MAX_MS, 10) || 24 * 60 * 60 * 1000;
 
+// Slice 3: "processing" signal threshold. After this many ms of PTY
+// output silence, the entry's processing flag flips back to false and
+// an idle event broadcasts. Default 1500ms — short enough to feel live,
+// long enough that a flurry of output (a `claude` token-streamed
+// response) doesn't toggle on/off rapidly. Override via env if a
+// specific shell has chunkier output.
+const PROCESSING_IDLE_MS = Number.parseInt(process.env.WEB_SHELL_PROCESSING_IDLE_MS, 10) || 1500;
+
+// Mark an entry as processing (leading edge) and arm/reset the idle
+// timer. Called from onData on every chunk. Broadcasts `webshell:processing`
+// to all clients on state-change only — repeated chunks while already
+// processing are silent.
+function markProcessing(entry) {
+  if (!entry.processing) {
+    entry.processing = true;
+    if (_io) {
+      try { _io.emit('webshell:processing', { taskId: entry.taskId, active: true }); } catch { /* ignore */ }
+    }
+  }
+  if (entry.processingIdleTimer) clearTimeout(entry.processingIdleTimer);
+  entry.processingIdleTimer = setTimeout(() => {
+    entry.processing = false;
+    entry.processingIdleTimer = null;
+    if (_io) {
+      try { _io.emit('webshell:processing', { taskId: entry.taskId, active: false }); } catch { /* ignore */ }
+    }
+  }, PROCESSING_IDLE_MS);
+  if (typeof entry.processingIdleTimer.unref === 'function') entry.processingIdleTimer.unref();
+}
+
+// Cancel any armed idle timer and clear processing flag. Used by the
+// onExit / kill / GC paths so a dying entry doesn't fire a stale
+// active:false event after its taskId is gone.
+function clearProcessing(entry) {
+  if (entry.processingIdleTimer) {
+    clearTimeout(entry.processingIdleTimer);
+    entry.processingIdleTimer = null;
+  }
+  entry.processing = false;
+}
+
 const gcTimer = setInterval(() => {
   const now = Date.now();
   for (const [taskId, entry] of taskPtyRegistry) {
     const detachedTooLong = entry.detachedAt != null && now - entry.detachedAt > DETACHED_MAX_MS;
     const idleTooLong = now - entry.lastActivityTs > IDLE_MAX_MS;
     if (!detachedTooLong && !idleTooLong) continue;
+    clearProcessing(entry);
     try { entry.ptyProcess.kill(); } catch { /* already dead */ }
     taskPtyRegistry.delete(taskId);
     logger.info(
@@ -307,6 +350,7 @@ function evictLongestIdleEntry() {
   const entry = taskPtyRegistry.get(oldestKey);
   const evictedTaskId = entry.taskId;
   const idleMs = Date.now() - oldestTs;
+  clearProcessing(entry);
   try { entry.ptyProcess.kill(); } catch { /* already dead */ }
   taskPtyRegistry.delete(oldestKey);
   if (entry.socket) {
@@ -590,6 +634,13 @@ const registerWebShellHandlers = (socket) => {
         // mutates these; idle-GC reads detachedAt to age out zombies.
         socket,
         detachedAt: null,
+        // Slice 3: processing-state flag + idle timer. onData sets
+        // processing:true on the leading edge and arms a setTimeout that
+        // flips it back to false after PROCESSING_IDLE_MS of silence. The
+        // flag is included in getSessionsSnapshot so kanban indicators
+        // reflect "shell is producing output" vs "shell is alive but idle".
+        processing: false,
+        processingIdleTimer: null,
       };
       setEntry(taskId, entry);
 
@@ -621,6 +672,7 @@ const registerWebShellHandlers = (socket) => {
         }
         liveEntry.bytesEmittedThisSpawn += data.length;
         liveEntry.lastActivityTs = Date.now();
+        markProcessing(liveEntry);
         if (process.env.WEBSHELL_BYTE_TRACE === '1') {
           logger.debug(
             {
@@ -671,6 +723,7 @@ const registerWebShellHandlers = (socket) => {
           // would land on the new spawn's canvas and corrupt it.
           return;
         }
+        clearProcessing(liveEntry);
         if (liveEntry.socket) {
           try {
             liveEntry.socket.emit('webshell:output', { taskId: myTaskId, data: `\r\n\x1b[33m--- Shell exited (${exitCode}) ---\x1b[0m\r\n` });
