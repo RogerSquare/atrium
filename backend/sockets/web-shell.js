@@ -186,6 +186,46 @@ let nextSpawnId = 1;
 // the diag logs below will fire.
 logger.info({ marker: 'WEB-SHELL-DIAG-V2' }, 'web-shell handler module loaded');
 
+// === Slice 2 broadcast plumbing (`feat-shell-lifecycle-001`) ===
+//
+// server.js calls setIO(io) once at startup so this module can broadcast
+// `shell_sessions_changed` whenever the registry mutates. Every client
+// receives the full snapshot — same shape as the REST endpoint, so the
+// frontend can either subscribe to live updates or fetch on demand and
+// the data model is identical.
+let _io = null;
+const setIO = (io) => { _io = io; };
+
+// Public-shape snapshot used by both the broadcast event and
+// `routes/shell.js`. Must NOT leak the live socket reference or the
+// node-pty handle — only stable, serializable fields.
+function getSessionsSnapshot() {
+  const out = [];
+  for (const entry of taskPtyRegistry.values()) {
+    out.push({
+      taskId: entry.taskId,
+      spawnId: entry.activeSpawnId,
+      sessionId: entry.sessionId,
+      pid: entry.ptyProcess.pid,
+      attached: entry.socket != null,
+      detachedAt: entry.detachedAt,
+      lastActivityTs: entry.lastActivityTs,
+      spawnAt: entry.spawnAt,
+      bytesEmitted: entry.bytesEmittedThisSpawn,
+    });
+  }
+  return out;
+}
+
+function broadcastSessions() {
+  if (!_io) return;
+  try {
+    _io.emit('shell_sessions_changed', { sessions: getSessionsSnapshot() });
+  } catch (err) {
+    logger.warn({ err }, 'web-shell: shell_sessions_changed broadcast failed');
+  }
+}
+
 // === Module-global PTY registry (`feat-shell-lifecycle-001` Slice 1) ===
 //
 // taskId-bound PTYs outlive the originating socket. When the user closes
@@ -238,6 +278,7 @@ const gcTimer = setInterval(() => {
       },
       'web-shell: idle-GC killed PTY'
     );
+    broadcastSessions();
   }
 }, GC_INTERVAL_MS);
 if (typeof gcTimer.unref === 'function') gcTimer.unref();
@@ -271,6 +312,7 @@ function evictLongestIdleEntry() {
   if (entry.socket) {
     try { entry.socket.emit('webshell:evicted', { taskId: evictedTaskId }); } catch { /* socket dead */ }
   }
+  broadcastSessions();
   return { taskId: evictedTaskId, idleMs };
 }
 
@@ -313,13 +355,26 @@ const registerWebShellHandlers = (socket) => {
 
   const getEntry = (taskId) =>
     (taskId == null ? nullPtyMap.get(NULL_KEY) : taskPtyRegistry.get(taskId));
+  // Slice 2: setEntry/deleteEntry on taskId entries broadcast the
+  // updated registry snapshot so all clients (kanban indicators, the
+  // active-terminals panel) update live. NULL_KEY mutations don't
+  // broadcast — they're per-socket modal state that other clients
+  // shouldn't see.
   const setEntry = (taskId, entry) => {
-    if (taskId == null) nullPtyMap.set(NULL_KEY, entry);
-    else taskPtyRegistry.set(taskId, entry);
+    if (taskId == null) {
+      nullPtyMap.set(NULL_KEY, entry);
+      return;
+    }
+    taskPtyRegistry.set(taskId, entry);
+    broadcastSessions();
   };
   const deleteEntry = (taskId) => {
-    if (taskId == null) nullPtyMap.delete(NULL_KEY);
-    else taskPtyRegistry.delete(taskId);
+    if (taskId == null) {
+      nullPtyMap.delete(NULL_KEY);
+      return;
+    }
+    taskPtyRegistry.delete(taskId);
+    broadcastSessions();
   };
 
   socket.on('webshell:start', async (config = {}) => {
@@ -356,6 +411,9 @@ const registerWebShellHandlers = (socket) => {
         existing.socket = socket;
         existing.detachedAt = null;
         existing.lastActivityTs = Date.now();
+        // Slice 2: attached/detached state changed — broadcast so every
+        // client's "active terminals" view + kanban indicator updates.
+        broadcastSessions();
         socket.emit('webshell:spawn', {
           spawnId: existing.activeSpawnId,
           pid: existing.ptyProcess.pid,
@@ -720,10 +778,18 @@ const registerWebShellHandlers = (socket) => {
         'web-shell: socket disconnect — taskId entries detached, null entries killed'
       );
     }
+    // Slice 2: broadcast once per disconnect (not per detached entry) so
+    // clients see the batched attached→detached transition. nullPtyMap
+    // entries don't appear in the snapshot, so killing them doesn't
+    // affect what we send.
+    if (detachedTaskIds.length > 0) broadcastSessions();
   };
 };
 
-// Slice 2 (sessions registry REST + broadcast) reads taskPtyRegistry to
-// list alive sessions and to look up entries for kill. Exported here so
-// routes/shell.js doesn't have to duplicate the data structure.
-module.exports = { registerWebShellHandlers, taskPtyRegistry };
+// Slice 2 — exports for `routes/shell.js` and server.js wiring:
+//   taskPtyRegistry      raw Map<taskId, entry> — used by routes/shell.js's
+//                        kill endpoint to look up + terminate entries.
+//   getSessionsSnapshot  serializable list — used by routes/shell.js GET.
+//   setIO                called once from server.js with the io instance
+//                        so this module can broadcast shell_sessions_changed.
+module.exports = { registerWebShellHandlers, taskPtyRegistry, getSessionsSnapshot, setIO };

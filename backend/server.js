@@ -29,6 +29,7 @@ const chatRoutes = require('./routes/chat');
 const aiRoutes = require('./routes/ai');
 const designRoutes = require('./routes/design');
 const previewRoutes = require('./routes/preview');
+const shellRoutes = require('./routes/shell');
 const approvalsRoutes = require('./routes/approvals');
 const githubRoutes = require('./routes/github');
 
@@ -104,6 +105,8 @@ cleanupTempFiles();
 // --- Share IO instance globally ---
 setIO(io);
 setAgentsIO(io);
+const { setIO: setWebShellIO } = require('./sockets/web-shell');
+setWebShellIO(io);
 
 /**
  * @swagger
@@ -229,6 +232,7 @@ app.use('/api/ai', requireAuth, aiRoutes);
 app.use('/api/design', requireAuth, designRoutes);
 app.use('/api/preview', optionalAuth, previewRoutes);
 app.use('/api/github', requireAuth, githubRoutes);
+app.use('/api/shell', requireAuth, shellRoutes);
 
 /**
  * @swagger
