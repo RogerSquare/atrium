@@ -455,6 +455,22 @@ const registerWebShellHandlers = (socket) => {
         existing.socket = socket;
         existing.detachedAt = null;
         existing.lastActivityTs = Date.now();
+        // Cross-tab reattach gets a brand-new xterm whose cols/rows
+        // (computed from window size + fit-addon) almost never match the
+        // PTY's stored dimensions from the original spawn. Resize NOW,
+        // before the spawn sentinel, so SIGWINCH fires and claude/cmd
+        // redraw to the new viewport. Without this, full-screen TUIs
+        // render absolute-positioned cursors at coordinates from the OLD
+        // screen → cursor jumps to the wrong corner. The tail-end
+        // webshell:resize the frontend sends after mount is too late;
+        // the redraw races against the wrong-dim render.
+        try {
+          if (Number.isFinite(config.cols) && Number.isFinite(config.rows)) {
+            existing.ptyProcess.resize(config.cols, config.rows);
+          }
+        } catch {
+          // resize on a dead pty throws — onExit will reap it
+        }
         // Slice 2: attached/detached state changed — broadcast so every
         // client's "active terminals" view + kanban indicator updates.
         broadcastSessions();
