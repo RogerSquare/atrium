@@ -102,7 +102,21 @@ export const IDLE_PATTERNS = [
 
 export function stripAnsi(s) {
   return s
-    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')
+    // SGR (color / style) sequences end in 'm' and carry no positional
+    // intent — drop them entirely so adjacent text stays adjacent
+    // (e.g. "\x1b[31mred\x1b[0m text" → "red text", not "red  text").
+    .replace(/\x1b\[[0-9;?]*m/g, '')
+    // All other CSI sequences (cursor positioning, erase-in-line,
+    // scroll, etc.) DO carry positional intent — when CC paints its
+    // prompt UI it commonly uses \x1b[NC (cursor-forward-N) between
+    // words instead of literal spaces. Stripping those to empty would
+    // collapse "Esc\x1b[1Cto\x1b[1Ccancel" to "Esctocancel" and break
+    // every regex that requires \s+ between words. Replace with a
+    // single space — multiple consecutive escapes collapse harmlessly
+    // since every PROMPT_PATTERN uses \s+ for separators.
+    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ' ')
+    // OSC sequences (terminal title sets, hyperlinks) carry text payload
+    // we don't want surfacing as fake prompts — drop entirely.
     .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
 }
 
