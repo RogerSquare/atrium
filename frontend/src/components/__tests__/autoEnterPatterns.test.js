@@ -14,16 +14,44 @@ import {
 } from '../web-shell/autoEnterPatterns.js'
 
 describe('stripAnsi', () => {
-  it('removes CSI sequences', () => {
+  it('drops SGR/color sequences without inserting whitespace', () => {
     expect(stripAnsi('\x1b[31mred\x1b[0m text')).toBe('red text')
   })
 
-  it('removes OSC title sequences (BEL terminator)', () => {
+  it('drops OSC title sequences (BEL terminator)', () => {
     expect(stripAnsi('\x1b]0;title\x07hello')).toBe('hello')
   })
 
   it('leaves plain text unchanged', () => {
     expect(stripAnsi('hello world')).toBe('hello world')
+  })
+
+  // bug-autoenter-ansi-cursor-strip-001 — CC paints prompt UI using
+  // \x1b[NC (cursor-forward) between words instead of literal spaces.
+  // Stripping those to empty would collapse text and break every
+  // word-separator regex; they must become whitespace.
+  it('replaces cursor-forward CSI with whitespace so words stay separated', () => {
+    expect(stripAnsi('Esc\x1b[1Cto\x1b[1Ccancel')).toContain('Esc')
+    expect(stripAnsi('Esc\x1b[1Cto\x1b[1Ccancel')).toContain('to')
+    expect(stripAnsi('Esc\x1b[1Cto\x1b[1Ccancel')).toContain('cancel')
+    expect(stripAnsi('Esc\x1b[1Cto\x1b[1Ccancel')).toMatch(/Esc\s+to\s+cancel/)
+  })
+
+  it('replaces cursor-position CSI (\\x1b[N;MH) with whitespace', () => {
+    expect(stripAnsi('No\x1b[65;2HEsc')).toMatch(/No\s+Esc/)
+  })
+
+  it('replaces multiple cursor escapes without merging adjacent words', () => {
+    const raw = 'Yes,\x1b[1Callow\x1b[1Call\x1b[1Cedits'
+    expect(stripAnsi(raw)).toMatch(/Yes,\s+allow\s+all\s+edits/)
+  })
+
+  it('handles SGR + cursor-positioning interleaved (real-world tail)', () => {
+    // Distilled from a captured edit-confirmation prompt — SGR codes
+    // surround literal text, cursor-forwards space the words.
+    const raw = '\x1b[m\x1b[1CYes,\x1b[1Callow\x1b[1Call\x1b[1Cedits\x1b[m'
+    const stripped = stripAnsi(raw)
+    expect(stripped).toMatch(/Yes,\s+allow\s+all\s+edits/)
   })
 })
 
@@ -70,6 +98,13 @@ describe('tailMatchesPrompt — should fire', () => {
       "t.get('url','')[:80]) for t in json.load(sys.stdin)]\"\n   3. No\n Esc to cancel · Tab to amend · ctrl+e to explain"],
     ['CC hint-line tail (bash command 3)',
       '-osktest.py"\n   3. No\n Esc to cancel · Tab to amend · ctrl+e to explain'],
+    // bug-autoenter-ansi-cursor-strip-001 — verbatim raw ANSI from a
+    // captured edit-confirmation prompt where CC used cursor-forward
+    // escapes between every word. Pre-fix, stripAnsi collapsed this to
+    // "Esctocancel" and missed; post-fix it strips to whitespace-
+    // separated text that the existing /Esc to cancel/i rule matches.
+    ['CC edit-confirm prompt with cursor-forward word spacing',
+      '\x1b[m\x1b[1CYes,\x1b[1Callow\x1b[1Call\x1b[1Cedits\x1b[1Cduring\x1b[1Cthis\x1b[1Csession\x1b[1m\x1b[1C(shift+tab)\x1b[38;2;153;153;153m\x1b[22m\x1b[63;4H3.\x1b[m\x1b[1CNo\x1b[38;2;153;153;153m\x1b[65;2HEsc\x1b[1Cto\x1b[1Ccancel\x1b[1C·\x1b[1CTab\x1b[1Cto\x1b[1Camend\x1b[m'],
   ])('matches: %s', (_label, output) => {
     expect(tailMatchesPrompt(output)).toBe(true)
   })
