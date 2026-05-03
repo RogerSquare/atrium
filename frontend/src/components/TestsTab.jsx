@@ -60,9 +60,20 @@ function SpecRow({ taskId, runId, spec }) {
         <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>{fmtDuration(spec.duration_ms)}</span>
       </button>
       {open && (
-        <div style={{ padding: 'var(--space-2) var(--space-3) var(--space-4) var(--space-8)' }}>
+        <div style={{ padding: 'var(--space-3) var(--space-3) var(--space-4) var(--space-8)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          {/* Always-on metadata grid */}
+          <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 'var(--space-3)', rowGap: 'var(--space-1)', fontSize: 'var(--text-caption1)', margin: 0 }}>
+            <dt style={{ color: 'var(--text-tertiary)' }}>Status</dt>
+            <dd style={{ margin: 0, color: failed ? E2E_STATUS_COLOR.failing : E2E_STATUS_COLOR.passing, fontWeight: 'var(--font-semibold)', textTransform: 'capitalize' }}>{spec.status}</dd>
+            <dt style={{ color: 'var(--text-tertiary)' }}>Duration</dt>
+            <dd style={{ margin: 0, color: 'var(--text-app)' }}>{fmtDuration(spec.duration_ms)}</dd>
+            <dt style={{ color: 'var(--text-tertiary)' }}>File</dt>
+            <dd style={{ margin: 0, color: 'var(--text-app)', fontFamily: 'var(--font-mono)' }}>{spec.file || '(unknown)'}</dd>
+            <dt style={{ color: 'var(--text-tertiary)' }}>Attachments</dt>
+            <dd style={{ margin: 0, color: 'var(--text-app)' }}>{(spec.attachments || []).length}</dd>
+          </dl>
           {spec.error && (
-            <pre style={{ fontSize: 'var(--text-caption1)', color: E2E_STATUS_COLOR.failing, background: 'var(--fill-secondary)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', whiteSpace: 'pre-wrap', overflowX: 'auto', marginBottom: 'var(--space-3)' }}>
+            <pre style={{ fontSize: 'var(--text-caption1)', color: E2E_STATUS_COLOR.failing, background: 'var(--fill-secondary)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', whiteSpace: 'pre-wrap', overflowX: 'auto', margin: 0 }}>
               {spec.error}
             </pre>
           )}
@@ -70,7 +81,7 @@ function SpecRow({ taskId, runId, spec }) {
             <video
               src={fileUrl(taskId, runId, video.path)}
               controls
-              style={{ width: '100%', maxWidth: '720px', borderRadius: 'var(--radius-md)', background: '#000', marginBottom: 'var(--space-2)' }}
+              style={{ width: '100%', maxWidth: '720px', borderRadius: 'var(--radius-md)', background: '#000' }}
             />
           )}
           {trace && (
@@ -85,7 +96,9 @@ function SpecRow({ taskId, runId, spec }) {
             </a>
           )}
           {!failed && !video && !spec.error && (
-            <span style={{ fontSize: 'var(--text-caption1)', color: 'var(--text-tertiary)' }}>No artifacts (passing specs skip video capture).</span>
+            <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+              Videos and traces are retained only on failure (per <code>playwright.config.js</code>).
+            </span>
           )}
         </div>
       )}
