@@ -46,6 +46,12 @@ export default function TopBar({
       {/* Left — brand + project anchor */}
       <div className="flex items-center gap-3">
         <img src="/favicon.svg" alt="Atrium" style={{ width: '20px', height: '20px' }} />
+        <span
+          data-testid="sidebar-task-count"
+          style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)' }}
+        >
+          {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
+        </span>
         <ProjectAnchor
           projects={projects}
           tasks={tasks}

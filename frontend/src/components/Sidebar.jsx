@@ -156,6 +156,12 @@ function Sidebar({
         <div className="flex items-center gap-2.5">
           <img src="/favicon.svg" alt="Logo" style={{ width: '26px', height: '26px' }} />
           <span style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)', letterSpacing: 'var(--tracking-tight)' }}>Atrium</span>
+          <span
+            data-testid="sidebar-task-count"
+            style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)' }}
+          >
+            {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
+          </span>
         </div>
         <div className="flex items-center gap-1">
           {archivedProjects.length > 0 && (
