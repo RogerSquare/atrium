@@ -113,14 +113,17 @@ router.delete('/:task_id/:run_id', requireAuth, (req, res) => {
   return res.json({ success: true });
 });
 
-// GET /api/e2e-runs/:task_id/:run_id/files/*  — serve a run's artifact file.
+// GET /api/e2e-runs/:task_id/:run_id/files/*splat  — serve a run's artifact file.
 // tokenAuth allows ?token=<jwt> for <video src> / <img src> tags.
-router.get('/:task_id/:run_id/files/*', tokenAuth, (req, res) => {
+// `*splat` is Express 5's named-wildcard syntax (path-to-regexp v8); bare `*`
+// throws "Missing parameter name" — see CLAUDE.md "Express 5 / path-to-regexp" pitfall.
+router.get('/:task_id/:run_id/files/*splat', tokenAuth, (req, res) => {
   const taskDir = safeTaskDir(req.params.task_id);
   if (!taskDir) return res.status(400).json({ error: 'Invalid task id' });
   const safeRun = sanitizeFilename(req.params.run_id);
   if (!safeRun) return res.status(400).json({ error: 'Invalid run id' });
-  const relPath = req.params[0] || '';
+  const splat = req.params.splat;
+  const relPath = Array.isArray(splat) ? splat.join('/') : (splat || '');
   const target = path.normalize(path.join(taskDir, safeRun, relPath));
   const runDir = path.join(taskDir, safeRun);
   if (!target.startsWith(runDir + path.sep) && target !== runDir) {
