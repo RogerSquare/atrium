@@ -263,6 +263,14 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
             <Clock className="w-3 h-3" />Stale
           </Badge>
         )}
+        <Badge
+          preset="e2e"
+          value={task.e2e_status || 'pending'}
+          className="flex items-center gap-1"
+          aria-label={`e2e: ${task.e2e_status || 'pending'}`}
+        >
+          e2e: {task.e2e_status || 'pending'}
+        </Badge>
         <div className="flex-1" />
         {hasComments && <AlignLeft className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--text-tertiary)' }} />}
         {task.status === 'done' && <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: 'var(--apple-green)' }} />}

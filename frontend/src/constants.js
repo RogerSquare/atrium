@@ -30,6 +30,14 @@ export const STATUS_COLOR = {
   done: 'var(--apple-green)',
 }
 
+// Playwright e2e gate (feat-e2e-validation-001). Shown as a TaskCard footer badge.
+export const E2E_STATUS_COLOR = {
+  pending: 'var(--gray-1)',
+  passing: 'var(--apple-green)',
+  failing: 'var(--apple-red)',
+  skipped: 'var(--text-muted)',
+}
+
 // Minimalist lane: decorative multi-hue collapsed to monochrome.
 // `fullstack` keeps the accent blue (it's already the functional "interactive" color).
 // Other types drop to neutral — type info is carried by the text label, not by color.

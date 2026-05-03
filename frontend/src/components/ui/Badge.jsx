@@ -1,4 +1,4 @@
-import { PRIORITY_COLOR, STATUS_COLOR, TYPE_STYLE } from '../../constants'
+import { PRIORITY_COLOR, STATUS_COLOR, TYPE_STYLE, E2E_STATUS_COLOR } from '../../constants'
 
 const PRESETS = {
   priority: (value) => ({
@@ -13,6 +13,13 @@ const PRESETS = {
   type: (value) => {
     const t = TYPE_STYLE[value] || TYPE_STYLE.fullstack
     return { color: t.color, background: t.bg, textTransform: 'uppercase' }
+  },
+  e2e: (value) => {
+    const c = E2E_STATUS_COLOR[value] || E2E_STATUS_COLOR.pending
+    return {
+      color: c,
+      background: `color-mix(in srgb, ${c} 12%, transparent)`,
+    }
   },
   muted: () => ({
     color: 'var(--text-tertiary)',
