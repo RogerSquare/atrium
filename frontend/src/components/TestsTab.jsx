@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { CheckCircle2, XCircle, MinusCircle, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
+import { CheckCircle2, XCircle, MinusCircle, ChevronDown, ChevronRight, ExternalLink, Play } from 'lucide-react'
 import { E2E_STATUS_COLOR } from '../constants'
 
 // Surfaces a task's latest Playwright run (e2e_run JSON field) inside the
@@ -52,6 +52,9 @@ function SpecRow({ taskId, runId, spec }) {
   const failed = spec.status === 'failed' || spec.status === 'unexpected' || spec.status === 'timedOut'
   const video = (spec.attachments || []).find((a) => (a.contentType || '').startsWith('video/') && a.path)
   const trace = (spec.attachments || []).find((a) => a.name === 'trace' && a.path)
+  // Auto-show video for failures (forensic evidence); keep it collapsed for
+  // passing specs since the videos are largely interchangeable run-to-run.
+  const [showVideo, setShowVideo] = useState(failed)
   return (
     <div style={{ borderBottom: '0.5px solid var(--separator)' }}>
       <button
@@ -82,10 +85,29 @@ function SpecRow({ taskId, runId, spec }) {
               {spec.error}
             </pre>
           )}
-          {video && (
+          {video && !showVideo && (
+            <button
+              onClick={() => setShowVideo(true)}
+              className="inline-flex items-center gap-1 self-start apple-press"
+              style={{
+                padding: 'var(--space-1) var(--space-3)',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--fill-secondary)',
+                color: 'var(--text-app)',
+                fontSize: 'var(--text-caption1)',
+                fontWeight: 'var(--font-medium)',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              <Play className="w-3 h-3" /> Show video
+            </button>
+          )}
+          {video && showVideo && (
             <video
               src={fileUrl(taskId, runId, video.path)}
               controls
+              autoPlay={failed}
               style={{ width: '100%', maxWidth: '720px', borderRadius: 'var(--radius-md)', background: '#000' }}
             />
           )}
