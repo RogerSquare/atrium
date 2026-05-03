@@ -9,6 +9,9 @@ const ALLOWED_FIELDS = new Set([
   // Changes-view linkage fields — accepted by backend PUT /api/tasks/:id (tasks.js:726)
   // and required by the closing checklist in the Atrium skill + CLAUDE.md.
   'github_branch', 'github_pr_url',
+  // Playwright e2e gate (feat-e2e-validation-001). Required on review
+  // transitions unless the task carries the `no-e2e` tag.
+  'e2e_status',
   // Per-task claude session UUID. MCP callers (recovery scripts re-linking a
   // task to a known-good session) can write this directly; the web-shell
   // socket also writes through this path on first spawn / rotation.
