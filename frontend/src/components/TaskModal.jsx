@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Send, Folder, Pencil, Check, UserCircle2, Trash2, Clock, Calendar, History, RotateCcw, FileText, Copy, Link, Sparkles, ChevronDown, ChevronRight, GitBranch } from 'lucide-react'
+import { X, Send, Folder, Pencil, Check, UserCircle2, Trash2, Clock, Calendar, History, RotateCcw, FileText, Copy, Link, Sparkles, ChevronDown, ChevronRight, GitBranch, FlaskConical } from 'lucide-react'
+import TestsTab from './TestsTab'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { API_URL, apiFetch } from '../config'
@@ -500,6 +501,23 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
               )}
               {!isEditing && (
                 <IconButton
+                  onClick={() => { setModalTab(modalTab === 'tests' ? 'content' : 'tests'); setShowHistory(false) }}
+                  title="Tests (e2e)"
+                  aria-label="Tests"
+                  style={{
+                    color: modalTab === 'tests'
+                      ? 'var(--accent-app)'
+                      : task.e2e_status === 'passing' ? 'var(--apple-green)'
+                      : task.e2e_status === 'failing' ? 'var(--apple-red)'
+                      : 'var(--text-muted)',
+                    background: modalTab === 'tests' ? 'color-mix(in srgb, var(--accent-app) 12%, transparent)' : 'transparent',
+                  }}
+                >
+                  <FlaskConical className="w-[18px] h-[18px]" />
+                </IconButton>
+              )}
+              {!isEditing && (
+                <IconButton
                   onClick={() => { setShowHistory(!showHistory); setIsEditing(false); setModalTab('content') }}
                   title="History"
                   aria-label="History"
@@ -568,6 +586,11 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
 
         {/* Content area */}
         <div ref={contentRef} className={`flex-1 min-h-0 flex flex-col ${modalTab === 'content' && !showHistory && !isEditing ? 'overflow-y-auto custom-scrollbar' : 'overflow-hidden'}`} style={{ padding: (modalTab !== 'content' || showHistory || isEditing) ? '0' : 'var(--space-5) var(--space-6)', background: 'var(--bg-card)' }}>
+          {/* Tests panel */}
+          {modalTab === 'tests' && !showHistory && (
+            <TestsTab task={task} />
+          )}
+
           {/* AI & Agent panel */}
           {modalTab === 'ai' && !showHistory && (
             <div className="flex-1 flex flex-col min-h-0">

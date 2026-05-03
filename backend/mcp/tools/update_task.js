@@ -12,6 +12,9 @@ const ALLOWED_FIELDS = new Set([
   // Playwright e2e gate (feat-e2e-validation-001). Required on review
   // transitions unless the task carries the `no-e2e` tag.
   'e2e_status',
+  // Latest Playwright run summary (feat-e2e-tests-tab-001). JSON object set
+  // by the wrapper script after each run; surfaced in the Tests tab.
+  'e2e_run',
   // Per-task claude session UUID. MCP callers (recovery scripts re-linking a
   // task to a known-good session) can write this directly; the web-shell
   // socket also writes through this path on first spawn / rotation.
