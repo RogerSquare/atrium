@@ -11,8 +11,13 @@ import { E2E_STATUS_COLOR } from '../constants'
 // See feat-e2e-tests-tab-001-implement Phase 1 auth probe.
 
 function getToken() {
-  // localStorage is where the SPA stashes the JWT on login.
-  try { return localStorage.getItem('token') || '' } catch { return '' }
+  // The SPA stores the JWT inside the user object at localStorage.taskBoardUser
+  // (see frontend/src/config.js apiFetch + AuthContext.jsx). NOT a flat 'token' key.
+  try {
+    const raw = localStorage.getItem('taskBoardUser')
+    if (!raw) return ''
+    return JSON.parse(raw).token || ''
+  } catch { return '' }
 }
 
 function fmtDuration(ms) {
