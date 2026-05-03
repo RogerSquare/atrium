@@ -10,7 +10,13 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL: `http://localhost:${PORT}`,
-    trace: 'retain-on-failure',
+    // Trace is always-on so reviewers can step through every spec in the
+    // Playwright trace viewer (DOM snapshot + actions + network), not just
+    // failures. Storage cost is small (~500 KB-1 MB per spec, capped at 5
+    // runs per task by the e2eRuns route's pruneOldRuns).
+    trace: 'on',
+    // Video stays failure-only — videos are large and most useful as
+    // forensics, not as routine evidence.
     video: 'retain-on-failure',
   },
   projects: [

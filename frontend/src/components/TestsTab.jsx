@@ -95,9 +95,9 @@ function SpecRow({ taskId, runId, spec }) {
               <ExternalLink className="w-3 h-3" /> Open in Playwright trace viewer
             </a>
           )}
-          {!failed && !video && !spec.error && (
+          {!failed && !video && !spec.error && !trace && (
             <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
-              Videos and traces are retained only on failure (per <code>playwright.config.js</code>).
+              No artifacts captured for this spec.
             </span>
           )}
         </div>
