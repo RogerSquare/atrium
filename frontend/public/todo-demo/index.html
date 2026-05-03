@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Todo Demo — Atrium e2e dogfood</title>
+    <link rel="stylesheet" href="./todo.css" />
+  </head>
+  <body>
+    <main class="app" data-filter="all">
+      <h1>Todo</h1>
+
+      <form class="composer" data-testid="todo-form">
+        <label class="visually-hidden" for="todo-input">New todo</label>
+        <input
+          id="todo-input"
+          type="text"
+          autocomplete="off"
+          placeholder="What needs doing?"
+          data-testid="todo-input"
+        />
+        <button type="submit" data-testid="todo-add">Add</button>
+      </form>
+
+      <ul class="list" data-testid="todo-list" aria-label="Todo items"></ul>
+
+      <footer class="footer">
+        <span data-testid="todo-count">0 items left</span>
+        <div class="filters" role="tablist" aria-label="Filter todos">
+          <button type="button" data-filter-value="all" data-testid="filter-all" aria-selected="true">All</button>
+          <button type="button" data-filter-value="active" data-testid="filter-active" aria-selected="false">Active</button>
+          <button type="button" data-filter-value="completed" data-testid="filter-completed" aria-selected="false">Completed</button>
+        </div>
+      </footer>
+    </main>
+
+    <script src="./todo.js"></script>
+  </body>
+</html>
