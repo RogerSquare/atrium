@@ -61,6 +61,12 @@ const buildAllowedOrigins = () => {
       origins.add(`http://127.0.0.1:${p}`);
     });
   }
+  // Playwright's hosted trace viewer fetches our /api/e2e-runs/.../trace.zip
+  // when a reviewer clicks "Open in Playwright trace viewer" on a Tests-tab
+  // spec row. The viewer is a Microsoft-hosted SPA that opens any trace URL
+  // passed via ?trace=. Allowing it here keeps the cross-origin fetch from
+  // the viewer-page to atrium from being rejected.
+  origins.add('https://trace.playwright.dev');
   return origins;
 };
 
