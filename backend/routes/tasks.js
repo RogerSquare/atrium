@@ -9,6 +9,7 @@ const { withLock } = require('../lib/lock');
 const { getIO } = require('../lib/io');
 const taskWaiters = require('../lib/taskWaiters');
 const { validateReviewLinkage } = require('../lib/branchValidator');
+const { validateE2eStatus } = require('../lib/e2eValidator');
 const { sanitizeFilename, safePath } = require('../lib/sanitize');
 const { logger } = require('../lib/logger');
 
@@ -724,7 +725,7 @@ router.put('/:id', async (req, res) => {
   const { id } = req.params;
   try {
     await withLock(`task:${id}`, async () => {
-    const { title, status, priority, content, project, assignee, type, component, tags, files_affected, parent_task, depends_on, due_date, updated_by, github_branch, github_pr_url, claude_session_id } = req.body;
+    const { title, status, priority, content, project, assignee, type, component, tags, files_affected, parent_task, depends_on, due_date, updated_by, github_branch, github_pr_url, claude_session_id, e2e_status } = req.body;
 
     let filePath = findTaskFilePath(id);
     let originalProject = '';
@@ -780,6 +781,9 @@ router.put('/:id', async (req, res) => {
       // Optional Changes-view overrides — see CLAUDE.md "Branch & PR Linkage → Explicit override"
       github_branch: github_branch !== undefined ? github_branch : (currentData.github_branch || null),
       github_pr_url: github_pr_url !== undefined ? github_pr_url : (currentData.github_pr_url || null),
+      // Playwright e2e gate — see feat-e2e-validation-001. Validator runs on
+      // review transitions; `no-e2e` tag opts out (mirrors `no-code`).
+      e2e_status: e2e_status !== undefined ? e2e_status : (currentData.e2e_status || null),
       // Per-task claude session UUID — minted on first Shell-tab spawn,
       // rotated on Start New Session. Round-trips through MCP for recovery
       // scripts that need to re-link a task to a known-good session id.
@@ -796,6 +800,11 @@ router.put('/:id', async (req, res) => {
     const linkageError = validateReviewLinkage(newData, currentData.status);
     if (linkageError) {
       return res.status(400).json(linkageError);
+    }
+    // Enforce Playwright e2e gate on review transitions (feat-e2e-validation-001).
+    const e2eError = validateE2eStatus(newData, currentData.status);
+    if (e2eError) {
+      return res.status(400).json(e2eError);
     }
 
     const now = new Date().toISOString();
