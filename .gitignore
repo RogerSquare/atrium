@@ -25,6 +25,9 @@ backend/tasks/**/*.md
 # Runtime uploads
 backend/uploads/
 
+# Playwright e2e run artifacts (per-task subdirs)
+backend/e2e-runs/
+
 # Design sessions
 backend/design-history/
 backend/design-sessions/
