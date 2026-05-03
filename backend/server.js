@@ -33,6 +33,7 @@ const shellRoutes = require('./routes/shell');
 const approvalsRoutes = require('./routes/approvals');
 const githubRoutes = require('./routes/github');
 const e2eRunsRoutes = require('./routes/e2eRuns');
+const demosRoutes = require('./routes/demos');
 
 // --- Socket Handlers ---
 const { registerChatHandlers, handleChatDisconnect } = require('./sockets/chat');
@@ -242,6 +243,8 @@ app.use('/api/github', requireAuth, githubRoutes);
 app.use('/api/shell', requireAuth, shellRoutes);
 // e2e-runs handles auth per-endpoint so the artifact-file GET can accept ?token= for media tags.
 app.use('/api/e2e-runs', e2eRunsRoutes);
+// Demos route is metadata-only; the static demo files are served by Vite without auth.
+app.use('/api/demos', requireAuth, demosRoutes);
 
 /**
  * @swagger
