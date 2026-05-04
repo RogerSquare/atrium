@@ -78,16 +78,20 @@ test.describe('Demos view', () => {
 
   test('"Show all services" toggle reveals empty service groups', async ({ page }) => {
     await expect(page.getByTestId('demos-view')).toBeVisible({ timeout: 10_000 });
+    // Wait for the API fetch to complete and at least one group to render.
+    await expect(page.getByTestId('service-group').first()).toBeVisible({ timeout: 10_000 });
     const initialCount = await page.getByTestId('service-group').count();
+    expect(initialCount).toBeGreaterThanOrEqual(1);
+
     const toggle = page.getByTestId('demos-show-all-services-toggle');
     await expect(toggle).toBeVisible();
     await toggle.click();
+
     // After clicking, the toggle reveals service groups with zero demos
-    // (Memos-Clone, Artifex, etc.) so the count should grow OR stay the
-    // same if every group already had demos. Atrium has services beyond
-    // todo-demo's project, so growth is expected in current fixtures.
+    // (Memos-Clone, Artifex, etc.). services.json has 5 distinct groups,
+    // so the expanded count should reach >= 5 once the re-render settles.
+    await expect(page.getByTestId('service-group').nth(initialCount)).toBeVisible({ timeout: 5_000 });
     const expandedCount = await page.getByTestId('service-group').count();
-    expect(expandedCount).toBeGreaterThanOrEqual(initialCount);
-    expect(expandedCount).toBeGreaterThan(1); // we know there are at least 5 service groups in services.json
+    expect(expandedCount).toBeGreaterThan(initialCount);
   });
 });
