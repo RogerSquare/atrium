@@ -3,6 +3,7 @@ import { LogOut, Search, MessageCircle, X, Eye, Plus, Columns3, List, GitCommitH
 import Board from './components/Board'
 import ListView from './components/ListView'
 import ChangesView from './components/ChangesView'
+import DemosView from './components/DemosView'
 import ViewSwitcher from './components/ViewSwitcher'
 import Sidebar from './components/Sidebar'
 import CreateTaskModal from './components/CreateTaskModal'
@@ -390,6 +391,8 @@ function AppContent() {
             <Suspense fallback={<div className="text-center text-app-text-muted py-12 italic animate-pulse">Loading graph view…</div>}>
               <GraphView tasks={filteredTasks} projects={projects} onSelectTask={selectTask} githubLinks={githubLinks} />
             </Suspense>
+          ) : activeView === 'demos' ? (
+            <DemosView tasks={tasks} onSelectTask={selectTask} />
           ) : (
             <Board
               tasks={filteredTasks} onUpdateTask={undoRedo.updateTaskWithUndo} onSelectTask={selectTask}

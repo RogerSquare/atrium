@@ -27,4 +27,16 @@ const checkPort = (port) => {
   });
 };
 
-module.exports = { getServices, saveServices, checkPort };
+// Status-only enrichment helper — used by routes/demos.js for the v2
+// service-grouped surface. Intentionally omits pid/startedAt/hasLogs
+// (which come from the runningServices Map owned by routes/services.js).
+// The demos surface only needs the binary running/stopped signal.
+const getServicesWithStatus = async () => {
+  const services = getServices();
+  return Promise.all(services.map(async (s) => ({
+    ...s,
+    status: (await checkPort(s.port)) ? 'running' : 'stopped',
+  })));
+};
+
+module.exports = { getServices, saveServices, checkPort, getServicesWithStatus };

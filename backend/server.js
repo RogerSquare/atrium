@@ -32,6 +32,8 @@ const previewRoutes = require('./routes/preview');
 const shellRoutes = require('./routes/shell');
 const approvalsRoutes = require('./routes/approvals');
 const githubRoutes = require('./routes/github');
+const e2eRunsRoutes = require('./routes/e2eRuns');
+const demosRoutes = require('./routes/demos');
 
 // --- Socket Handlers ---
 const { registerChatHandlers, handleChatDisconnect } = require('./sockets/chat');
@@ -60,6 +62,12 @@ const buildAllowedOrigins = () => {
       origins.add(`http://127.0.0.1:${p}`);
     });
   }
+  // Playwright's hosted trace viewer fetches our /api/e2e-runs/.../trace.zip
+  // when a reviewer clicks "Open in Playwright trace viewer" on a Tests-tab
+  // spec row. The viewer is a Microsoft-hosted SPA that opens any trace URL
+  // passed via ?trace=. Allowing it here keeps the cross-origin fetch from
+  // the viewer-page to atrium from being rejected.
+  origins.add('https://trace.playwright.dev');
   return origins;
 };
 
@@ -233,6 +241,10 @@ app.use('/api/design', requireAuth, designRoutes);
 app.use('/api/preview', optionalAuth, previewRoutes);
 app.use('/api/github', requireAuth, githubRoutes);
 app.use('/api/shell', requireAuth, shellRoutes);
+// e2e-runs handles auth per-endpoint so the artifact-file GET can accept ?token= for media tags.
+app.use('/api/e2e-runs', e2eRunsRoutes);
+// Demos route is metadata-only; the static demo files are served by Vite without auth.
+app.use('/api/demos', requireAuth, demosRoutes);
 
 /**
  * @swagger

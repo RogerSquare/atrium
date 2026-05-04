@@ -725,7 +725,7 @@ router.put('/:id', async (req, res) => {
   const { id } = req.params;
   try {
     await withLock(`task:${id}`, async () => {
-    const { title, status, priority, content, project, assignee, type, component, tags, files_affected, parent_task, depends_on, due_date, updated_by, github_branch, github_pr_url, claude_session_id, e2e_status } = req.body;
+    const { title, status, priority, content, project, assignee, type, component, tags, files_affected, parent_task, depends_on, due_date, updated_by, github_branch, github_pr_url, claude_session_id, e2e_status, e2e_run } = req.body;
 
     let filePath = findTaskFilePath(id);
     let originalProject = '';
@@ -784,6 +784,9 @@ router.put('/:id', async (req, res) => {
       // Playwright e2e gate — see feat-e2e-validation-001. Validator runs on
       // review transitions; `no-e2e` tag opts out (mirrors `no-code`).
       e2e_status: e2e_status !== undefined ? e2e_status : (currentData.e2e_status || null),
+      // Latest Playwright run summary (feat-e2e-tests-tab-001). JSON object —
+      // { run_id, started_at, duration_ms, total, passed, failed, skipped, specs[] }.
+      e2e_run: e2e_run !== undefined ? e2e_run : (currentData.e2e_run || null),
       // Per-task claude session UUID — minted on first Shell-tab spawn,
       // rotated on Start New Session. Round-trips through MCP for recovery
       // scripts that need to re-link a task to a known-good session id.

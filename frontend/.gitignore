@@ -30,4 +30,5 @@ storybook-static
 # Playwright e2e
 test-results/
 playwright-report/
+playwright-report.json
 playwright/.cache/

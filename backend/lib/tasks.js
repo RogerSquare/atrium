@@ -109,6 +109,11 @@ const scanAllTasks = (dirPath = TASKS_DIR, tasksArray = []) => {
         activity_log: data.activity_log || [],
         github_branch: data.github_branch || null,
         github_pr_url: data.github_pr_url || null,
+        // Playwright e2e gate (feat-e2e-validation-001) + run summary (feat-e2e-tests-tab-001).
+        // Both PRs added the write path in routes/tasks.js but missed extending the read path
+        // here, so on-disk values were silently dropped on GET. The Tests tab depends on this.
+        e2e_status: data.e2e_status || null,
+        e2e_run: data.e2e_run || null,
         // Per-task claude session UUID — bound on first Shell-tab spawn so
         // resume targets THIS task's conversation, not the cwd's most-recent.
         // Source of truth lives in YAML so the binding survives across

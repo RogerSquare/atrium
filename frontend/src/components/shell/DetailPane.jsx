@@ -12,12 +12,13 @@
 // Resize: drag handle on the left edge persists to localStorage.
 
 import { useRef, useState } from 'react'
-import { X, FileText, MessageSquare, Activity, Terminal, GitCommit } from 'lucide-react'
+import { X, FileText, MessageSquare, Activity, Terminal, GitCommit, FlaskConical } from 'lucide-react'
 import { IconButton } from '../ui'
 import DetailDescription from '../detail/DetailDescription'
 import DetailComments from '../detail/DetailComments'
 import DetailActivity from '../detail/DetailActivity'
 import DetailChanges from '../detail/DetailChanges'
+import TestsTab from '../TestsTab'
 import ShellManager from '../web-shell/ShellManager'
 import CommandCard from '../web-shell/CommandCard'
 import AutoEnterToggle from '../web-shell/AutoEnterToggle'
@@ -29,6 +30,7 @@ const TABS = [
   { id: 'comments', label: 'Comments', icon: MessageSquare },
   { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'changes', label: 'Changes', icon: GitCommit },
+  { id: 'tests', label: 'Tests', icon: FlaskConical },
   { id: 'shell', label: 'Shell', icon: Terminal },
 ]
 
@@ -331,6 +333,9 @@ export default function DetailPane({
               )}
               {activeTab === 'changes' && (
                 <DetailChanges task={task} />
+              )}
+              {activeTab === 'tests' && (
+                <TestsTab task={task} />
               )}
             </motion.div>
           </AnimatePresence>
