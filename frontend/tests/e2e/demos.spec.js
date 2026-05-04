@@ -1,14 +1,15 @@
 import { test, expect } from '@playwright/test';
 
-// Dogfood for feat-demo-management-001-implement (Phase 3). Exercises the
-// new Demos view in the live atrium UI: clicks the fifth ViewSwitcher tab,
-// asserts the todo-demo card renders with the right open-link target.
+// Dogfood for feat-demos-services-grouping-001-implement (v2). Exercises
+// the service-grouped Demos view: clicks the Demos tab, asserts the Atrium
+// service group renders with the todo-demo card nested inside, "Show all
+// services" toggle reveals empty groups.
 //
 // Auth: the SPA reads taskBoardUser from localStorage and attaches its
 // .token to API calls. This spec seeds localStorage with a token from
 // process.env.ATRIUM_API_TOKEN (the same env var the run-e2e wrapper uses)
-// so the page can hit /api/demos. Without the env var, every spec in this
-// file is skipped with a clear reason.
+// so the page can hit /api/demos/grouped. Without the env var, every spec
+// in this file is skipped with a clear reason.
 
 const TOKEN = process.env.ATRIUM_API_TOKEN || '';
 const SKIP_REASON = 'ATRIUM_API_TOKEN env var not set; cannot exercise auth-required atrium UI.';
@@ -31,22 +32,28 @@ test.describe('Demos view', () => {
     await page.addInitScript(([token, name]) => {
       localStorage.setItem('taskBoardUser', JSON.stringify({ username: name, token }));
       localStorage.setItem('taskBoardView', 'demos');
+      // Force "All" project so every service group is eligible to render
+      // regardless of which project was last selected. Test must be
+      // deterministic.
+      localStorage.setItem('opusBoardActiveProject', 'All');
     }, [TOKEN, username]);
     await page.goto('/');
   });
 
-  test('demos view renders with header and at least one card', async ({ page }) => {
+  test('demos view renders with header and at least one service group', async ({ page }) => {
     const view = page.getByTestId('demos-view');
     await expect(view).toBeVisible({ timeout: 10_000 });
     await expect(view.getByRole('heading', { name: 'Demos' })).toBeVisible();
-    const cards = page.getByTestId('demo-card');
-    await expect(cards.first()).toBeVisible({ timeout: 10_000 });
-    expect(await cards.count()).toBeGreaterThanOrEqual(1);
+    const groups = page.getByTestId('service-group');
+    await expect(groups.first()).toBeVisible({ timeout: 10_000 });
+    expect(await groups.count()).toBeGreaterThanOrEqual(1);
   });
 
-  test('todo-demo card is present', async ({ page }) => {
+  test('Atrium service group contains the todo-demo card', async ({ page }) => {
     await expect(page.getByTestId('demos-view')).toBeVisible({ timeout: 10_000 });
-    const todoCard = page.getByTestId('demo-card').filter({ hasText: '/todo-demo/' });
+    const atriumGroup = page.getByTestId('service-group').filter({ has: page.getByTestId('service-group-header').filter({ hasText: 'Atrium' }) });
+    await expect(atriumGroup).toBeVisible();
+    const todoCard = atriumGroup.getByTestId('demo-card').filter({ hasText: '/todo-demo/' });
     await expect(todoCard).toBeVisible();
   });
 
@@ -60,14 +67,31 @@ test.describe('Demos view', () => {
     expect(href).toMatch(/\/todo-demo\/index\.html$/);
   });
 
-  test('task chip points at the originating task id', async ({ page }) => {
+  test('task chip on the demo card points at a feat- task id', async ({ page }) => {
     await expect(page.getByTestId('demos-view')).toBeVisible({ timeout: 10_000 });
     const todoCard = page.getByTestId('demo-card').filter({ hasText: '/todo-demo/' });
-    // The chip is only present when a task with a matching e2e_run was found.
-    // Skip-asserting if no chip rendered (untested demo state).
     const chip = todoCard.getByTestId('demo-task-chip');
     if (await chip.count() > 0) {
       await expect(chip).toContainText(/^feat-/);
     }
+  });
+
+  test('"Show all services" toggle reveals empty service groups', async ({ page }) => {
+    await expect(page.getByTestId('demos-view')).toBeVisible({ timeout: 10_000 });
+    // Wait for the API fetch to complete and at least one group to render.
+    await expect(page.getByTestId('service-group').first()).toBeVisible({ timeout: 10_000 });
+    const initialCount = await page.getByTestId('service-group').count();
+    expect(initialCount).toBeGreaterThanOrEqual(1);
+
+    const toggle = page.getByTestId('demos-show-all-services-toggle');
+    await expect(toggle).toBeVisible();
+    await toggle.click();
+
+    // After clicking, the toggle reveals service groups with zero demos
+    // (Memos-Clone, Artifex, etc.). services.json has 5 distinct groups,
+    // so the expanded count should reach >= 5 once the re-render settles.
+    await expect(page.getByTestId('service-group').nth(initialCount)).toBeVisible({ timeout: 5_000 });
+    const expandedCount = await page.getByTestId('service-group').count();
+    expect(expandedCount).toBeGreaterThan(initialCount);
   });
 });
