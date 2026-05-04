@@ -36,6 +36,25 @@ export default function DemosView({ tasks = [], onSelectTask }) {
 
   useEffect(() => { load() }, [load])
 
+  // Service action handler passed down to ServiceGroup. POSTs to the existing
+  // /api/services/<id>/(start|stop) endpoint, then reloads grouped data so
+  // the status reflects truth. Throws on non-OK so ServiceGroup can render
+  // an inline error pill.
+  const handleServiceAction = useCallback(async (serviceId, action) => {
+    const res = await apiFetch(`/api/services/${encodeURIComponent(serviceId)}/${action}`, { method: 'POST' })
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`
+      try { const body = await res.json(); if (body?.error) msg = body.error } catch { /* ignore */ }
+      throw new Error(msg)
+    }
+    // Brief settle delay — checkPort can lie immediately after a start/stop
+    // since the OS hasn't finished opening/closing the listener. 400ms is
+    // enough for almost every service in services.json without making the
+    // UI feel laggy.
+    await new Promise((r) => setTimeout(r, 400))
+    await load()
+  }, [load])
+
   // Apply the active-project filter and the empty-group toggle.
   const visibleGroups = useMemo(() => {
     if (state !== 'ok') return []
@@ -162,6 +181,7 @@ export default function DemosView({ tasks = [], onSelectTask }) {
               demos={g.demos}
               tasks={tasks}
               onSelectTask={onSelectTask}
+              onServiceAction={handleServiceAction}
               defaultCollapsed={g.demos.length === 0}
             />
           ))}

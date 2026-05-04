@@ -94,4 +94,29 @@ test.describe('Demos view', () => {
     const expandedCount = await page.getByTestId('service-group').count();
     expect(expandedCount).toBeGreaterThan(initialCount);
   });
+
+  test('clicking a service start button POSTs to /api/services/<id>/start', async ({ page }) => {
+    await expect(page.getByTestId('demos-view')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('service-group').first()).toBeVisible({ timeout: 10_000 });
+
+    // Reveal all service groups (including ones with no demos) so we have
+    // visibility into stopped services that have a start button.
+    const initialCount = await page.getByTestId('service-group').count();
+    await page.getByTestId('demos-show-all-services-toggle').click();
+    await expect(page.getByTestId('service-group').nth(initialCount)).toBeVisible({ timeout: 5_000 });
+
+    // Intercept the start POST so the test never actually launches a process.
+    // Capture the path for assertion; respond 200 with a no-op body.
+    let capturedPath = null;
+    await page.route('**/api/services/*/start', async (route) => {
+      capturedPath = new URL(route.request().url()).pathname;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'started' }) });
+    });
+
+    const startBtn = page.getByTestId('service-start-btn').first();
+    await expect(startBtn).toBeVisible({ timeout: 5_000 });
+    await startBtn.click();
+
+    await expect.poll(() => capturedPath, { timeout: 5_000 }).toMatch(/^\/api\/services\/[^/]+\/start$/);
+  });
 });
