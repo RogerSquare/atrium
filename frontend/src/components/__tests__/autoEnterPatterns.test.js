@@ -7,10 +7,12 @@ import {
   PROMPT_PATTERNS,
   DENY_PATTERNS,
   IDLE_PATTERNS,
+  CHROME_PATTERNS,
   stripAnsi,
   tailMatchesPrompt,
   tailMatchesInputField,
   classifyTail,
+  captureDedupKey,
 } from '../web-shell/autoEnterPatterns.js'
 
 describe('stripAnsi', () => {
@@ -308,5 +310,59 @@ describe('classifyTail', () => {
     // A box border in scrollback shouldn't suppress a real permission prompt.
     const tail = '╭─────╮\n' + 'x'.repeat(50) + '\nDo you want to proceed?\n  ❯ 1. Yes'
     expect(classifyTail(tail)).toBe('fire')
+  })
+})
+
+describe('CHROME_PATTERNS / capture-noise suppression (bug-autoenter-capture-noise-001)', () => {
+  it('is a non-empty array of RegExps', () => {
+    expect(Array.isArray(CHROME_PATTERNS)).toBe(true)
+    expect(CHROME_PATTERNS.length).toBeGreaterThan(0)
+    CHROME_PATTERNS.forEach((re) => expect(re).toBeInstanceOf(RegExp))
+  })
+
+  // Verbatim noise that was flooding captures.json — must classify as a
+  // recognized non-prompt state so the capture loop skips it.
+  it.each([
+    ['todo list (pending/done rows)',
+      '  ◻ SidebarViewModel.CreatePageWithTemplate wires initial view\n  ◻ Build clean + commit + PR + Atrium review'],
+    ['todo list (in-progress row)',
+      '  ◼ SidebarViewModel.CreatePageWithTemplate wires initial view\n  ◻ Build clean'],
+    ['todo list (checked)',
+      '  ✔ SidebarViewModel.CreatePageWithTemplate wires initial view'],
+    ['status bar',
+      '────────────────\n  1 shell · ← for agents'],
+    ['working / interrupt hint', 'Crunching… (Esc to interrupt)'],
+  ])('classifies CC chrome as input-field, not unknown: %s', (_label, output) => {
+    expect(classifyTail(output)).toBe('input-field')
+  })
+
+  it('chrome does NOT suppress a real prompt (allowlist wins)', () => {
+    // A prompt rendered with the status bar still in the tail must fire.
+    const tail = '1 shell · ← for agents\nDo you want to proceed?\n  ❯ 1. Yes\n  2. No'
+    expect(classifyTail(tail)).toBe('fire')
+    expect(tailMatchesPrompt(tail)).toBe(true)
+  })
+
+  it('a genuine unknown prompt is still classified unknown (not over-suppressed)', () => {
+    expect(classifyTail('Frobnicate the widget? ')).toBe('unknown')
+  })
+})
+
+describe('captureDedupKey', () => {
+  it('collapses two cursor-positioned repaints of the same screen to one key', () => {
+    // Same content, different cursor-forward escapes between frames.
+    const frameA = '  ◻ Build[1Cclean[1C+[1Ccommit[55C\r\n'
+    const frameB = '  ◻ Build clean + commit[K[38C\r\n'
+    expect(captureDedupKey(frameA)).toBe(captureDedupKey(frameB))
+  })
+
+  it('produces different keys for genuinely different content', () => {
+    expect(captureDedupKey('Do you want to proceed?')).not.toBe(captureDedupKey('Select model'))
+  })
+
+  it('returns empty string for falsy input', () => {
+    expect(captureDedupKey('')).toBe('')
+    expect(captureDedupKey(null)).toBe('')
+    expect(captureDedupKey(undefined)).toBe('')
   })
 })

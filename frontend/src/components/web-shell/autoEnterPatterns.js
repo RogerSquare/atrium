@@ -134,6 +134,29 @@ export const IDLE_PATTERNS = [
   /[A-Z]:[\\\/][^\n>]*>$/,
 ]
 
+// Chrome markers — Claude Code's own working-UI furniture that ISN'T a
+// prompt (bug-autoenter-capture-noise-001). CC periodically repaints these
+// during active agent work; each repaint stalls ~1s and was being captured
+// as an 'unknown' miss, flooding the review panel with non-prompts. Treat a
+// tail dominated by chrome as a recognized non-prompt state (→ input-field)
+// so the capture loop skips it. Checked AFTER the allowlist, so a real
+// prompt rendered over chrome still fires; never consulted by
+// tailMatchesPrompt, so firing behavior is unchanged.
+export const CHROME_PATTERNS = [
+  // Todo-list rows — CC renders task status with these box/check glyphs:
+  // ◻ pending, ◼ in-progress, ✔/✓ done. No CC prompt uses them.
+  /[◻◼✔✓]/u,
+  // Status bar at the bottom of the agent view: "1 shell · ← for agents".
+  // The "← for agents" segment is unique to this status line.
+  /←\s*for\s+agents/i,
+  // Shown while CC is actively working (not awaiting a choice) — distinct
+  // from the prompt hint "Esc to cancel".
+  /esc\s+to\s+interrupt/i,
+  // NOTE: deliberately NOT keying on the "────" separator — the real
+  // 2:20:52 misfire (a navigation menu) rendered one too. Separators are
+  // ambiguous; the denylist handles that menu via "↑/↓ to navigate".
+]
+
 export function stripAnsi(s) {
   return s
     // SGR (color / style) sequences end in 'm' and carry no positional
@@ -180,6 +203,22 @@ export function classifyTail(buffer) {
   const tail100 = stripped.slice(-IDLE_TAIL_WINDOW)
   if (DENY_PATTERNS.some((re) => re.test(tail200))) return 'denied'
   if (PROMPT_PATTERNS.some((re) => re.test(tail200))) return 'fire'
+  // Chrome before idle, both → 'input-field' (a recognized non-prompt
+  // state the capture loop skips). Chrome uses the wider tail200 because
+  // CC's status bar / todo glyphs can sit just outside the 100-char idle
+  // window yet still mean "this isn't a prompt".
+  if (CHROME_PATTERNS.some((re) => re.test(tail200))) return 'input-field'
   if (IDLE_PATTERNS.some((re) => re.test(tail100))) return 'input-field'
   return 'unknown'
+}
+
+// Stable key for deduping near-identical captures
+// (bug-autoenter-capture-noise-001). CC repaints the same screen with
+// different cursor-positioning escapes between frames; after stripAnsi
+// those become runs of spaces. Collapsing whitespace yields the same key
+// for two frames of the same content, so the capture loop can skip a repeat
+// it already recorded. Pure + exported so it's unit-testable.
+export function captureDedupKey(buffer) {
+  if (!buffer) return ''
+  return stripAnsi(buffer).replace(/\s+/g, ' ').trim()
 }
