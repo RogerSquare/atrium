@@ -11,6 +11,9 @@ backend/users/
 backend/chat/
 backend/ai-history/
 
+# Auto-Enter prompt-capture log (runtime analysis data)
+backend/autoenter/
+
 # Agent token metadata — keep blocklist tracked, exclude individual issued-token files
 backend/agent-tokens/*.json
 !backend/agent-tokens/.blocklist.json

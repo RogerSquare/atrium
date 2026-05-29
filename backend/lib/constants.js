@@ -23,6 +23,15 @@ const PROJECTS_FILE = path.join(__dirname, '..', 'projects.json');
 const E2E_RUNS_DIR = path.join(__dirname, '..', 'e2e-runs');
 const MAX_E2E_RUNS_PER_TASK = 5;
 
+// Auto-Enter capture log (bug-autoenter-ansi-cursor-strip-001 extension).
+// The terminal auto-Enter toggle records prompts it FAILS to recognize so
+// the misses can be mined for new detection patterns. Captures were
+// previously per-browser localStorage only; this backend store makes them
+// analyzable across sessions. Runtime data — gitignored like backend/chat/.
+const AUTOENTER_DIR = path.join(__dirname, '..', 'autoenter');
+const AUTOENTER_CAPTURES_FILE = path.join(AUTOENTER_DIR, 'captures.json');
+const MAX_AUTOENTER_CAPTURES = 500;
+
 // JWT secret resolution: env var > persisted file > generate (dev) > fail (prod)
 const JWT_SECRET_FILE = path.join(__dirname, '..', '.jwt-secret');
 
@@ -65,4 +74,5 @@ module.exports = {
   INSTRUCTIONS_FILE, JWT_SECRET, TRASH_DIR, ARCHIVED_DIR, PROJECTS_FILE, APPROVALS_DIR,
   AGENT_TOKENS_DIR, AGENT_TOKENS_BLOCKLIST,
   E2E_RUNS_DIR, MAX_E2E_RUNS_PER_TASK,
+  AUTOENTER_DIR, AUTOENTER_CAPTURES_FILE, MAX_AUTOENTER_CAPTURES,
 };
