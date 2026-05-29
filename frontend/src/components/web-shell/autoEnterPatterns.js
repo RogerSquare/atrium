@@ -100,6 +100,17 @@ export const DENY_PATTERNS = [
   // log in?" / authenticate. Picking an auth path is never a safe default.
   /\bselect\s+login\s+method\b/i,
   /how\s+would\s+you\s+like\s+to\s+(log\s*in|sign\s*in|authenticate)/i,
+  // GENERIC selection-menu marker (bug-autoenter-misfire-menus-001 Part 3) —
+  // the surgical fix derived from a real captured misfire: auto-Enter fired
+  // on a "Chat about this … Enter to select · ↑/↓ to navigate · Esc to
+  // cancel" list. Navigation menus uniquely carry the "↑/↓ to navigate" /
+  // "Enter to select" hint; permission prompts never do (theirs reads
+  // "Tab to amend · ctrl+e to explain"). So this one rule suppresses the
+  // ENTIRE arrow-navigable-list class — including the model/theme/login
+  // menus above — regardless of header text. The header-specific rules stay
+  // as a belt-and-suspenders layer for menus that might omit the hint.
+  /↑\s*\/\s*↓\s+to\s+navigate/i,
+  /\benter\s+to\s+select\b/i,
 ]
 
 // Idle-state markers — distinguish "the CLI is sitting at its normal

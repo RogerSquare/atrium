@@ -170,6 +170,13 @@ describe('tailMatchesPrompt — should NOT fire', () => {
       'Select login method\n  ❯ 1. Claude account\n  2. API key\nEsc to cancel'],
     ['CC "how would you like to log in"',
       'How would you like to log in?\n  ❯ 1. Subscription\n  2. API key\nEsc to cancel'],
+    // Real captured misfire (Part 3) — auto-Enter fired on this navigation
+    // list at 2:20:52. The "↑/↓ to navigate" / "Enter to select" hint is the
+    // generic discriminator; this is the verbatim stripped tail from fires.json.
+    ['CC navigation list (verbatim misfire)',
+      'Chat about this\nEnter to select · ↑/↓ to navigate · n to add notes · Esc to cancel'],
+    ['CC arrow-nav list (no header in window)',
+      '  some option\n  another option\n  ❯ third option\n↑/↓ to navigate · Enter to select'],
   ])('does not match: %s', (_label, output) => {
     expect(tailMatchesPrompt(output)).toBe(false)
   })
