@@ -34,6 +34,7 @@ const approvalsRoutes = require('./routes/approvals');
 const githubRoutes = require('./routes/github');
 const e2eRunsRoutes = require('./routes/e2eRuns');
 const demosRoutes = require('./routes/demos');
+const autoEnterRoutes = require('./routes/autoenter');
 
 // --- Socket Handlers ---
 const { registerChatHandlers, handleChatDisconnect } = require('./sockets/chat');
@@ -245,6 +246,8 @@ app.use('/api/shell', requireAuth, shellRoutes);
 app.use('/api/e2e-runs', e2eRunsRoutes);
 // Demos route is metadata-only; the static demo files are served by Vite without auth.
 app.use('/api/demos', requireAuth, demosRoutes);
+// Auto-Enter capture log — terminal toggle POSTs unrecognized prompts here for analysis.
+app.use('/api/autoenter', requireAuth, autoEnterRoutes);
 
 /**
  * @swagger

@@ -23,6 +23,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CornerDownLeft, Copy, HelpCircle, X } from 'lucide-react'
 import { classifyTail, tailMatchesPrompt } from './autoEnterPatterns'
+import { API_URL, apiFetch } from '../../config'
 
 const STORAGE_PREFIX = 'autoenter:armed:'
 const STORAGE_PREFIX_CAPTURES = 'autoenter:captures:'
@@ -151,10 +152,11 @@ export default function AutoEnterToggle({ task, socket }) {
 
   const recordCapture = useCallback((bufferTail) => {
     if (!task?.id) return
+    const capturedAt = Date.now()
     const next = pruneCaptures([
       ...capturesRef.current,
       {
-        capturedAt: Date.now(),
+        capturedAt,
         bufferTail,
         classification: 'unknown',
         read: false,
@@ -163,6 +165,25 @@ export default function AutoEnterToggle({ task, socket }) {
     capturesRef.current = next
     writeCaptures(task.id, next)
     setCaptures(next)
+    // Fire-and-forget: persist the miss to the backend so the prompts the
+    // detector fails to recognize become analyzable across sessions
+    // (bug-autoenter-ansi-cursor-strip-001). localStorage above stays the
+    // source of truth for the in-UI review panel; this POST is best-effort
+    // and must never break the capture loop if the network/auth is down.
+    try {
+      apiFetch(`${API_URL}/autoenter/captures`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bufferTail,
+          taskId: task.id,
+          classification: 'unknown',
+          capturedAt,
+        }),
+      }).catch(() => {})
+    } catch {
+      /* never let logging break capture */
+    }
   }, [task?.id])
 
   useEffect(() => {
