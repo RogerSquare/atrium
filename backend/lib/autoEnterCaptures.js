@@ -15,12 +15,24 @@
 
 const fs = require('fs');
 const path = require('path');
-const { AUTOENTER_DIR, AUTOENTER_CAPTURES_FILE, MAX_AUTOENTER_CAPTURES } = require('./constants');
+const {
+  AUTOENTER_DIR,
+  AUTOENTER_CAPTURES_FILE,
+  AUTOENTER_FIRES_FILE,
+  MAX_AUTOENTER_CAPTURES,
+} = require('./constants');
 const { withLock } = require('./lock');
 
 const LOCK_KEY = 'autoenter:captures';
 // Cap a single capture's tail so a runaway buffer can't bloat the file.
 const MAX_TAIL_LEN = 4000;
+
+// Fire events go to their own file so their high frequency can't evict the
+// rarer-but-valuable misses (bug-autoenter-misfire-menus-001). Everything
+// else (the 'unknown' misses, plus any future class) shares captures.json.
+function fileFor(classification) {
+  return classification === 'fire' ? AUTOENTER_FIRES_FILE : AUTOENTER_CAPTURES_FILE;
+}
 
 function ensureDir() {
   try {
@@ -30,9 +42,9 @@ function ensureDir() {
   }
 }
 
-function loadCaptures() {
+function loadCaptures(file = AUTOENTER_CAPTURES_FILE) {
   try {
-    const parsed = JSON.parse(fs.readFileSync(AUTOENTER_CAPTURES_FILE, 'utf-8'));
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf-8'));
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     // Missing file / parse error → empty log. Same fail-soft as lib/chat.js.
@@ -42,12 +54,12 @@ function loadCaptures() {
 
 // Persist atomically: write a temp file then rename, so a crash mid-write
 // can't leave a half-written JSON the next loadCaptures() would discard.
-function saveCaptures(captures) {
+function saveCaptures(captures, file = AUTOENTER_CAPTURES_FILE) {
   ensureDir();
   const trimmed = captures.slice(-MAX_AUTOENTER_CAPTURES);
-  const tmp = `${AUTOENTER_CAPTURES_FILE}.tmp`;
+  const tmp = `${file}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(trimmed, null, 2));
-  fs.renameSync(tmp, AUTOENTER_CAPTURES_FILE);
+  fs.renameSync(tmp, file);
   return trimmed;
 }
 
@@ -70,22 +82,26 @@ function normalizeCapture(input, { now, user } = {}) {
 }
 
 // Append one capture under the lock. Returns { entry, total } or null when
-// the input had no usable bufferTail.
+// the input had no usable bufferTail. Fires land in fires.json, everything
+// else in captures.json — keyed off the entry's classification.
 async function appendCapture(input, meta = {}) {
   const entry = normalizeCapture(input, meta);
   if (!entry) return null;
-  return withLock(LOCK_KEY, async () => {
-    const captures = loadCaptures();
+  const file = fileFor(entry.classification);
+  return withLock(`${LOCK_KEY}:${file}`, async () => {
+    const captures = loadCaptures(file);
     captures.push(entry);
-    const saved = saveCaptures(captures);
+    const saved = saveCaptures(captures, file);
     return { entry, total: saved.length };
   });
 }
 
 // Read-only query: optional taskId / classification filters, newest-first,
 // capped at `limit` (default 200, hard max = MAX_AUTOENTER_CAPTURES).
+// `classification: 'fire'` reads the fires log; anything else reads the
+// misses log (and still filters by classification within it).
 function queryCaptures({ taskId, classification, limit } = {}) {
-  let captures = loadCaptures();
+  let captures = loadCaptures(fileFor(classification));
   if (taskId) captures = captures.filter((c) => c && c.taskId === taskId);
   if (classification) captures = captures.filter((c) => c && c.classification === classification);
   captures = captures
@@ -98,9 +114,12 @@ function queryCaptures({ taskId, classification, limit } = {}) {
   return { captures: captures.slice(0, n), total: captures.length };
 }
 
-async function clearCaptures() {
-  return withLock(LOCK_KEY, async () => {
-    saveCaptures([]);
+// Clear one log. `classification: 'fire'` clears fires.json; otherwise the
+// misses log. Pass nothing to clear misses (back-compat).
+async function clearCaptures(classification) {
+  const file = fileFor(classification);
+  return withLock(`${LOCK_KEY}:${file}`, async () => {
+    saveCaptures([], file);
     return { cleared: true };
   });
 }
@@ -113,6 +132,7 @@ module.exports = {
   queryCaptures,
   clearCaptures,
   MAX_TAIL_LEN,
-  // exported for tests that need to assert against the path
+  // exported for tests that need to assert against the paths
   AUTOENTER_CAPTURES_FILE,
+  AUTOENTER_FIRES_FILE,
 };

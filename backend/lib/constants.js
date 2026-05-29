@@ -30,6 +30,12 @@ const MAX_E2E_RUNS_PER_TASK = 5;
 // analyzable across sessions. Runtime data — gitignored like backend/chat/.
 const AUTOENTER_DIR = path.join(__dirname, '..', 'autoenter');
 const AUTOENTER_CAPTURES_FILE = path.join(AUTOENTER_DIR, 'captures.json');
+// Fire events (auto-Enter actually pressed Enter) are logged separately
+// from the unrecognized-prompt misses (bug-autoenter-misfire-menus-001).
+// Fires are FAR more frequent than misses, so sharing one capped file
+// would evict the rare-but-valuable miss data. Separate file = independent
+// cap. Misfire diagnosis reads this log via ?classification=fire.
+const AUTOENTER_FIRES_FILE = path.join(AUTOENTER_DIR, 'fires.json');
 const MAX_AUTOENTER_CAPTURES = 500;
 
 // JWT secret resolution: env var > persisted file > generate (dev) > fail (prod)
@@ -74,5 +80,5 @@ module.exports = {
   INSTRUCTIONS_FILE, JWT_SECRET, TRASH_DIR, ARCHIVED_DIR, PROJECTS_FILE, APPROVALS_DIR,
   AGENT_TOKENS_DIR, AGENT_TOKENS_BLOCKLIST,
   E2E_RUNS_DIR, MAX_E2E_RUNS_PER_TASK,
-  AUTOENTER_DIR, AUTOENTER_CAPTURES_FILE, MAX_AUTOENTER_CAPTURES,
+  AUTOENTER_DIR, AUTOENTER_CAPTURES_FILE, AUTOENTER_FIRES_FILE, MAX_AUTOENTER_CAPTURES,
 };

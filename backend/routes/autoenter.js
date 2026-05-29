@@ -1,10 +1,15 @@
 // REST endpoints for the Auto-Enter prompt-capture log
 // (bug-autoenter-ansi-cursor-strip-001 extension).
 //
-// The terminal auto-Enter toggle (frontend AutoEnterToggle.jsx) POSTs every
-// UNRECOGNIZED prompt here so the misses become analyzable server-side
-// instead of being trapped in per-browser localStorage. Mounted under
-// /api/autoenter with `requireAuth` in server.js.
+// The terminal auto-Enter toggle (frontend AutoEnterToggle.jsx) POSTs here
+// so its detection decisions become analyzable server-side instead of being
+// trapped in per-browser localStorage. Two streams keyed by `classification`:
+//   - UNRECOGNIZED prompts ('unknown') — misses the pattern set should learn.
+//   - FIRE events ('fire') — what auto-Enter actually pressed Enter on, so
+//     misfires on selection menus can be diagnosed from real text
+//     (bug-autoenter-misfire-menus-001). Stored in a separate file; read via
+//     GET ?classification=fire.
+// Mounted under /api/autoenter with `requireAuth` in server.js.
 //
 // The POST is fire-and-forget from the client's perspective — the toggle's
 // localStorage capture is the source of truth for the in-UI review panel;
@@ -58,7 +63,8 @@ router.get('/captures', (req, res) => {
 // DELETE /api/autoenter/captures — clear the log (after analysis / triage).
 router.delete('/captures', async (req, res) => {
   try {
-    await clearCaptures();
+    // ?classification=fire clears the fires log; otherwise the misses log.
+    await clearCaptures(req.query.classification);
     res.json({ ok: true, cleared: true });
   } catch (error) {
     logger.error({ err: error }, 'Request failed');

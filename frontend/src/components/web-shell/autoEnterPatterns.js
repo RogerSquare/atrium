@@ -77,6 +77,29 @@ export const DENY_PATTERNS = [
   // Scope reconfirmation prompt — same intent: pause for a human
   // glance.
   /can\s+you\s+confirm\s+the\s+scope/i,
+
+  // --- Selection menus (bug-autoenter-misfire-menus-001) ---
+  // These are CC config/selection screens, not permission prompts. They
+  // render the same structural markers the allowlist fires on (the `❯ N.`
+  // cursor and the "Esc to cancel" hint), so without an explicit denylist
+  // entry auto-Enter "jumps" them by selecting whatever option is
+  // highlighted — a choice the user never made. None of these have a safe
+  // default, so they must never auto-confirm.
+  //
+  // Trust prompt — "Do you trust the files in this folder?". A security
+  // decision (trusting a workspace runs its hooks/MCP); never auto-trust.
+  /\bdo\s+you\s+trust\b/i,
+  // Model picker — "/model" → "Select model" / "Switch model". Enter would
+  // silently switch the active model.
+  /\b(select|switch)\s+(a\s+)?model\b/i,
+  // Theme selector — first-run + "/theme". CC frames it as "Select theme",
+  // "Choose your theme", or "Choose the option that looks best".
+  /\b(select|choose)\b[^?\n]{0,40}\btheme\b/i,
+  /choose\s+the\s+option\s+that\s+looks\s+best/i,
+  // Login / account method — "Select login method" / "How would you like to
+  // log in?" / authenticate. Picking an auth path is never a safe default.
+  /\bselect\s+login\s+method\b/i,
+  /how\s+would\s+you\s+like\s+to\s+(log\s*in|sign\s*in|authenticate)/i,
 ]
 
 // Idle-state markers — distinguish "the CLI is sitting at its normal

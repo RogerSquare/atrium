@@ -110,3 +110,44 @@ test('clearCaptures empties the log', async () => {
   assert.equal(loadCaptures().length, 0);
   reset();
 });
+
+test('fire events are stored separately from misses', async () => {
+  reset();
+  await appendCapture({ bufferTail: 'a miss', classification: 'unknown' });
+  await appendCapture({ bufferTail: 'a fire', classification: 'fire' });
+
+  // The misses file holds only the miss; fires live in their own file.
+  assert.equal(loadCaptures(captures.AUTOENTER_CAPTURES_FILE).length, 1);
+  assert.equal(loadCaptures(captures.AUTOENTER_FIRES_FILE).length, 1);
+  assert.equal(loadCaptures(captures.AUTOENTER_CAPTURES_FILE)[0].bufferTail, 'a miss');
+  assert.equal(loadCaptures(captures.AUTOENTER_FIRES_FILE)[0].bufferTail, 'a fire');
+  reset();
+});
+
+test('queryCaptures reads the fires log when classification=fire', async () => {
+  reset();
+  await appendCapture({ bufferTail: 'miss-1', classification: 'unknown', capturedAt: 1 });
+  await appendCapture({ bufferTail: 'fire-1', classification: 'fire', capturedAt: 2 });
+  await appendCapture({ bufferTail: 'fire-2', classification: 'fire', capturedAt: 3 });
+
+  const fires = queryCaptures({ classification: 'fire' });
+  assert.equal(fires.total, 2);
+  assert.deepEqual(fires.captures.map((c) => c.bufferTail), ['fire-2', 'fire-1']);
+
+  // Default query (no classification) still reads only the misses log.
+  const misses = queryCaptures({});
+  assert.equal(misses.total, 1);
+  assert.equal(misses.captures[0].bufferTail, 'miss-1');
+  reset();
+});
+
+test('clearCaptures(fire) clears only the fires log', async () => {
+  reset();
+  await appendCapture({ bufferTail: 'keep this miss', classification: 'unknown' });
+  await appendCapture({ bufferTail: 'drop this fire', classification: 'fire' });
+
+  await clearCaptures('fire');
+  assert.equal(loadCaptures(captures.AUTOENTER_FIRES_FILE).length, 0);
+  assert.equal(loadCaptures(captures.AUTOENTER_CAPTURES_FILE).length, 1); // misses untouched
+  reset();
+});

@@ -152,8 +152,37 @@ describe('tailMatchesPrompt — should NOT fire', () => {
       'Claude has written up a plan and is ready to execute. Would you like to proceed?\n  ❯ 1. Yes\n  2. No'],
     ['CC scope reconfirmation',
       'Before I start editing, can you confirm the scope?\n  ❯ 1. Yes\n  2. No'],
+
+    // === Denylist: selection menus (bug-autoenter-misfire-menus-001) ===
+    // Each carries the ❯ cursor (and would otherwise fire via the allowlist)
+    // — the denylist must win so auto-Enter doesn't pick a default.
+    ['CC trust-folder prompt',
+      'Do you trust the files in this folder?\n  ❯ 1. Yes, proceed\n  2. No, exit\nEsc to cancel'],
+    ['CC model picker (Select model)',
+      'Select model\n  ❯ 1. Default (recommended)\n  2. Opus\n  3. Sonnet\nEsc to cancel'],
+    ['CC model picker (Switch model)',
+      'Switch model for this session\n  ❯ 1. Sonnet\n  2. Opus\nEsc to cancel'],
+    ['CC theme selector (Select theme)',
+      'Select theme\n  ❯ 1. Dark mode\n  2. Light mode\nEsc to cancel'],
+    ['CC theme selector (looks best)',
+      'Choose the option that looks best as you type\n  ❯ 1. Dark\n  2. Light\nEsc to cancel'],
+    ['CC login method',
+      'Select login method\n  ❯ 1. Claude account\n  2. API key\nEsc to cancel'],
+    ['CC "how would you like to log in"',
+      'How would you like to log in?\n  ❯ 1. Subscription\n  2. API key\nEsc to cancel'],
   ])('does not match: %s', (_label, output) => {
     expect(tailMatchesPrompt(output)).toBe(false)
+  })
+
+  // Over-suppression guard: a genuine permission prompt that happens to sit
+  // near a denied selection menu's vocabulary must STILL fire. These are the
+  // prompts auto-Enter exists to confirm.
+  it.each([
+    ['proceed prompt', 'Do you want to proceed?\n  ❯ 1. Yes\n  2. No\nEsc to cancel'],
+    ['allow fetch prompt', 'Do you want to allow Claude to fetch this content?\n  ❯ 1. Yes\n  2. No'],
+    ['make-edit prompt', 'Do you want to make this edit to config.js?\n  ❯ 1. Yes\n  2. No\nEsc to cancel'],
+  ])('still fires (not over-suppressed): %s', (_label, output) => {
+    expect(tailMatchesPrompt(output)).toBe(true)
   })
 })
 
@@ -231,6 +260,9 @@ describe('classifyTail', () => {
     expect(classifyTail('Are you sure you want to delete the agent foo?\n  ❯ 1. Yes')).toBe('denied')
     expect(classifyTail('Overwrite?\n  ❯ 1. Yes')).toBe('denied')
     expect(classifyTail('Claude has written up a plan and is ready to execute. Would you like to proceed?\n  ❯ 1. Yes')).toBe('denied')
+    // Selection menus (bug-autoenter-misfire-menus-001) — denied over the cursor.
+    expect(classifyTail('Do you trust the files in this folder?\n  ❯ 1. Yes, proceed')).toBe('denied')
+    expect(classifyTail('Select model\n  ❯ 1. Default\n  2. Opus')).toBe('denied')
   })
 
   it('returns "fire" for allowlist matches', () => {

@@ -150,6 +150,27 @@ export default function AutoEnterToggle({ task, socket }) {
     writeArmed(task?.id, armed)
   }, [task?.id, armed])
 
+  // Fire-and-forget POST of a detection event to the backend capture log so
+  // the toggle's decisions are analyzable across sessions
+  // (bug-autoenter-ansi-cursor-strip-001 / bug-autoenter-misfire-menus-001).
+  // Two classes flow through here: 'unknown' misses (a prompt the pattern set
+  // didn't recognize) and 'fire' events (what auto-Enter actually pressed
+  // Enter on — used to diagnose misfires on selection menus). Best-effort:
+  // a failed/offline POST must never break the capture-or-fire path, hence
+  // the swallowed catch and the outer try.
+  const logCaptureToBackend = useCallback((bufferTail, classification, capturedAt) => {
+    if (!task?.id) return
+    try {
+      apiFetch(`${API_URL}/autoenter/captures`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bufferTail, taskId: task.id, classification, capturedAt }),
+      }).catch(() => {})
+    } catch {
+      /* never let logging break the capture/fire loop */
+    }
+  }, [task?.id])
+
   const recordCapture = useCallback((bufferTail) => {
     if (!task?.id) return
     const capturedAt = Date.now()
@@ -165,26 +186,10 @@ export default function AutoEnterToggle({ task, socket }) {
     capturesRef.current = next
     writeCaptures(task.id, next)
     setCaptures(next)
-    // Fire-and-forget: persist the miss to the backend so the prompts the
-    // detector fails to recognize become analyzable across sessions
-    // (bug-autoenter-ansi-cursor-strip-001). localStorage above stays the
-    // source of truth for the in-UI review panel; this POST is best-effort
-    // and must never break the capture loop if the network/auth is down.
-    try {
-      apiFetch(`${API_URL}/autoenter/captures`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bufferTail,
-          taskId: task.id,
-          classification: 'unknown',
-          capturedAt,
-        }),
-      }).catch(() => {})
-    } catch {
-      /* never let logging break capture */
-    }
-  }, [task?.id])
+    // localStorage above stays the source of truth for the in-UI review
+    // panel; the backend log is the durable analysis layer.
+    logCaptureToBackend(bufferTail, 'unknown', capturedAt)
+  }, [task?.id, logCaptureToBackend])
 
   useEffect(() => {
     if (!socket) return undefined
@@ -229,9 +234,15 @@ export default function AutoEnterToggle({ task, socket }) {
       if (now < cooldownUntilRef.current) return
 
       if (tailMatchesPrompt(bufferRef.current)) {
+        // Snapshot what we fired on BEFORE clearing the buffer — this is the
+        // only record of a fire. If auto-Enter jumps a selection menu it
+        // shouldn't have, this is the exact text we mine to add a denylist
+        // pattern (bug-autoenter-misfire-menus-001).
+        const firedOn = bufferRef.current.slice(-200)
         if (socket.connected) {
           socket.emit('webshell:input', { taskId: wireTaskId, data: '\r' })
         }
+        logCaptureToBackend(firedOn, 'fire', now)
         cooldownUntilRef.current = now + COOLDOWN_MS
         bufferRef.current = ''
         clearStallTimer()
@@ -243,7 +254,7 @@ export default function AutoEnterToggle({ task, socket }) {
       socket.off('webshell:output', handleOutput)
       clearStallTimer()
     }
-  }, [socket, wireTaskId, recordCapture])
+  }, [socket, wireTaskId, recordCapture, logCaptureToBackend])
 
   const handleToggle = useCallback(() => {
     setArmed((prev) => {
