@@ -445,6 +445,11 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                     border: 'var(--border-hairline)',
                     color: 'var(--text-muted)',
                     cursor: 'pointer',
+                    // Anchor the apple-press scale(0.97) to the top so the
+                    // top-aligned chevron doesn't slide downward on click — on a
+                    // full-height rail a center-origin scale pushes the click
+                    // target out from under the cursor (worse the higher you click).
+                    transformOrigin: 'top center',
                     transition: `background var(--duration-normal) var(--ease-default)`,
                   }}
                 >
