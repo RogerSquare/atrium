@@ -22,7 +22,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CornerDownLeft, Copy, HelpCircle, X } from 'lucide-react'
-import { classifyTail, tailMatchesPrompt } from './autoEnterPatterns'
+import { classifyTail, tailMatchesPrompt, captureDedupKey } from './autoEnterPatterns'
 import { API_URL, apiFetch } from '../../config'
 
 const STORAGE_PREFIX = 'autoenter:armed:'
@@ -133,6 +133,10 @@ export default function AutoEnterToggle({ task, socket }) {
   const bufferRef = useRef('')
   const cooldownUntilRef = useRef(0)
   const stallTimerRef = useRef(null)
+  // Dedup key of the last recorded capture — collapses CC's repeated screen
+  // repaints (same content, different cursor escapes) into one capture
+  // (bug-autoenter-capture-noise-001).
+  const lastCaptureKeyRef = useRef('')
 
   // Captures live in two layers: a ref so the inactivity classifier
   // doesn't have to read localStorage on every fire (cheap path) and
@@ -173,6 +177,12 @@ export default function AutoEnterToggle({ task, socket }) {
 
   const recordCapture = useCallback((bufferTail) => {
     if (!task?.id) return
+    // Skip a repeat of the screen we just captured — CC repaints the same
+    // content with different cursor escapes, which would otherwise log many
+    // near-identical "unknown" entries (bug-autoenter-capture-noise-001).
+    const key = captureDedupKey(bufferTail)
+    if (key && key === lastCaptureKeyRef.current) return
+    lastCaptureKeyRef.current = key
     const capturedAt = Date.now()
     const next = pruneCaptures([
       ...capturesRef.current,
