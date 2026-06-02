@@ -11,3 +11,47 @@ test('atrium frontend hydrates past initial shell', async ({ page }) => {
   // Atrium ships a #root mount. After hydration it should contain children.
   await expect(page.locator('#root')).not.toBeEmpty();
 });
+
+// ui-collapse-draft-col-001 — the Draft column can be collapsed to a thin
+// rail to reclaim horizontal space, and the choice persists (localStorage,
+// so it survives reload AND a backend restart since it lives in the browser).
+test.describe('Draft column collapse', () => {
+  // Seed localStorage before any app code runs: bypass the login gate
+  // (AuthContext restores `user` from taskBoardUser), force the board view,
+  // and skip the one-time OLED theme migration. This runs on every navigation
+  // (including reload), so it MUST be idempotent — it must NOT touch
+  // taskBoardDraftCollapsed, or it would wipe the very state under test on
+  // reload. The fresh per-test context guarantees we start expanded.
+  const seed = () => {
+    window.localStorage.setItem('taskBoardUser', JSON.stringify({ username: 'e2e' }));
+    window.localStorage.setItem('taskBoardView', 'board');
+    window.localStorage.setItem('taskBoardThemeMigratedToOled', '1');
+  };
+
+  test('collapses to a rail, persists across reload, and re-expands', async ({ page }) => {
+    await page.addInitScript(seed);
+    await page.goto('/');
+
+    const collapseBtn = page.getByRole('button', { name: 'Collapse Draft column' });
+    const expandRail = page.getByRole('button', { name: /Expand Draft column/ });
+
+    // Expanded by default: the full-column collapse control is present.
+    await expect(collapseBtn).toBeVisible({ timeout: 20_000 });
+    await expect(expandRail).toHaveCount(0);
+
+    // Collapse → the rail replaces the full column.
+    await collapseBtn.click();
+    await expect(expandRail).toBeVisible();
+    await expect(collapseBtn).toHaveCount(0);
+
+    // Persists across a reload (the localStorage requirement).
+    await page.reload();
+    await expect(expandRail).toBeVisible({ timeout: 20_000 });
+    await expect(collapseBtn).toHaveCount(0);
+
+    // Re-expanding restores the full column.
+    await expandRail.click();
+    await expect(collapseBtn).toBeVisible();
+    await expect(expandRail).toHaveCount(0);
+  });
+});
