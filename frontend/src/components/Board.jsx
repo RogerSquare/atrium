@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
-import { Rows3, LayoutGrid, Layers, ChevronDown, ChevronRight, CheckSquare } from 'lucide-react'
+import { Rows3, LayoutGrid, Layers, ChevronDown, ChevronRight, ChevronLeft, CheckSquare } from 'lucide-react'
 import TaskCard from './TaskCard'
 import useIsMobile from '../hooks/useIsMobile'
 import { Select, Button, Checkbox } from './ui'
@@ -38,6 +38,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
   const isMobile = useIsMobile()
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem('taskBoardCompact') === 'true')
   const [swimlaneBy, setSwimlaneBy] = useState(() => localStorage.getItem('taskBoardSwimlane') || 'none')
+  const [draftCollapsed, setDraftCollapsed] = useState(() => localStorage.getItem('taskBoardDraftCollapsed') === 'true')
   const [collapsedLanes, setCollapsedLanes] = useState({})
   const [activeColumn, setActiveColumn] = useState('todo')
   const scrollRef = useRef(null)
@@ -100,6 +101,10 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
 
   const toggleCompact = useCallback(() => {
     setCompactMode(prev => { localStorage.setItem('taskBoardCompact', String(!prev)); return !prev })
+  }, [])
+
+  const toggleDraftCollapsed = useCallback(() => {
+    setDraftCollapsed(prev => { localStorage.setItem('taskBoardDraftCollapsed', String(!prev)); return !prev })
   }, [])
 
   const handleSwimlaneChange = useCallback((value) => {
@@ -418,6 +423,41 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
         <div className="flex gap-4 overflow-x-auto pb-4">
           {displayColumns.map(col => {
             const colTasks = columnTasks[col.id] || []
+            // Collapsed Draft column → thin clickable rail that reclaims horizontal space
+            if (col.id === 'draft' && draftCollapsed) {
+              return (
+                <button
+                  key={col.id}
+                  type="button"
+                  onClick={toggleDraftCollapsed}
+                  className="apple-press flex flex-col items-center self-stretch"
+                  title={`Expand Draft column (${colTasks.length})`}
+                  aria-label={`Expand Draft column, ${colTasks.length} tasks`}
+                  aria-expanded={false}
+                  style={{
+                    flex: '0 0 auto',
+                    width: '40px',
+                    minHeight: '160px',
+                    gap: 'var(--space-3)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: 'var(--space-3) 0',
+                    background: 'var(--bg-secondary)',
+                    border: 'var(--border-hairline)',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    transition: `background var(--duration-normal) var(--ease-default)`,
+                  }}
+                >
+                  <ChevronRight className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+                  <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: 'var(--space-1)', borderRadius: 'var(--radius-full)', minWidth: '24px', textAlign: 'center' }}>
+                    {colTasks.length}
+                  </span>
+                  <span style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', letterSpacing: 'var(--tracking-wide)', color: 'var(--text-muted)' }}>
+                    Draft
+                  </span>
+                </button>
+              )
+            }
             return (
               <div
                 key={col.id}
@@ -441,6 +481,19 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                   style={selectable && !col.isSafety ? { borderRadius: 'var(--radius-sm)', padding: 'var(--space-1) var(--space-2)', margin: '0 0 var(--space-2) 0', transition: `all var(--duration-fast) var(--ease-default)`, background: colTasks.length > 0 && colTasks.every(t => selectedIds.includes(t.id)) ? 'color-mix(in srgb, var(--accent-app) 12%, transparent)' : undefined } : undefined}
                 >
                   <div className="flex items-center gap-2">
+                    {col.id === 'draft' && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); toggleDraftCollapsed() }}
+                        className="apple-press"
+                        title="Collapse Draft column"
+                        aria-label="Collapse Draft column"
+                        aria-expanded={true}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     {selectable && !col.isSafety && (
                       <Checkbox
                         checked={colTasks.length > 0 && colTasks.every(t => selectedIds.includes(t.id))}
