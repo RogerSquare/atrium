@@ -40,16 +40,33 @@ import ErrorToast from '../ErrorToast'
 import UndoToast from '../UndoToast'
 
 const WIDTH_STORAGE_KEY = 'taskBoardDetailWidth'
+// The default width doubles as the MINIMUM — the detail pane can be dragged
+// WIDER (to give the task more room) but never narrower than its default. This
+// inverts the old behavior where default === max and you could only shrink it.
 const DEFAULT_WIDTH = 720
-const MIN_WIDTH = 380
-const MAX_WIDTH = 720
+const MIN_WIDTH = DEFAULT_WIDTH
+// Keep at least this much horizontal space for the focal zone (board/list) so
+// the pane can't grow to cover the whole window.
+const MIN_FOCAL = 400
+
+// Upper bound is viewport-relative so the pane never exceeds the window: it can
+// grow until the focal zone is squeezed to MIN_FOCAL, but no further. Guards
+// against MIN > max on very narrow desktops by never returning below MIN_WIDTH.
+function maxDetailWidth(viewportWidth = window.innerWidth) {
+  return Math.max(MIN_WIDTH, viewportWidth - MIN_FOCAL)
+}
+
+function clampWidth(raw, viewportWidth = window.innerWidth) {
+  const n = Number(raw)
+  if (!Number.isFinite(n)) return DEFAULT_WIDTH
+  return Math.max(MIN_WIDTH, Math.min(n, maxDetailWidth(viewportWidth)))
+}
 
 function readStoredWidth() {
   try {
     const raw = localStorage.getItem(WIDTH_STORAGE_KEY)
-    const n = Number(raw)
-    if (Number.isFinite(n) && n >= MIN_WIDTH && n <= MAX_WIDTH) return n
-  } catch {}
+    if (raw != null) return clampWidth(raw)
+  } catch { /* storage unavailable — fall through to default */ }
   return DEFAULT_WIDTH
 }
 
@@ -88,6 +105,25 @@ export default function AppShell() {
   const [activeView, setActiveView] = useState(() => localStorage.getItem('taskBoardView') || 'board')
   const [focusModal, setFocusModal] = useState(false)
   const [detailWidth, setDetailWidth] = useState(readStoredWidth)
+
+  // Single source of truth for resizing the detail pane: clamp to
+  // [MIN_WIDTH, viewport − MIN_FOCAL] and persist so the width survives a
+  // reload AND a logout (logout only clears taskBoardUser, not this key).
+  // DetailPane reports a raw target width; clamping/persistence live here.
+  const setDetailWidthClamped = useCallback((raw) => {
+    const w = clampWidth(raw)
+    setDetailWidth(w)
+    try { localStorage.setItem(WIDTH_STORAGE_KEY, String(w)) } catch { /* storage disabled */ }
+  }, [])
+
+  // Re-clamp on viewport shrink so a previously-wide pane can never end up
+  // larger than the new window. Doesn't persist the shrink — the user's chosen
+  // width is restored (clamped) when there's room again.
+  useEffect(() => {
+    const onResize = () => setDetailWidth(w => clampWidth(w))
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
   const [showSettings, setShowSettings] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [showCreateProject, setShowCreateProject] = useState(false)
@@ -355,7 +391,7 @@ export default function AppShell() {
             canRunAgents={user?.can_run_agents !== false}
             aiChatEnabled={aiChatEnabled}
             width={detailWidth}
-            onWidthChange={setDetailWidth}
+            onWidthChange={setDetailWidthClamped}
             narrow={narrow}
           />
         )}

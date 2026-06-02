@@ -11,7 +11,7 @@
 // Close: X button or Escape key (escape handled in AppShell for global reach).
 // Resize: drag handle on the left edge persists to localStorage.
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { X, FileText, MessageSquare, Activity, Terminal, GitCommit, FlaskConical } from 'lucide-react'
 import { IconButton } from '../ui'
 import DetailDescription from '../detail/DetailDescription'
@@ -34,10 +34,7 @@ const TABS = [
   { id: 'shell', label: 'Shell', icon: Terminal },
 ]
 
-const WIDTH_STORAGE_KEY = 'taskBoardDetailWidth'
 const ACTIVE_TAB_STORAGE_KEY = 'taskBoardDetailActiveTab'
-const MIN_WIDTH = 380
-const MAX_WIDTH = 720
 
 // Lazy-load the persisted tab id. Validates against the TABS list
 // so a renamed tab or hand-edited localStorage value doesn't strand
@@ -89,29 +86,29 @@ export default function DetailPane({
     setActiveTabState(next)
     try { window.localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, next) } catch { /* storage disabled */ }
   }
-  const dragStartX = useRef(null)
-  const dragStartWidth = useRef(null)
+  const [handleHover, setHandleHover] = useState(false)
 
+  // Drag the left edge to resize. Listeners are created per-drag as closures over
+  // the start point/width and removed by their own identity on mouseup — this
+  // avoids the stale-closure + listener-leak bug of recreated handlers. The pane
+  // grows when dragged left (toward the focal zone). Clamping + persistence are
+  // owned by the parent (AppShell.setDetailWidthClamped) so the bounds and the
+  // saved value can never drift apart.
   const handleDragStart = (e) => {
-    dragStartX.current = e.clientX
-    dragStartWidth.current = width
-    window.addEventListener('mousemove', handleDragMove)
-    window.addEventListener('mouseup', handleDragEnd)
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = width
+    const onMove = (ev) => onWidthChange?.(startWidth + (startX - ev.clientX))
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
   }
-  const handleDragMove = (e) => {
-    if (dragStartX.current == null) return
-    const delta = dragStartX.current - e.clientX
-    const next = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, dragStartWidth.current + delta))
-    onWidthChange?.(next)
-  }
-  const handleDragEnd = () => {
-    dragStartX.current = null
-    dragStartWidth.current = null
-    window.removeEventListener('mousemove', handleDragMove)
-    window.removeEventListener('mouseup', handleDragEnd)
-    // Persist current width
-    try { localStorage.setItem(WIDTH_STORAGE_KEY, String(width)) } catch {}
-  }
+  // Double-click resets to the default width. Reporting 0 lets the parent clamp
+  // up to MIN_WIDTH (= the default), so DetailPane needn't know the constant.
+  const handleResetWidth = () => onWidthChange?.(0)
 
   const morphTransition = useMotionTransition({ duration: MOTION_DURATIONS.morph, ease: [0.2, 0.8, 0.2, 1] })
   const tabTransition = useMotionTransition({ duration: MOTION_DURATIONS.tabFade, ease: 'easeOut' })
@@ -143,28 +140,50 @@ export default function DetailPane({
   // Slide direction matches presentation: overlay slides from the right on mobile too.
   return (
     <motion.aside
+      data-testid="detail-pane"
       initial={{ opacity: 0, x: narrow ? '100%' : 24 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: narrow ? '100%' : 24 }}
       transition={morphTransition}
       style={asideStyle}
     >
-      {/* Drag handle — hidden on narrow viewports (no side-by-side layout to resize). */}
+      {/* Drag handle — hidden on narrow viewports (no side-by-side layout to
+          resize). 8px grab area with a hairline that brightens on hover/drag so
+          the affordance is discoverable; double-click resets to default width. */}
       {!narrow && (
         <div
+          data-testid="detail-resize-handle"
           onMouseDown={handleDragStart}
+          onDoubleClick={handleResetWidth}
+          onMouseEnter={() => setHandleHover(true)}
+          onMouseLeave={() => setHandleHover(false)}
+          title="Drag to resize · double-click to reset"
+          aria-label="Resize detail pane"
+          role="separator"
+          aria-orientation="vertical"
           style={{
             position: 'absolute',
             left: 0,
             top: 0,
             bottom: 0,
-            width: '4px',
+            width: '8px',
             cursor: 'col-resize',
-            zIndex: 1,
+            zIndex: 2,
+            touchAction: 'none',
           }}
-          aria-label="Resize detail pane"
-          role="separator"
-        />
+        >
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: '2px',
+              background: handleHover ? 'var(--accent-app)' : 'transparent',
+              transition: 'background var(--duration-fast) var(--ease-default)',
+            }}
+          />
+        </div>
       )}
 
       {/* Header: id + title + close */}
