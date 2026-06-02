@@ -89,7 +89,7 @@ export default function TaskRow({
       {/* Title */}
       <td style={{ padding: '8px 12px' }}>
         <div className="flex items-center gap-2">
-          <span className="truncate max-w-[400px]" style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-medium)', color: 'var(--text-app)' }}>{task.title}</span>
+          <span data-testid="task-row-title" className="truncate max-w-[400px]" style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-medium)', color: 'var(--text-app)' }}>{task.title}</span>
           {viewers.length > 0 && (
             <div className="flex -space-x-1.5 shrink-0">
               {viewers.slice(0, 3).map((v, i) => (
