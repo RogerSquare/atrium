@@ -627,7 +627,23 @@ const registerWebShellHandlers = (socket) => {
         cols,
         rows,
         cwd,
-        env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
+        env: {
+          ...process.env,
+          TERM: 'xterm-256color',
+          COLORTERM: 'truecolor',
+          // Auto-Enter hook correlation (feat-autoenter-hook-signal-001).
+          // The spawned claude inherits these so a Notification
+          // (permission_prompt) hook can tell Atrium which task/session a
+          // prompt belongs to (forwarded back via the X-Atrium-Task-Id
+          // header). Only set for task-bound claude sessions — manual or
+          // global-shell-modal terminals (taskId/sessionId null) leave them
+          // unset so the hook no-ops and never auto-presses Enter for them.
+          // ATRIUM_HOOK_TOKEN, when present in the backend env, also flows
+          // through via the ...process.env spread above so the hook can
+          // authenticate to /api/autoenter/hook.
+          ...(taskId ? { ATRIUM_TASK_ID: taskId } : {}),
+          ...(sessionId ? { ATRIUM_SESSION_ID: sessionId } : {}),
+        },
       });
       const ptyPid = ptyProcess.pid;
       const spawnAt = Date.now();

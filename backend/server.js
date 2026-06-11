@@ -35,6 +35,7 @@ const githubRoutes = require('./routes/github');
 const e2eRunsRoutes = require('./routes/e2eRuns');
 const demosRoutes = require('./routes/demos');
 const autoEnterRoutes = require('./routes/autoenter');
+const { router: autoEnterHookRoutes } = require('./routes/autoenterHook');
 
 // --- Socket Handlers ---
 const { registerChatHandlers, handleChatDisconnect } = require('./sockets/chat');
@@ -246,6 +247,12 @@ app.use('/api/shell', requireAuth, shellRoutes);
 app.use('/api/e2e-runs', e2eRunsRoutes);
 // Demos route is metadata-only; the static demo files are served by Vite without auth.
 app.use('/api/demos', requireAuth, demosRoutes);
+// Auto-Enter Notification hook receiver (feat-autoenter-hook-signal-001).
+// PUBLIC by design — the caller is the spawned `claude` process, which has
+// no JWT; it self-authenticates with the ATRIUM_HOOK_TOKEN shared secret
+// when configured. Mounted BEFORE the protected /api/autoenter so the
+// more-specific /hook path bypasses requireAuth.
+app.use('/api/autoenter/hook', autoEnterHookRoutes);
 // Auto-Enter capture log — terminal toggle POSTs unrecognized prompts here for analysis.
 app.use('/api/autoenter', requireAuth, autoEnterRoutes);
 

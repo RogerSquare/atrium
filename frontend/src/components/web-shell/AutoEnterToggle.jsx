@@ -22,7 +22,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CornerDownLeft, Copy, HelpCircle, X } from 'lucide-react'
-import { classifyTail, tailMatchesPrompt } from './autoEnterPatterns'
+import { classifyTail, tailMatchesPrompt, DENY_PATTERNS } from './autoEnterPatterns'
 import { API_URL, apiFetch } from '../../config'
 
 const STORAGE_PREFIX = 'autoenter:armed:'
@@ -238,9 +238,37 @@ export default function AutoEnterToggle({ task, socket }) {
       }
     }
 
+    // Hook-driven path (feat-autoenter-hook-signal-001): the backend emits
+    // `webshell:prompt` when a Claude Code Notification(permission_prompt)
+    // hook fires — an authoritative "a permission prompt is on screen now"
+    // signal that doesn't depend on scraping/ANSI-stripping PTY output. This
+    // is the primary trigger; the regex path above stays as a fallback. Both
+    // share `cooldownUntilRef`, so whichever fires first wins and the other
+    // is suppressed for COOLDOWN_MS — no double-Enter on the same prompt.
+    const handlePrompt = (payload) => {
+      if (!payload || payload.taskId !== wireTaskId) return
+      if (!armedRef.current) return
+      const now = Date.now()
+      if (now < cooldownUntilRef.current) return
+      // Deny intents (destructive ops, plan-mode gates, "are you sure")
+      // must never auto-fire — surface them for a human glance. The hook
+      // hands us a clean message string, so reuse the same denylist the
+      // regex classifier uses instead of re-deriving it.
+      const message = typeof payload.message === 'string' ? payload.message : ''
+      if (DENY_PATTERNS.some((re) => re.test(message))) return
+      if (socket.connected) {
+        socket.emit('webshell:input', { taskId: wireTaskId, data: '\r' })
+      }
+      cooldownUntilRef.current = now + COOLDOWN_MS
+      bufferRef.current = ''
+      clearStallTimer()
+    }
+
     socket.on('webshell:output', handleOutput)
+    socket.on('webshell:prompt', handlePrompt)
     return () => {
       socket.off('webshell:output', handleOutput)
+      socket.off('webshell:prompt', handlePrompt)
       clearStallTimer()
     }
   }, [socket, wireTaskId, recordCapture])
