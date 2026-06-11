@@ -29,6 +29,12 @@ const STORAGE_PREFIX = 'autoenter:armed:'
 const STORAGE_PREFIX_CAPTURES = 'autoenter:captures:'
 const BUFFER_LIMIT = 512
 const COOLDOWN_MS = 600
+// Settle window after a hook `webshell:prompt` event before we decide
+// whether to fire. The hook signals WHEN a prompt appears, but the rendered
+// prompt TEXT arrives on a separate path (webshell:output → bufferRef) and
+// can lag the notification by a few ms. We wait this long so the deny check
+// runs against a buffer that actually contains the prompt body.
+const HOOK_SETTLE_MS = 250
 const STALL_MS = 1000
 const CAPTURE_LIMIT = 20
 const CAPTURE_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
@@ -133,6 +139,9 @@ export default function AutoEnterToggle({ task, socket }) {
   const bufferRef = useRef('')
   const cooldownUntilRef = useRef(0)
   const stallTimerRef = useRef(null)
+  // Pending hook-fire timer (HOOK_SETTLE_MS). Held in a ref so a second
+  // prompt event coalesces onto one decision and cleanup can cancel it.
+  const promptFireTimerRef = useRef(null)
 
   // Captures live in two layers: a ref so the inactivity classifier
   // doesn't have to read localStorage on every fire (cheap path) and
@@ -248,20 +257,36 @@ export default function AutoEnterToggle({ task, socket }) {
     const handlePrompt = (payload) => {
       if (!payload || payload.taskId !== wireTaskId) return
       if (!armedRef.current) return
-      const now = Date.now()
-      if (now < cooldownUntilRef.current) return
-      // Deny intents (destructive ops, plan-mode gates, "are you sure")
-      // must never auto-fire — surface them for a human glance. The hook
-      // hands us a clean message string, so reuse the same denylist the
-      // regex classifier uses instead of re-deriving it.
       const message = typeof payload.message === 'string' ? payload.message : ''
-      if (DENY_PATTERNS.some((re) => re.test(message))) return
-      if (socket.connected) {
-        socket.emit('webshell:input', { taskId: wireTaskId, data: '\r' })
-      }
-      cooldownUntilRef.current = now + COOLDOWN_MS
-      bufferRef.current = ''
-      clearStallTimer()
+      // Defer the fire decision by HOOK_SETTLE_MS so the rendered prompt has
+      // fully streamed into bufferRef. The deny decision MUST be made from
+      // the terminal buffer (which holds the real "Delete…?/Are you sure…?"
+      // body), NOT the hook's `message` field — that field is a generic
+      // "Claude needs your permission…" string that lacks the prompt body,
+      // so a message-based denylist silently lets destructive prompts
+      // through. Coalesce repeat events onto one timer.
+      if (promptFireTimerRef.current) clearTimeout(promptFireTimerRef.current)
+      promptFireTimerRef.current = setTimeout(() => {
+        promptFireTimerRef.current = null
+        if (!armedRef.current) return
+        const now = Date.now()
+        if (now < cooldownUntilRef.current) return
+        // Authoritative deny gate: the rendered buffer. Belt-and-suspenders
+        // second check on the hook message in case CC ever includes the
+        // body there. Either match → hold the prompt for the human.
+        if (
+          classifyTail(bufferRef.current) === 'denied' ||
+          DENY_PATTERNS.some((re) => re.test(message))
+        ) {
+          return
+        }
+        if (socket.connected) {
+          socket.emit('webshell:input', { taskId: wireTaskId, data: '\r' })
+        }
+        cooldownUntilRef.current = now + COOLDOWN_MS
+        bufferRef.current = ''
+        clearStallTimer()
+      }, HOOK_SETTLE_MS)
     }
 
     socket.on('webshell:output', handleOutput)
@@ -270,6 +295,10 @@ export default function AutoEnterToggle({ task, socket }) {
       socket.off('webshell:output', handleOutput)
       socket.off('webshell:prompt', handlePrompt)
       clearStallTimer()
+      if (promptFireTimerRef.current) {
+        clearTimeout(promptFireTimerRef.current)
+        promptFireTimerRef.current = null
+      }
     }
   }, [socket, wireTaskId, recordCapture])
 

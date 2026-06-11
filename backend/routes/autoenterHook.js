@@ -104,7 +104,18 @@ router.post('/', (req, res) => {
     }
   }
   logger.info(
-    { taskId, notificationType: notificationType || 'permission_prompt', hasMessage: !!message },
+    {
+      taskId,
+      notificationType: notificationType || 'permission_prompt',
+      hasMessage: !!message,
+      // Log the raw message (truncated) so we can see exactly what CC puts
+      // in the Notification `message` field for a permission prompt. This
+      // tells us whether the message ever carries the prompt body (e.g.
+      // "Delete config.json?") or just a generic "Claude needs your
+      // permission…" string — which is why the deny decision is made from
+      // the terminal buffer on the frontend, not from this message.
+      message: message ? message.slice(0, 300) : '',
+    },
     'autoenter-hook: permission prompt signaled',
   );
   return res.status(200).json({ ok: true });
