@@ -30,7 +30,9 @@
 //
 // `command` (optional): when set, server spawns `cmd.exe /c <command>`
 // directly so there's no banner/prompt before the launched CLI takes
-// over the canvas. When unset, an interactive cmd.exe is spawned.
+// over the canvas. When unset but a claude session is bound, the resolved
+// claude binary is spawned DIRECTLY (no cmd.exe) via ../lib/claudeBin.js —
+// see opt-webshell-claude-path-001. When neither, an interactive cmd.exe.
 //
 // Phase 2 introduced a `Map<taskId, ptyEntry>` per socket so background
 // sessions stay alive when the user navigates to a different task: a
@@ -40,13 +42,12 @@
 // phase 2 (warning log at `WEB_SHELL_MAX_PTYS`); phase 4 enforces eviction.
 
 const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const crypto = require('crypto');
 const pty = require('node-pty');
 const { logger } = require('../lib/logger');
 const { SETTINGS_FILE } = require('../lib/constants');
 const { getAllTasks, updateTaskField } = require('../lib/tasks');
+const { resolveClaudeBin, buildClaudeArgs, claudeVersion } = require('../lib/claudeBin');
 
 const DEFAULT_SHELL = process.env.WEB_SHELL_DEFAULT_SHELL || 'cmd.exe';
 
@@ -68,56 +69,10 @@ function resolveCwd() {
   }
 }
 
-// Compute the on-disk session file path claude uses for a given
-// (cwd, sessionId) pair. claude stores sessions under
-// ~/.claude/projects/<slug>/<uuid>.jsonl where the slug is the
-// absolute cwd with every path separator AND `:` replaced by `-`.
-// So `C:\Users\RogerSquare\Documents\opencode` becomes the slug
-// `C--Users-RogerSquare-Documents-opencode`. Resolved relative to
-// the user's home dir.
-function claudeSlugForCwd(cwd) {
-  return cwd.replace(/[\\/:]/g, '-');
-}
-function claudeSessionFile(cwd, sessionId) {
-  return path.join(os.homedir(), '.claude', 'projects', claudeSlugForCwd(cwd), `${sessionId}.jsonl`);
-}
-
-// Pick the right claude command line for the requested session:
-//   - tryResume=true   → if the session file exists on disk, use
-//                        `claude --resume <uuid>` (revives the
-//                        conversation); else fall back to
-//                        `claude --session-id <uuid>` so the spawn
-//                        doesn't error with "No conversation found".
-//   - tryResume=false  → always `claude --session-id <uuid>`
-//                        (used by Start New Session after rotating).
-// The decision is logged so the user can correlate Shell-tab
-// behavior with what the backend actually spawned.
-function buildClaudeCommand(cwd, sessionId, tryResume, socketId) {
-  if (!sessionId) return 'claude';
-  const sessionFile = claudeSessionFile(cwd, sessionId);
-  let exists = false;
-  try { exists = fs.existsSync(sessionFile); } catch { exists = false; }
-  const useResume = tryResume && exists;
-  const command = useResume
-    ? `claude --resume ${sessionId}`
-    : `claude --session-id ${sessionId}`;
-  // Structured log to diagnose per-task session recovery — this is
-  // the trail to look at when "Resume" doesn't behave as expected.
-  logger.info(
-    {
-      socketId,
-      cwd,
-      sessionId,
-      tryResume,
-      sessionFile,
-      sessionFileExists: exists,
-      decision: useResume ? '--resume' : '--session-id',
-      command,
-    },
-    'web-shell: resolved claude command for session'
-  );
-  return command;
-}
+// Session-file path resolution and the claude-launch decision now live in
+// ../lib/claudeBin.js (resolveClaudeBin / buildClaudeArgs), so the binary
+// is resolved to a concrete absolute path instead of a bare PATH lookup and
+// the whole decision is unit-tested. See opt-webshell-claude-path-001.
 
 // Resolve the claude session UUID bound to this task. Source of truth is
 // the task YAML's `claude_session_id` field (feat-shell-task-resume-002).
@@ -613,21 +568,55 @@ const registerWebShellHandlers = (socket) => {
         'web-shell: resolved session binding'
       );
 
-      let command = typeof config.command === 'string' && config.command.length > 0
+      // Decide what to spawn. Three shapes:
+      //   1. Custom `config.command` (arbitrary string, e.g. the global-shell
+      //      modal) -> still run via `cmd.exe /c <command>` so PATH search and
+      //      shell builtins behave as the caller expects.
+      //   2. A claude session (sessionId present) -> resolve the claude binary
+      //      to a concrete absolute path (opt-webshell-claude-path-001) and
+      //      spawn it DIRECTLY with an args array. No cmd.exe in between, so
+      //      there is no PATH ambiguity and no `cmd /c` quote-stripping to get
+      //      wrong on paths with spaces — node-pty quotes argv[0] for us.
+      //   3. Neither -> an interactive DEFAULT_SHELL.
+      const customCommand = typeof config.command === 'string' && config.command.length > 0
         ? config.command
         : null;
-      if (!command && sessionId) {
-        command = buildClaudeCommand(cwd, sessionId, tryResume, socket.id);
-      }
 
-      const useCommandSpawn = command !== null;
-      const spawnCmd = useCommandSpawn ? 'cmd.exe' : DEFAULT_SHELL;
-      const spawnArgs = useCommandSpawn ? ['/c', command] : [];
+      let spawnCmd;
+      let spawnArgs;
+      let command;            // display/log string only
+      let claudeBinInfo = null;
+      let claudeArgInfo = null;
+
+      if (customCommand) {
+        spawnCmd = 'cmd.exe';
+        spawnArgs = ['/c', customCommand];
+        command = customCommand;
+      } else if (sessionId) {
+        claudeBinInfo = resolveClaudeBin();
+        claudeArgInfo = buildClaudeArgs(cwd, sessionId, tryResume);
+        spawnCmd = claudeBinInfo.bin;
+        spawnArgs = claudeArgInfo.args;
+        command = `${spawnCmd} ${spawnArgs.join(' ')}`;
+      } else {
+        spawnCmd = DEFAULT_SHELL;
+        spawnArgs = [];
+        command = null;
+      }
 
       logger.info(
         {
           spawnId, cwd, cols, rows, command, sessionId, tryResume,
           spawnCmd, spawnArgs, socketId: socket.id, taskId,
+          // opt-webshell-claude-path-001: make the resolved binary + the
+          // resume/session-id decision observable so any future version drift
+          // is diagnosable straight from this one log line.
+          claudeBin: claudeBinInfo ? claudeBinInfo.bin : null,
+          claudeBinSource: claudeBinInfo ? claudeBinInfo.source : null,
+          claudeBinExists: claudeBinInfo ? claudeBinInfo.exists : null,
+          claudeVersion: claudeBinInfo ? claudeVersion(claudeBinInfo.bin) : null,
+          claudeSessionDecision: claudeArgInfo ? claudeArgInfo.decision : null,
+          claudeSessionFileExists: claudeArgInfo ? claudeArgInfo.sessionFileExists : null,
           spawnTimingMs: Date.now() - startReceivedAt,
         },
         'web-shell: spawning PTY'
