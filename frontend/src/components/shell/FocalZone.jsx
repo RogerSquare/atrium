@@ -12,6 +12,7 @@ import Board from '../Board'
 import ListView from '../ListView'
 import ChangesView from '../ChangesView'
 import DemosView from '../DemosView'
+import LoopsView from '../LoopsView'
 import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
 
 // Lazy-loaded — vis-network is ~700KB and only matters when the graph view
@@ -39,6 +40,7 @@ export default function FocalZone({
   onToggleBulkSelect,
   recentlyUpdatedIds,
   githubLinks,
+  socketRef,
   topSlot,
 }) {
   const transition = useMotionTransition({ duration: MOTION_DURATIONS.viewFade, ease: 'easeOut' })
@@ -107,6 +109,8 @@ export default function FocalZone({
                 githubLinks={githubLinks}
               />
             </Suspense>
+          ) : activeView === 'loops' ? (
+            <LoopsView projects={projects} socketRef={socketRef} />
           ) : activeView === 'demos' ? (
             <DemosView tasks={tasks} onSelectTask={onSelectTask} />
           ) : (

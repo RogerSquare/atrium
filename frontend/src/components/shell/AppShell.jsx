@@ -357,6 +357,7 @@ export default function AppShell() {
         }
         recentlyUpdatedIds={recentlyUpdatedIds}
         githubLinks={githubLinks}
+        socketRef={socketRef}
         topSlot={
           bulkSelectMode && selectedTaskIds.length > 0 ? (
             <BulkActionBar
