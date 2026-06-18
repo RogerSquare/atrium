@@ -99,4 +99,29 @@ test.describe('Loops view (backend flow)', () => {
     await row.getByRole('button', { name: 'Delete' }).click();
     await expect(row).toHaveCount(0, { timeout: 10_000 });
   });
+
+  test('open loop detail cockpit + switch tabs (feat-loopsv2-detail-001)', async ({ page }) => {
+    const name = `e2e cockpit ${Date.now()}`;
+    await expect(page.getByTestId('loops-view')).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId('new-loop-button').click();
+    const modal = page.getByTestId('loop-modal');
+    await expect(modal).toBeVisible();
+    await modal.getByLabel('Name').fill(name);
+    await modal.getByRole('button', { name: 'Create' }).click();
+
+    const row = page.getByTestId('loop-row').filter({ hasText: name });
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await row.getByTestId('loop-open').click();
+
+    const detail = page.getByTestId('loop-detail');
+    await expect(detail).toBeVisible();
+    // tabs render + switch
+    for (const tab of ['instructions', 'activity', 'terminal', 'config']) {
+      await page.getByTestId(`loop-tab-${tab}`).click();
+    }
+    // clean up via the detail's Delete
+    page.on('dialog', (d) => d.accept());
+    await detail.getByRole('button', { name: 'Delete' }).click();
+    await expect(row).toHaveCount(0, { timeout: 10_000 });
+  });
 });

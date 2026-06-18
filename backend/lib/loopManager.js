@@ -144,13 +144,13 @@ async function handleIssues(loop, prevIssues) {
 
 // --- Phase 3 hook point --------------------------------------------------
 
-// Replaced by feat-loops-hook-agent-001 with a hook-tracked headless agent run.
-// Deterministic phase: just record intent.
-function requestSummary(loop, taskId, events) {
-  logger.info(
-    { loopId: loop.id, taskId, events: events.map((e) => e.type) },
-    'loop: ai_summary requested (deferred to feat-loops-hook-agent-001)'
-  );
+// feat-loops-hook-agent-001: spawn a headless `claude -p` summary run for the
+// first high-signal event, capturing full context into a reviewable run record.
+// Fire-and-forget so it never blocks/throws into the tick.
+function requestSummary(loop, taskId, events, cur) {
+  const loopAgent = require('./loopAgent');
+  const event = (events.find((e) => HIGH_SIGNAL.has(e.type)) || events[0]).type;
+  loopAgent.summarizeAsync(loop, { taskId, prNumber: cur && cur.pr_number, event });
 }
 
 // --- Actions -------------------------------------------------------------
@@ -240,7 +240,7 @@ async function runTick(loop) {
       await applyMergePolicy(loop, task);
     }
     if (loop.actions.includes('ai_summary') && events.some((e) => HIGH_SIGNAL.has(e.type))) {
-      requestSummary(loop, taskId, events);
+      requestSummary(loop, taskId, events, cur);
     }
     changed.push({ taskId, events: events.map((e) => e.type) });
   }
