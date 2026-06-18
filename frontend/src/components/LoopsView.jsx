@@ -93,27 +93,42 @@ function LoopRow({ loop, onToggle, onRun, onEdit, onDelete }) {
  * Top-level Loops view (feat-loops-ui-global-001) — the home for all loops,
  * project-scoped and independent. Lives alongside Board / List / Changes.
  */
-export default function LoopsView({ projects = [], socketRef }) {
+export default function LoopsView({ projects = [], activeProject, socketRef }) {
   const { loops, loading, error, createLoop, updateLoop, deleteLoop, runLoop } = useLoops(socketRef)
-  const [modal, setModal] = useState(null) // { loop } | { loop: null } | null
+  const [modal, setModal] = useState(null) // { loop, initialProject? } | null
+
+  // Project-scoped mode: when a single project is selected (not "All"), this
+  // view becomes that project's loops tab — show only its loops and prefill
+  // "new loop" with scope=project for it. Mirrors how ChangesView keys off
+  // activeProject. "All" shows every loop (global + project).
+  const scoped = !!activeProject && activeProject !== 'All'
+  const visibleLoops = scoped
+    ? loops.filter((l) => l.scope === 'project' && l.project === activeProject)
+    : loops
 
   const onToggle = (loop, enabled) => updateLoop(loop.id, { enabled }).catch((e) => alert(e.message))
   const onDelete = (loop) => { if (window.confirm(`Delete loop "${loop.name}"?`)) deleteLoop(loop.id).catch((e) => alert(e.message)) }
   const onRun = (id) => runLoop(id).catch((e) => alert(e.message))
 
   return (
-    <div data-testid="loops-view" style={{ maxWidth: 880, margin: '0 auto' }}>
+    <div data-testid="loops-view" data-scoped={scoped ? activeProject : 'all'} style={{ maxWidth: 880, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)' }}>
         <div>
           <h1 style={{ fontSize: 'var(--text-title3)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <Repeat className="w-5 h-5" style={{ color: 'var(--accent-app)' }} /> Loops
+            <Repeat className="w-5 h-5" style={{ color: 'var(--accent-app)' }} /> Loops{scoped ? ` · ${activeProject}` : ''}
           </h1>
           <p style={{ fontSize: 'var(--text-caption1)', color: 'var(--text-muted)', marginTop: '2px' }}>
-            GitHub watchers that reflect PR / CI / commit / issue changes onto tasks.
+            {scoped
+              ? `Watchers for ${activeProject}. Switch the project to "All" to see every loop.`
+              : 'GitHub watchers that reflect PR / CI / commit / issue changes onto tasks.'}
           </p>
         </div>
-        <Button variant="primary" onClick={() => setModal({ loop: null })} data-testid="new-loop-button">
-          <Plus className="w-4 h-4" /> New loop
+        <Button
+          variant="primary"
+          onClick={() => setModal({ loop: null, initialProject: scoped ? activeProject : undefined })}
+          data-testid="new-loop-button"
+        >
+          <Plus className="w-4 h-4" /> {scoped ? 'New loop for this project' : 'New loop'}
         </Button>
       </div>
 
@@ -122,14 +137,16 @@ export default function LoopsView({ projects = [], socketRef }) {
           <div style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--text-muted)' }} className="italic animate-pulse">Loading loops…</div>
         ) : error ? (
           <div style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--apple-red)' }}>Failed to load loops: {error}</div>
-        ) : loops.length === 0 ? (
+        ) : visibleLoops.length === 0 ? (
           <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-muted)' }}>
             <Repeat className="w-8 h-8" style={{ margin: '0 auto var(--space-3)', color: 'var(--text-tertiary)' }} />
-            <div style={{ fontSize: 'var(--text-subhead)', color: 'var(--text-app)', marginBottom: '4px' }}>No loops yet</div>
+            <div style={{ fontSize: 'var(--text-subhead)', color: 'var(--text-app)', marginBottom: '4px' }}>
+              {scoped ? `No loops for ${activeProject}` : 'No loops yet'}
+            </div>
             <div style={{ fontSize: 'var(--text-caption1)' }}>Create one to start watching a repo.</div>
           </div>
         ) : (
-          loops.map((loop) => (
+          visibleLoops.map((loop) => (
             <LoopRow key={loop.id} loop={loop} onToggle={onToggle} onRun={onRun} onEdit={(l) => setModal({ loop: l })} onDelete={onDelete} />
           ))
         )}
@@ -138,6 +155,7 @@ export default function LoopsView({ projects = [], socketRef }) {
       {modal && (
         <LoopModal
           loop={modal.loop}
+          initialProject={modal.initialProject}
           projects={projects}
           onSubmit={(body) => (modal.loop ? updateLoop(modal.loop.id, body) : createLoop(body))}
           onClose={() => setModal(null)}

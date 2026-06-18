@@ -44,6 +44,27 @@ test.describe('Loops view (render)', () => {
   });
 });
 
+// Project-scoped mode: with a project selected (not "All"), the view becomes
+// that project's loops tab. Render-level (no backend needed).
+test.describe('Loops view (project-scoped)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('taskBoardUser', JSON.stringify({ username: 'e2e' }));
+      localStorage.setItem('taskBoardView', 'loops');
+      localStorage.setItem('opusBoardActiveProject', 'Atrium');
+      localStorage.setItem('taskBoardThemeMigratedToOled', '1');
+    });
+    await page.goto('/');
+  });
+
+  test('scopes to the active project and prefills the create button', async ({ page }) => {
+    const view = page.getByTestId('loops-view');
+    await expect(view).toBeVisible({ timeout: 15_000 });
+    await expect(view).toHaveAttribute('data-scoped', 'Atrium');
+    await expect(page.getByTestId('new-loop-button')).toContainText('this project');
+  });
+});
+
 // The full create -> list -> toggle -> run flow needs a backend serving
 // /api/loops (model+engine phases) + a token, so it's gated on ATRIUM_API_TOKEN.
 test.describe('Loops view (backend flow)', () => {
