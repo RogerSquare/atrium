@@ -95,6 +95,53 @@ function describeEvents(events, cur) {
   return lines.join('\n');
 }
 
+// --- Issues (feat-loops-watch-types-001) ---------------------------------
+
+// Deterministic id for an issue-imported task. `feat-issue-<num>-001` satisfies
+// the canonical task-id regex and is stable per issue so re-runs don't dup.
+function issueTaskId(num) {
+  return `feat-issue-${num}-001`;
+}
+
+// Pure: issues present now but not in the prior snapshot map. Exported for tests.
+// `prevIssues` is the snapshot.issues object ({ [number]: updatedAt }).
+function detectNewIssues(prevIssues, issues) {
+  const prev = prevIssues || {};
+  return (issues || []).filter((i) => i && i.number != null && !(i.number in prev));
+}
+
+// Fetch open issues, create a draft task per previously-unseen one (decision 3),
+// and return the new snapshot.issues map. Gated by the caller on watch:'issues'.
+async function handleIssues(loop, prevIssues) {
+  const { createTask } = require('./tasks');
+  const data = await github.getIssues(loop.project, { refresh: true });
+  const issues = data.issues || [];
+  const snapshotIssues = {};
+  for (const i of issues) snapshotIssues[i.number] = i.updatedAt || null;
+
+  let created = 0;
+  for (const issue of detectNewIssues(prevIssues, issues)) {
+    const id = issueTaskId(issue.number);
+    try {
+      createTask({
+        id,
+        title: `Issue #${issue.number}: ${issue.title}`.slice(0, 200),
+        status: 'draft',
+        type: 'fullstack',
+        project: loop.project,
+        tags: ['from-github-issue'],
+        content: `### Description\nImported from GitHub issue [#${issue.number}](${issue.url}) by loop "${loop.name}".\n\n- [ ] Triage and scope\n\n### Comments\n`,
+        created_by: `loop:${loop.id}`,
+      });
+      created++;
+    } catch (err) {
+      // 409 = the task already exists (snapshot lost but file persisted) — skip quietly.
+      if (err.status !== 409) logger.warn({ err: err.message, id, loopId: loop.id }, 'loop: failed to create task from issue');
+    }
+  }
+  return { snapshotIssues, created };
+}
+
 // --- Phase 3 hook point --------------------------------------------------
 
 // Replaced by feat-loops-hook-agent-001 with a hook-tracked headless agent run.
@@ -198,13 +245,22 @@ async function runTick(loop) {
     changed.push({ taskId, events: events.map((e) => e.type) });
   }
 
+  // Issues -> draft tasks (only when watched). Independent of the PR loop.
+  let nextIssues = (loop.snapshot && loop.snapshot.issues) || {};
+  let issuesCreated = 0;
+  if (loop.watch.includes('issues')) {
+    const res = await handleIssues(loop, nextIssues);
+    nextIssues = res.snapshotIssues;
+    issuesCreated = res.created;
+  }
+
   const snapshot = {
     prs: nextPrs,
     branches: (loop.snapshot && loop.snapshot.branches) || {},
-    issues: (loop.snapshot && loop.snapshot.issues) || {},
+    issues: nextIssues,
   };
   return {
-    result: { changes: changed.length, detail: changed, fetched_at: links.fetched_at },
+    result: { changes: changed.length, issues_created: issuesCreated, detail: changed, fetched_at: links.fetched_at },
     snapshot,
   };
 }
@@ -299,5 +355,5 @@ function shutdown() {
 module.exports = {
   init, onLoopChanged, onLoopRemoved, runLoopNow, shutdown,
   // exported for tests:
-  detectChanges, normalizeEntry, describeEvents, HIGH_SIGNAL,
+  detectChanges, normalizeEntry, describeEvents, detectNewIssues, issueTaskId, HIGH_SIGNAL,
 };
