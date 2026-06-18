@@ -32,6 +32,7 @@ const previewRoutes = require('./routes/preview');
 const shellRoutes = require('./routes/shell');
 const approvalsRoutes = require('./routes/approvals');
 const githubRoutes = require('./routes/github');
+const loopsRoutes = require('./routes/loops');
 const e2eRunsRoutes = require('./routes/e2eRuns');
 const demosRoutes = require('./routes/demos');
 const autoEnterRoutes = require('./routes/autoenter');
@@ -242,6 +243,7 @@ app.use('/api/ai', requireAuth, aiRoutes);
 app.use('/api/design', requireAuth, designRoutes);
 app.use('/api/preview', optionalAuth, previewRoutes);
 app.use('/api/github', requireAuth, githubRoutes);
+app.use('/api/loops', requireAuth, loopsRoutes);
 app.use('/api/shell', requireAuth, shellRoutes);
 // e2e-runs handles auth per-endpoint so the artifact-file GET can accept ?token= for media tags.
 app.use('/api/e2e-runs', e2eRunsRoutes);
