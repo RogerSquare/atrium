@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 
-const PORT = 3001;
+const PORT = Number(process.env.PORT) || 3001;
 const TASKS_DIR = path.join(__dirname, '..', 'tasks');
 const HISTORY_DIR = path.join(TASKS_DIR, '.history');
 const TRASH_DIR = path.join(TASKS_DIR, '.trash');
