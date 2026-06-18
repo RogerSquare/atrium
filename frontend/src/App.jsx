@@ -393,7 +393,7 @@ function AppContent() {
               <GraphView tasks={filteredTasks} projects={projects} onSelectTask={selectTask} githubLinks={githubLinks} />
             </Suspense>
           ) : activeView === 'loops' ? (
-            <LoopsView projects={projects} socketRef={socketRef} />
+            <LoopsView projects={projects} activeProject={activeProject} socketRef={socketRef} />
           ) : activeView === 'demos' ? (
             <DemosView tasks={tasks} onSelectTask={selectTask} />
           ) : (

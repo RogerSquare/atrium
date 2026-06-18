@@ -38,12 +38,12 @@ function CheckboxRow({ option, checked, onToggle }) {
  * Create/edit a loop. `loop` null = create mode. `onSubmit(body)` returns a
  * promise; the modal stays open and shows the error if it rejects.
  */
-export default function LoopModal({ loop, projects = [], onSubmit, onClose }) {
+export default function LoopModal({ loop, initialProject, projects = [], onSubmit, onClose }) {
   const editing = !!loop
   const [name, setName] = useState(loop?.name || '')
   const [scope, setScope] = useState(loop?.scope || 'project')
   const namedProjects = projects.filter((p) => (p.folder || p) !== 'Root')
-  const [project, setProject] = useState(loop?.project || namedProjects[0]?.folder || '')
+  const [project, setProject] = useState(loop?.project || initialProject || namedProjects[0]?.folder || '')
   const [repo, setRepo] = useState(loop?.repo || '')
   const [watch, setWatch] = useState(loop?.watch || ['prs', 'ci'])
   const [actions, setActions] = useState(loop?.actions || ['update_fields', 'comment'])

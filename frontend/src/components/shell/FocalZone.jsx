@@ -110,7 +110,7 @@ export default function FocalZone({
               />
             </Suspense>
           ) : activeView === 'loops' ? (
-            <LoopsView projects={projects} socketRef={socketRef} />
+            <LoopsView projects={projects} activeProject={activeProject} socketRef={socketRef} />
           ) : activeView === 'demos' ? (
             <DemosView tasks={tasks} onSelectTask={onSelectTask} />
           ) : (
