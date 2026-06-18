@@ -18,6 +18,10 @@ const CHAT_FILE = path.join(CHAT_DIR, 'chat-messages.json');
 const MAX_CHAT_MESSAGES = 500;
 const INSTRUCTIONS_FILE = path.join(__dirname, '..', '..', 'instructions.md');
 const PROJECTS_FILE = path.join(__dirname, '..', 'projects.json');
+// GitHub-watcher Loops persistence (feat-loops-model-001). Runtime data,
+// gitignored like settings.json/services.json. Env override lets tests point
+// at a throwaway file instead of clobbering real loops.
+const LOOPS_FILE = process.env.ATRIUM_LOOPS_FILE || path.join(__dirname, '..', 'loops.json');
 // Playwright e2e run artifacts (feat-e2e-tests-tab-001). Per-task subdirs;
 // each subdir is one run, capped at MAX_E2E_RUNS_PER_TASK newest-first.
 const E2E_RUNS_DIR = path.join(__dirname, '..', 'e2e-runs');
@@ -71,7 +75,7 @@ const JWT_SECRET = resolveJwtSecret();
 module.exports = {
   PORT, TASKS_DIR, HISTORY_DIR, USERS_DIR, SETTINGS_FILE,
   SERVICES_FILE, CHAT_DIR, CHAT_FILE, MAX_CHAT_MESSAGES,
-  INSTRUCTIONS_FILE, JWT_SECRET, TRASH_DIR, ARCHIVED_DIR, PROJECTS_FILE, APPROVALS_DIR,
+  INSTRUCTIONS_FILE, JWT_SECRET, TRASH_DIR, ARCHIVED_DIR, PROJECTS_FILE, LOOPS_FILE, APPROVALS_DIR,
   AGENT_TOKENS_DIR, AGENT_TOKENS_BLOCKLIST,
   E2E_RUNS_DIR, MAX_E2E_RUNS_PER_TASK,
   AUTOENTER_DIR, AUTOENTER_CAPTURES_FILE, MAX_AUTOENTER_CAPTURES,
