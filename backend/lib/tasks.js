@@ -323,4 +323,57 @@ const appendComment = async (taskId, comment, actor = 'Agent') => {
   });
 };
 
-module.exports = { getAllTasks, findTaskFilePath, buildIndex, indexSet, indexDelete, invalidateCache, atomicWriteFileSync, cleanupTempFiles, trimActivityLog, getFullActivityLog, generateSummary, updateTaskField, appendComment };
+// Create a task in-process (used by the loop engine to turn a new GitHub issue
+// into a draft task). Mirrors the POST /api/tasks core: id validation, project
+// folder resolution, atomic write, index update, task_created socket emit.
+// Throws an error with `.status` (400 invalid id / 409 duplicate) on failure.
+// Does NOT notify taskWaiters — issue-imported tasks default to `draft`, which
+// the wait-for-next-todo loop ignores anyway.
+const createTask = (fields = {}) => {
+  const { validateTaskId } = require('./taskIdValidator');
+  const { sanitizeFilename, safePath } = require('./sanitize');
+  const { getIO } = require('./io');
+  const {
+    id, title = 'Untitled', status = 'draft', priority = 'medium',
+    content = '', project = 'Root', type = 'fullstack', component = null,
+    tags = [], parent_task = null, depends_on = [], created_by = 'Agent',
+  } = fields;
+
+  const idError = validateTaskId(id);
+  if (idError) { const e = new Error('Invalid task id'); e.status = 400; e.details = idError; throw e; }
+  const taskId = sanitizeFilename(id);
+  if (!taskId || taskId !== id) { const e = new Error('id is not filename-safe'); e.status = 400; throw e; }
+
+  const safeProject = project === 'Root' ? 'Root' : sanitizeFilename(project);
+  const targetDir = safeProject === 'Root' ? TASKS_DIR : safePath(TASKS_DIR, safeProject);
+  if (!targetDir) { const e = new Error('Invalid project name'); e.status = 400; throw e; }
+  if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+
+  const filePath = safePath(targetDir, `${taskId}.md`);
+  if (!filePath) { const e = new Error('Invalid task id'); e.status = 400; throw e; }
+  if (fs.existsSync(filePath)) { const e = new Error('Task id already exists'); e.status = 409; throw e; }
+
+  const now = new Date().toISOString();
+  const data = {
+    id: taskId, title, status, priority, type, component,
+    tags, parent_task, depends_on,
+    created_at: now,
+    activity_log: [{ timestamp: now, action: `Task created by ${created_by}` }],
+  };
+  Object.keys(data).forEach((k) => {
+    if (data[k] === undefined || data[k] === null || data[k] === '') delete data[k];
+  });
+
+  const fileContent = matter.stringify(content, data);
+  atomicWriteFileSync(filePath, fileContent);
+  indexSet(taskId, filePath);
+
+  const created = { id: taskId, ...data, content, project: safeProject };
+  try {
+    const io = getIO();
+    if (io) io.emit('task_created', { ...created, summary: generateSummary(created) });
+  } catch { /* socket.io not ready */ }
+  return created;
+};
+
+module.exports = { getAllTasks, findTaskFilePath, buildIndex, indexSet, indexDelete, invalidateCache, atomicWriteFileSync, cleanupTempFiles, trimActivityLog, getFullActivityLog, generateSummary, updateTaskField, appendComment, createTask };

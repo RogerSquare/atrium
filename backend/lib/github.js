@@ -421,11 +421,39 @@ function clearChangesCache() {
   changesCache.clear();
 }
 
+// ---- Open issues (feat-loops-watch-types-001) -------------------------
+// Reuses the links `cache` map under an `issues#<repo>` key (same 5-min TTL)
+// so the loop engine's issue polling is rate-limit friendly. Returns open
+// issues only — the engine turns previously-unseen ones into draft tasks.
+async function getIssues(projectIdOrName, { refresh = false } = {}) {
+  const repoPath = resolveProjectRepoPath(projectIdOrName);
+  if (!repoPath) return { issues: [], reason: 'no_git_repo', fetched_at: new Date().toISOString() };
+
+  const cacheKey = `issues#${repoPath}`;
+  const cached = cache.get(cacheKey);
+  if (!refresh && cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.data;
+
+  const out = await ghOutput(repoPath, [
+    'issue', 'list',
+    '--state', 'open',
+    '--limit', '200',
+    '--json', 'number,title,url,updatedAt,state,labels',
+  ]);
+  let issues = [];
+  if (out) {
+    try { issues = JSON.parse(out); } catch (err) { logger.warn({ err: err.message }, 'gh issue list returned non-JSON'); }
+  }
+  const data = { issues, fetched_at: new Date().toISOString() };
+  cache.set(cacheKey, { fetchedAt: Date.now(), data });
+  return data;
+}
+
 module.exports = {
   getLinks,
   clearCache,
   getPrChanges,
   clearChangesCache,
+  getIssues,
   parseGithubRemote,
   parsePrNumberFromUrl,
   matchBranchToTaskId,
