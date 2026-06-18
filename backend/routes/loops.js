@@ -1,6 +1,7 @@
 const express = require('express');
 const loops = require('../lib/loops');
 const loopManager = require('../lib/loopManager');
+const loopAgent = require('../lib/loopAgent');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
@@ -86,6 +87,58 @@ router.post('/:id/run', async (req, res) => {
     res.json({ success: true, loop });
   } catch (err) {
     handleError(res, err, 'Failed to run loop');
+  }
+});
+
+/**
+ * @swagger
+ * /api/loops/{id}/summarize:
+ *   post:
+ *     summary: Run an AI summary for a task's PR (manual trigger). Body { task_id?, pr_number? }.
+ *     tags: [Loops]
+ */
+router.post('/:id/summarize', async (req, res) => {
+  try {
+    const loop = loops.get(req.params.id);
+    if (!loop) return res.status(404).json({ error: 'Loop not found' });
+    const { task_id = null, pr_number = null } = req.body || {};
+    const run = await loopAgent.summarize(loop, { taskId: task_id, prNumber: pr_number, event: 'manual' });
+    res.json({ success: run.status !== 'error', run });
+  } catch (err) {
+    handleError(res, err, 'Failed to summarize');
+  }
+});
+
+/**
+ * @swagger
+ * /api/loops/{id}/runs:
+ *   get:
+ *     summary: List AI-summary run records for a loop (newest first)
+ *     tags: [Loops]
+ */
+router.get('/:id/runs', (req, res) => {
+  try {
+    if (!loops.get(req.params.id)) return res.status(404).json({ error: 'Loop not found' });
+    res.json(loopAgent.listRuns(req.params.id));
+  } catch (err) {
+    handleError(res, err, 'Failed to list runs');
+  }
+});
+
+/**
+ * @swagger
+ * /api/loops/{id}/runs/{runId}:
+ *   get:
+ *     summary: Get a single run record (full context + output) for review
+ *     tags: [Loops]
+ */
+router.get('/:id/runs/:runId', (req, res) => {
+  try {
+    const run = loopAgent.getRun(req.params.id, req.params.runId);
+    if (!run) return res.status(404).json({ error: 'Run not found' });
+    res.json(run);
+  } catch (err) {
+    handleError(res, err, 'Failed to get run');
   }
 });
 

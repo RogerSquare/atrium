@@ -10,6 +10,17 @@ export default function useLoops(socketRef) {
   const [loops, setLoops] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [runsByLoop, setRunsByLoop] = useState({}) // loopId -> run[] (AI summary runs)
+
+  const upsertRun = useCallback((run) => {
+    if (!run || !run.loop_id) return
+    setRunsByLoop((prev) => {
+      const list = prev[run.loop_id] || []
+      const idx = list.findIndex((r) => r.id === run.id)
+      const next = idx === -1 ? [run, ...list] : list.map((r) => (r.id === run.id ? run : r))
+      return { ...prev, [run.loop_id]: next }
+    })
+  }, [])
 
   const refresh = useCallback(async () => {
     try {
@@ -41,8 +52,11 @@ export default function useLoops(socketRef) {
       })
     }
     socket.on('loop_updated', onUpdated)
-    return () => socket.off('loop_updated', onUpdated)
-  }, [socket])
+    // AI-summary runs stream in live (running -> done/error) as the agent works.
+    const onRun = (run) => upsertRun(run)
+    socket.on('loop_run_updated', onRun)
+    return () => { socket.off('loop_updated', onUpdated); socket.off('loop_run_updated', onRun) }
+  }, [socket, upsertRun])
 
   const mutate = useCallback(async (url, method, body) => {
     const res = await apiFetch(url, {
@@ -82,5 +96,21 @@ export default function useLoops(socketRef) {
     return loop
   }, [mutate])
 
-  return { loops, loading, error, refresh, createLoop, updateLoop, deleteLoop, runLoop }
+  // AI-summary run records (full context + output) for review.
+  const fetchRuns = useCallback(async (id) => {
+    try {
+      const res = await apiFetch(`${API_URL}/loops/${id}/runs`)
+      if (!res.ok) return
+      const data = await res.json()
+      setRunsByLoop((prev) => ({ ...prev, [id]: data }))
+    } catch { /* leave as-is */ }
+  }, [])
+
+  const summarize = useCallback(async (id, body) => {
+    const { run } = await mutate(`${API_URL}/loops/${id}/summarize`, 'POST', body || {})
+    if (run) upsertRun(run)
+    return run
+  }, [mutate, upsertRun])
+
+  return { loops, loading, error, refresh, createLoop, updateLoop, deleteLoop, runLoop, runsByLoop, fetchRuns, summarize }
 }
