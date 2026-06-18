@@ -33,6 +33,7 @@ const shellRoutes = require('./routes/shell');
 const approvalsRoutes = require('./routes/approvals');
 const githubRoutes = require('./routes/github');
 const loopsRoutes = require('./routes/loops');
+const loopManager = require('./lib/loopManager');
 const e2eRunsRoutes = require('./routes/e2eRuns');
 const demosRoutes = require('./routes/demos');
 const autoEnterRoutes = require('./routes/autoenter');
@@ -306,4 +307,11 @@ io.on('connection', (socket) => {
 server.listen(PORT, '0.0.0.0', () => {
   logger.info({ port: PORT }, `Backend server running on http://0.0.0.0:${PORT}`);
   logger.info(`API docs at http://localhost:${PORT}/api/docs`);
+  // Start the GitHub-watcher loop engine after the server is listening so a
+  // slow first poll never blocks startup (feat-loops-engine-001).
+  try {
+    loopManager.init();
+  } catch (err) {
+    logger.error({ err }, 'Failed to start loop engine');
+  }
 });
