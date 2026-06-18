@@ -96,7 +96,7 @@ function Row({ label, children }) {
   )
 }
 
-export default function LoopDetailModal({ loop, runs = [], onClose, onEdit, onRun, onToggle, onDelete, onSummarize, onFetchRuns }) {
+export default function LoopDetailModal({ loop, runs = [], onClose, onEdit, onRun, onToggle, onDelete, onSummarize, onFetchRuns, onUpdate, onFetchInstructions, templates = [], onFetchTemplates, onCreateTemplate }) {
   const [activeTab, setActiveTab] = useState(() => {
     try { const s = localStorage.getItem(TAB_KEY); if (s && TABS.some((t) => t.id === s)) return s } catch { /* ignore */ }
     return 'config'
@@ -108,6 +108,35 @@ export default function LoopDetailModal({ loop, runs = [], onClose, onEdit, onRu
 
   useEffect(() => { onFetchRuns(loop.id) }, [loop.id, onFetchRuns])
   const pick = (id) => { setActiveTab(id); try { localStorage.setItem(TAB_KEY, id) } catch { /* ignore */ } }
+
+  // Instructions editor (feat-loopsv2-instructions-001)
+  const [instr, setInstr] = useState(null)   // { generated, override, effective }
+  const [draft, setDraft] = useState('')
+  const [savingInstr, setSavingInstr] = useState(false)
+  const [showGen, setShowGen] = useState(false)
+  useEffect(() => {
+    let alive = true
+    onFetchInstructions(loop.id).then((d) => { if (alive) { setInstr(d); setDraft(d.effective || '') } }).catch(() => {})
+    onFetchTemplates()
+    return () => { alive = false }
+  }, [loop.id, onFetchInstructions, onFetchTemplates])
+  const dirty = draft !== (instr?.effective ?? '')
+  const saveInstr = async () => {
+    setSavingInstr(true)
+    try { await onUpdate(loop.id, { instructions: draft }); const d = await onFetchInstructions(loop.id); setInstr(d); setDraft(d.effective || '') }
+    catch (e) { alert(e.message) } finally { setSavingInstr(false) }
+  }
+  const resetInstr = async () => {
+    setSavingInstr(true)
+    try { await onUpdate(loop.id, { instructions: null }); const d = await onFetchInstructions(loop.id); setInstr(d); setDraft(d.effective || '') }
+    catch (e) { alert(e.message) } finally { setSavingInstr(false) }
+  }
+  const saveTemplate = async () => {
+    const name = window.prompt('Save these instructions as a template named:')
+    if (!name) return
+    try { await onCreateTemplate(name, draft) } catch (e) { alert(e.message) }
+  }
+  const applyTemplate = (e) => { const t = templates.find((x) => x.id === e.target.value); if (t) setDraft(t.body) }
 
   const run = async () => { setBusy(true); try { await onRun(loop.id) } finally { setBusy(false) } }
   const summarize = async () => {
@@ -172,15 +201,36 @@ export default function LoopDetailModal({ loop, runs = [], onClose, onEdit, onRu
 
           {activeTab === 'instructions' && (
             <div>
-              <div style={{ fontSize: 'var(--text-caption1)', color: 'var(--text-muted)', marginBottom: '6px' }}>
-                What this loop's configuration instructs the agent to do (read-only preview):
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 'var(--text-caption1)', color: 'var(--text-muted)' }}>
+                  Agent instructions — {instr?.override ? <b style={{ color: 'var(--apple-orange)' }}>custom override</b> : 'generated from the config'}. Fed to the agent on every run.
+                </span>
+                {dirty && <Badge preset="muted">unsaved</Badge>}
               </div>
-              <pre className="custom-scrollbar" style={{ padding: 'var(--space-3)', background: 'var(--fill-secondary)', borderRadius: 'var(--radius-sm)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', color: 'var(--text-app)' }}>
-{describeLoop(loop)}
-              </pre>
-              <div style={{ marginTop: '8px', fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>
-                Editing these instructions and saving reusable templates arrives next (feat-loopsv2-instructions-001).
+              <textarea
+                data-testid="loop-instructions"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                spellCheck={false}
+                style={{ width: '100%', minHeight: 240, padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', border: '0.5px solid var(--separator)', background: 'var(--fill-secondary)', color: 'var(--text-app)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', resize: 'vertical' }}
+              />
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+                <Button size="sm" variant="primary" loading={savingInstr} onClick={saveInstr} disabled={!dirty}>Save</Button>
+                <Button size="sm" variant="secondary" onClick={resetInstr} disabled={!instr?.override}>Reset to generated</Button>
+                <Button size="sm" variant="secondary" onClick={saveTemplate} disabled={!draft.trim()}>Save as template</Button>
+                <select value="" onChange={applyTemplate} aria-label="Apply template" style={{ padding: '4px 8px', borderRadius: 'var(--radius-sm)', border: '0.5px solid var(--separator)', background: 'var(--fill-secondary)', color: 'var(--text-app)', fontSize: 'var(--text-caption1)' }}>
+                  <option value="">Apply template…</option>
+                  {templates.map((t) => (<option key={t.id} value={t.id}>{t.name}</option>))}
+                </select>
               </div>
+              <button onClick={() => setShowGen((v) => !v)} style={{ marginTop: 10, fontSize: 'var(--text-caption2)', color: 'var(--accent-app)' }}>
+                {showGen ? 'hide' : 'view'} generated default
+              </button>
+              {showGen && (
+                <pre className="custom-scrollbar" style={{ marginTop: 6, padding: 'var(--space-2)', background: 'var(--fill-secondary)', borderRadius: 'var(--radius-sm)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', color: 'var(--text-muted)' }}>
+{instr?.generated || describeLoop(loop)}
+                </pre>
+              )}
             </div>
           )}
 

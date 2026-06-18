@@ -27,6 +27,9 @@ const LOOPS_FILE = process.env.ATRIUM_LOOPS_FILE || path.join(__dirname, '..', '
 // captures the FULL context fed to the agent + its output, for review.
 const LOOP_RUNS_DIR = path.join(__dirname, '..', 'loop-runs');
 const MAX_LOOP_RUNS_PER_LOOP = 30;
+// Reusable loop instruction templates (feat-loopsv2-instructions-001). Runtime
+// data, gitignored. Env override for tests.
+const LOOP_TEMPLATES_FILE = process.env.ATRIUM_LOOP_TEMPLATES_FILE || path.join(__dirname, '..', 'loop-templates.json');
 // Playwright e2e run artifacts (feat-e2e-tests-tab-001). Per-task subdirs;
 // each subdir is one run, capped at MAX_E2E_RUNS_PER_TASK newest-first.
 const E2E_RUNS_DIR = path.join(__dirname, '..', 'e2e-runs');
@@ -80,7 +83,7 @@ const JWT_SECRET = resolveJwtSecret();
 module.exports = {
   PORT, TASKS_DIR, HISTORY_DIR, USERS_DIR, SETTINGS_FILE,
   SERVICES_FILE, CHAT_DIR, CHAT_FILE, MAX_CHAT_MESSAGES,
-  INSTRUCTIONS_FILE, JWT_SECRET, TRASH_DIR, ARCHIVED_DIR, PROJECTS_FILE, LOOPS_FILE, LOOP_RUNS_DIR, MAX_LOOP_RUNS_PER_LOOP, APPROVALS_DIR,
+  INSTRUCTIONS_FILE, JWT_SECRET, TRASH_DIR, ARCHIVED_DIR, PROJECTS_FILE, LOOPS_FILE, LOOP_RUNS_DIR, MAX_LOOP_RUNS_PER_LOOP, LOOP_TEMPLATES_FILE, APPROVALS_DIR,
   AGENT_TOKENS_DIR, AGENT_TOKENS_BLOCKLIST,
   E2E_RUNS_DIR, MAX_E2E_RUNS_PER_TASK,
   AUTOENTER_DIR, AUTOENTER_CAPTURES_FILE, MAX_AUTOENTER_CAPTURES,

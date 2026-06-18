@@ -24,7 +24,7 @@ const DEFAULT_INTERVAL_MS = 300000;  // default: 5 minutes
 // Fields a client may set on create/update. Engine-managed runtime fields
 // (status, last_run_at, next_run_at, last_result, last_error, snapshot) and
 // immutable fields (id, created_at) are never accepted from the API.
-const EDITABLE_FIELDS = ['name', 'scope', 'project', 'repo', 'watch', 'actions', 'interval_ms', 'enabled'];
+const EDITABLE_FIELDS = ['name', 'scope', 'project', 'repo', 'watch', 'actions', 'interval_ms', 'enabled', 'instructions'];
 
 class LoopValidationError extends Error {
   constructor(details) {
@@ -126,6 +126,9 @@ function validate(input, { partial = false, merged = null } = {}) {
   if (has('enabled') && typeof input.enabled !== 'boolean') {
     errors.enabled = 'enabled must be a boolean';
   }
+  if (has('instructions') && input.instructions !== null && typeof input.instructions !== 'string') {
+    errors.instructions = 'instructions must be a string or null';
+  }
 
   // Cross-field: scope-dependent requirements (evaluated against the merged view)
   const view = merged || input;
@@ -170,6 +173,7 @@ function create(input, { now = new Date().toISOString() } = {}) {
   if (clean.enabled === undefined) clean.enabled = true;
   if (clean.project === undefined) clean.project = null;
   if (clean.repo === undefined) clean.repo = null;
+  if (clean.instructions === undefined) clean.instructions = null;
 
   validate(clean, { partial: false });
 
@@ -185,6 +189,7 @@ function create(input, { now = new Date().toISOString() } = {}) {
     actions: clean.actions,
     interval_ms: clean.interval_ms,
     enabled: clean.enabled,
+    instructions: clean.instructions ?? null,
     status: 'idle',
     last_run_at: null,
     next_run_at: null,

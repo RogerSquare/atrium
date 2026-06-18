@@ -13,7 +13,8 @@
     "audit:linkage": "node scripts/audit-review-linkage.js",
     "test:loops": "node scripts/test-loops.js",
     "test:loop-engine": "node scripts/test-loop-engine.js",
-    "test:loop-agent": "node scripts/test-loop-agent.js"
+    "test:loop-agent": "node scripts/test-loop-agent.js",
+    "test:loop-instructions": "node scripts/test-loop-instructions.js"
   },
   "keywords": [],
   "author": "",

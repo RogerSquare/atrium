@@ -2,6 +2,7 @@ const express = require('express');
 const loops = require('../lib/loops');
 const loopManager = require('../lib/loopManager');
 const loopAgent = require('../lib/loopAgent');
+const loopInstructions = require('../lib/loopInstructions');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
@@ -175,6 +176,27 @@ router.delete('/:id', (req, res) => {
     res.json({ success: true });
   } catch (err) {
     handleError(res, err, 'Failed to delete loop');
+  }
+});
+
+/**
+ * @swagger
+ * /api/loops/{id}/instructions:
+ *   get:
+ *     summary: Get a loop's generated default + override + effective instructions
+ *     tags: [Loops]
+ */
+router.get('/:id/instructions', (req, res) => {
+  try {
+    const loop = loops.get(req.params.id);
+    if (!loop) return res.status(404).json({ error: 'Loop not found' });
+    res.json({
+      generated: loopInstructions.generate(loop),
+      override: typeof loop.instructions === 'string' ? loop.instructions : null,
+      effective: loopInstructions.resolve(loop),
+    });
+  } catch (err) {
+    handleError(res, err, 'Failed to get instructions');
   }
 });
 
