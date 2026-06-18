@@ -5,7 +5,8 @@
  * The scheduling/tick path needs a live repo + gh and is verified manually
  * (see the task notes); this suite locks the diff/event semantics offline.
  */
-const { detectChanges, normalizeEntry, describeEvents, HIGH_SIGNAL } = require('../lib/loopManager');
+const { detectChanges, normalizeEntry, describeEvents, detectNewIssues, issueTaskId, HIGH_SIGNAL } = require('../lib/loopManager');
+const { validateTaskId } = require('../lib/taskIdValidator');
 
 let passed = 0;
 function ok(cond, msg) {
@@ -57,5 +58,19 @@ ok(!HIGH_SIGNAL.has('pr_closed') && !HIGH_SIGNAL.has('review_changed'), 'non-hig
 // describeEvents renders a readable line referencing the PR
 const desc = describeEvents([{ type: 'pr_merged' }], normalizeEntry({ pr_number: 42 }));
 ok(desc.includes('PR #42') && desc.toLowerCase().includes('merged'), 'describeEvents renders PR ref + action');
+
+// --- Issues (feat-loops-watch-types-001) ---
+const issues = [{ number: 1, updatedAt: 'a' }, { number: 2, updatedAt: 'b' }, { number: 3, updatedAt: 'c' }];
+ok(detectNewIssues({}, issues).length === 3, 'empty snapshot -> all issues are new');
+ok(detectNewIssues(null, issues).length === 3, 'null snapshot -> all issues are new');
+// snapshot keys are strings (JSON), issue.number is numeric — `in` coerces, so 2 is seen
+ok(detectNewIssues({ '1': 'a', '2': 'b' }, issues).map((i) => i.number).join() === '3', 'only unseen issue numbers are new (string/number coercion)');
+ok(detectNewIssues({ '1': 'a', '2': 'b', '3': 'c' }, issues).length === 0, 'all-seen -> none new');
+ok(detectNewIssues({}, []).length === 0, 'no issues -> none new');
+
+// issueTaskId produces a canonical, regex-valid id
+ok(issueTaskId(42) === 'feat-issue-42-001', 'issueTaskId format');
+ok(validateTaskId(issueTaskId(42)) === null, 'issueTaskId passes the canonical task-id validator');
+ok(validateTaskId(issueTaskId(7)) === null, 'issueTaskId valid for single-digit issue');
 
 console.log(`\nAll ${passed} loop-engine assertions passed.`);
