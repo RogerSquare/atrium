@@ -268,4 +268,59 @@ const updateTaskField = async (taskId, field, value, actor = 'Agent', actionMess
   });
 };
 
-module.exports = { getAllTasks, findTaskFilePath, buildIndex, indexSet, indexDelete, invalidateCache, atomicWriteFileSync, cleanupTempFiles, trimActivityLog, getFullActivityLog, generateSummary, updateTaskField };
+// Append a comment to a task's `### Comments` section in-process (used by the
+// loop engine for fire-and-forget side-effects). Mirrors updateTaskField's
+// conventions: same task:<id> mutex, one activity_log entry, atomic write,
+// cache invalidation, and a task_updated socket emit. The comment is inserted
+// immediately after the `### Comments` header (newest-first), matching the MCP
+// append_comment tool. Creates the section if it's missing. Throws if the task
+// isn't found.
+const appendComment = async (taskId, comment, actor = 'Agent') => {
+  const { withLock } = require('./lock');
+  const { getIO } = require('./io');
+
+  return await withLock(`task:${taskId}`, async () => {
+    const filePath = findTaskFilePath(taskId);
+    if (!filePath || !fs.existsSync(filePath)) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    const parsed = matter(raw);
+    const data = parsed.data || {};
+    const trimmed = String(comment || '').trim();
+    let body = parsed.content || '';
+
+    const marker = '### Comments';
+    const idx = body.indexOf(marker);
+    if (idx !== -1) {
+      const before = body.slice(0, idx + marker.length);
+      const after = body.slice(idx + marker.length);
+      body = `${before}\n${trimmed}\n${after}`;
+    } else {
+      body = `${body.trimEnd()}\n\n${marker}\n${trimmed}\n`;
+    }
+
+    data.activity_log = data.activity_log || [];
+    data.activity_log.push({
+      timestamp: new Date().toISOString(),
+      action: `Comment added by ${actor}`,
+    });
+    trimActivityLog(taskId, data);
+
+    const newContent = matter.stringify(body, data);
+    atomicWriteFileSync(filePath, newContent);
+    invalidateCache();
+    indexSet(taskId, filePath);
+
+    const relativePath = path.relative(TASKS_DIR, path.dirname(filePath));
+    const project = relativePath || 'Root';
+    const taskObj = { ...data, id: taskId, project, content: body.trim() };
+    try {
+      const io = getIO();
+      if (io) io.emit('task_updated', { ...taskObj, summary: generateSummary(taskObj) });
+    } catch { /* socket.io not initialised yet during boot */ }
+    return taskObj;
+  });
+};
+
+module.exports = { getAllTasks, findTaskFilePath, buildIndex, indexSet, indexDelete, invalidateCache, atomicWriteFileSync, cleanupTempFiles, trimActivityLog, getFullActivityLog, generateSummary, updateTaskField, appendComment };

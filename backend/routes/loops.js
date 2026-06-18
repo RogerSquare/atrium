@@ -1,5 +1,6 @@
 const express = require('express');
 const loops = require('../lib/loops');
+const loopManager = require('../lib/loopManager');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
@@ -64,9 +65,27 @@ router.get('/:id', (req, res) => {
 router.post('/', (req, res) => {
   try {
     const loop = loops.create(req.body || {});
+    loopManager.onLoopChanged(loop.id); // schedule the new loop
     res.status(201).json({ success: true, loop });
   } catch (err) {
     handleError(res, err, 'Failed to create loop');
+  }
+});
+
+/**
+ * @swagger
+ * /api/loops/{id}/run:
+ *   post:
+ *     summary: Run a loop's tick immediately (does not affect its schedule)
+ *     tags: [Loops]
+ */
+router.post('/:id/run', async (req, res) => {
+  try {
+    if (!loops.get(req.params.id)) return res.status(404).json({ error: 'Loop not found' });
+    const loop = await loopManager.runLoopNow(req.params.id);
+    res.json({ success: true, loop });
+  } catch (err) {
+    handleError(res, err, 'Failed to run loop');
   }
 });
 
@@ -81,6 +100,7 @@ router.put('/:id', (req, res) => {
   try {
     const loop = loops.update(req.params.id, req.body || {});
     if (!loop) return res.status(404).json({ error: 'Loop not found' });
+    loopManager.onLoopChanged(loop.id); // reschedule (interval/enabled may have changed)
     res.json({ success: true, loop });
   } catch (err) {
     handleError(res, err, 'Failed to update loop');
@@ -98,6 +118,7 @@ router.delete('/:id', (req, res) => {
   try {
     const removed = loops.remove(req.params.id);
     if (!removed) return res.status(404).json({ error: 'Loop not found' });
+    loopManager.onLoopRemoved(req.params.id); // cancel its timer
     res.json({ success: true });
   } catch (err) {
     handleError(res, err, 'Failed to delete loop');
