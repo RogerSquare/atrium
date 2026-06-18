@@ -1,12 +1,14 @@
 import { memo } from 'react'
-import { LayoutGrid, List, GitCommitHorizontal, Network, LayoutTemplate, Repeat } from 'lucide-react'
+import { LayoutGrid, GitCommitHorizontal, Network, LayoutTemplate, Repeat } from 'lucide-react'
 
+// "List" is intentionally hidden from the nav and Loops takes its slot (user
+// request). The List view still renders if reached via a persisted
+// taskBoardView='list' — it's just no longer a switcher tab.
 const VIEWS = [
   { id: 'board', label: 'Board', icon: LayoutGrid },
-  { id: 'list', label: 'List', icon: List },
+  { id: 'loops', label: 'Loops', icon: Repeat },
   { id: 'changes', label: 'Changes', icon: GitCommitHorizontal },
   { id: 'graph', label: 'Graph', icon: Network },
-  { id: 'loops', label: 'Loops', icon: Repeat },
   { id: 'demos', label: 'Demos', icon: LayoutTemplate },
 ]
 

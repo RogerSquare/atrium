@@ -35,6 +35,13 @@ test.describe('Loops view (render)', () => {
     await page.getByTestId('new-loop-button').click();
     await expect(page.getByTestId('loop-modal')).toBeVisible();
   });
+
+  test('nav shows the Loops tab in place of List', async ({ page }) => {
+    await expect(page.getByTestId('loops-view')).toBeVisible({ timeout: 15_000 });
+    // Loops is a nav tab; List is intentionally hidden from the switcher.
+    await expect(page.getByTitle('Loops view')).toBeVisible();
+    await expect(page.getByTitle('List view')).toHaveCount(0);
+  });
 });
 
 // The full create -> list -> toggle -> run flow needs a backend serving
