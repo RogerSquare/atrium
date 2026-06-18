@@ -22,13 +22,19 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CornerDownLeft, Copy, HelpCircle, X } from 'lucide-react'
-import { classifyTail, tailMatchesPrompt } from './autoEnterPatterns'
+import { classifyTail, tailMatchesPrompt, DENY_PATTERNS } from './autoEnterPatterns'
 import { API_URL, apiFetch } from '../../config'
 
 const STORAGE_PREFIX = 'autoenter:armed:'
 const STORAGE_PREFIX_CAPTURES = 'autoenter:captures:'
 const BUFFER_LIMIT = 512
 const COOLDOWN_MS = 600
+// Settle window after a hook `webshell:prompt` event before we decide
+// whether to fire. The hook signals WHEN a prompt appears, but the rendered
+// prompt TEXT arrives on a separate path (webshell:output → bufferRef) and
+// can lag the notification by a few ms. We wait this long so the deny check
+// runs against a buffer that actually contains the prompt body.
+const HOOK_SETTLE_MS = 250
 const STALL_MS = 1000
 const CAPTURE_LIMIT = 20
 const CAPTURE_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
@@ -133,6 +139,9 @@ export default function AutoEnterToggle({ task, socket }) {
   const bufferRef = useRef('')
   const cooldownUntilRef = useRef(0)
   const stallTimerRef = useRef(null)
+  // Pending hook-fire timer (HOOK_SETTLE_MS). Held in a ref so a second
+  // prompt event coalesces onto one decision and cleanup can cancel it.
+  const promptFireTimerRef = useRef(null)
 
   // Captures live in two layers: a ref so the inactivity classifier
   // doesn't have to read localStorage on every fire (cheap path) and
@@ -238,10 +247,58 @@ export default function AutoEnterToggle({ task, socket }) {
       }
     }
 
+    // Hook-driven path (feat-autoenter-hook-signal-001): the backend emits
+    // `webshell:prompt` when a Claude Code Notification(permission_prompt)
+    // hook fires — an authoritative "a permission prompt is on screen now"
+    // signal that doesn't depend on scraping/ANSI-stripping PTY output. This
+    // is the primary trigger; the regex path above stays as a fallback. Both
+    // share `cooldownUntilRef`, so whichever fires first wins and the other
+    // is suppressed for COOLDOWN_MS — no double-Enter on the same prompt.
+    const handlePrompt = (payload) => {
+      if (!payload || payload.taskId !== wireTaskId) return
+      if (!armedRef.current) return
+      const message = typeof payload.message === 'string' ? payload.message : ''
+      // Defer the fire decision by HOOK_SETTLE_MS so the rendered prompt has
+      // fully streamed into bufferRef. The deny decision MUST be made from
+      // the terminal buffer (which holds the real "Delete…?/Are you sure…?"
+      // body), NOT the hook's `message` field — that field is a generic
+      // "Claude needs your permission…" string that lacks the prompt body,
+      // so a message-based denylist silently lets destructive prompts
+      // through. Coalesce repeat events onto one timer.
+      if (promptFireTimerRef.current) clearTimeout(promptFireTimerRef.current)
+      promptFireTimerRef.current = setTimeout(() => {
+        promptFireTimerRef.current = null
+        if (!armedRef.current) return
+        const now = Date.now()
+        if (now < cooldownUntilRef.current) return
+        // Authoritative deny gate: the rendered buffer. Belt-and-suspenders
+        // second check on the hook message in case CC ever includes the
+        // body there. Either match → hold the prompt for the human.
+        if (
+          classifyTail(bufferRef.current) === 'denied' ||
+          DENY_PATTERNS.some((re) => re.test(message))
+        ) {
+          return
+        }
+        if (socket.connected) {
+          socket.emit('webshell:input', { taskId: wireTaskId, data: '\r' })
+        }
+        cooldownUntilRef.current = now + COOLDOWN_MS
+        bufferRef.current = ''
+        clearStallTimer()
+      }, HOOK_SETTLE_MS)
+    }
+
     socket.on('webshell:output', handleOutput)
+    socket.on('webshell:prompt', handlePrompt)
     return () => {
       socket.off('webshell:output', handleOutput)
+      socket.off('webshell:prompt', handlePrompt)
       clearStallTimer()
+      if (promptFireTimerRef.current) {
+        clearTimeout(promptFireTimerRef.current)
+        promptFireTimerRef.current = null
+      }
     }
   }, [socket, wireTaskId, recordCapture])
 
