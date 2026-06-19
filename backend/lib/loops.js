@@ -25,7 +25,7 @@ const DEFAULT_INTERVAL_MS = 300000;  // default: 5 minutes
 // Fields a client may set on create/update. Engine-managed runtime fields
 // (status, last_run_at, next_run_at, last_result, last_error, snapshot) and
 // immutable fields (id, created_at) are never accepted from the API.
-const EDITABLE_FIELDS = ['name', 'scope', 'project', 'repo', 'watch', 'actions', 'interval_ms', 'enabled', 'instructions', 'mode'];
+const EDITABLE_FIELDS = ['name', 'scope', 'project', 'repo', 'watch', 'actions', 'interval_ms', 'enabled', 'instructions', 'mode', 'prompt_template', 'extra_context'];
 
 class LoopValidationError extends Error {
   constructor(details) {
@@ -133,6 +133,9 @@ function validate(input, { partial = false, merged = null } = {}) {
   if (has('mode') && !MODES.includes(input.mode)) {
     errors.mode = `mode must be one of ${MODES.join(', ')}`;
   }
+  for (const f of ['prompt_template', 'extra_context']) {
+    if (has(f) && input[f] !== null && typeof input[f] !== 'string') errors[f] = `${f} must be a string or null`;
+  }
 
   // Cross-field: scope-dependent requirements (evaluated against the merged view)
   const view = merged || input;
@@ -179,6 +182,8 @@ function create(input, { now = new Date().toISOString() } = {}) {
   if (clean.repo === undefined) clean.repo = null;
   if (clean.instructions === undefined) clean.instructions = null;
   if (clean.mode === undefined) clean.mode = 'watcher';
+  if (clean.prompt_template === undefined) clean.prompt_template = null;
+  if (clean.extra_context === undefined) clean.extra_context = null;
 
   validate(clean, { partial: false });
 
@@ -196,6 +201,8 @@ function create(input, { now = new Date().toISOString() } = {}) {
     enabled: clean.enabled,
     instructions: clean.instructions ?? null,
     mode: clean.mode || 'watcher',
+    prompt_template: clean.prompt_template ?? null,
+    extra_context: clean.extra_context ?? null,
     status: 'idle',
     last_run_at: null,
     next_run_at: null,
