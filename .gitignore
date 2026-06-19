@@ -42,6 +42,7 @@ backend/services.json
 # GitHub-watcher loops (runtime data)
 backend/loops.json
 backend/loop-runs/
+backend/loop-templates.json
 
 # Claude Code local config — ignore everything by default but track project-shared skills
 .claude/*

@@ -79,6 +79,9 @@ function buildContext(loop, { task, prNumber, prChanges, event, link }) {
   return {
     event: event || 'manual',
     loop: { id: loop.id, name: loop.name, project: loop.project },
+    // The effective instructions (per-loop override or generated default) so
+    // editing a loop's instructions actually changes the agent's behavior.
+    loop_instructions: require('./loopInstructions').resolve(loop),
     task: task ? { id: task.id, title: task.title, status: task.status } : null,
     pr: {
       number: prNumber,
@@ -112,6 +115,7 @@ function buildPrompt(context) {
     'You are an assistant on a task board. Summarize a GitHub pull request for a busy reviewer.',
     reason,
     '',
+    ...(context.loop_instructions ? ['LOOP INSTRUCTIONS (this loop\'s configured policy — follow it):', context.loop_instructions, ''] : []),
     'Write a concise review summary (under 180 words) covering: what changed and why, the riskiest areas to look at, and whether it appears ready to merge. Use short bullet points. Do not invent details beyond the data provided.',
     '',
     'PULL REQUEST DATA (JSON):',

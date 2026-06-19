@@ -112,5 +112,31 @@ export default function useLoops(socketRef) {
     return run
   }, [mutate, upsertRun])
 
-  return { loops, loading, error, refresh, createLoop, updateLoop, deleteLoop, runLoop, runsByLoop, fetchRuns, summarize }
+  // Instructions (generated default + per-loop override + effective) for review/edit.
+  const fetchInstructions = useCallback(async (id) => {
+    const res = await apiFetch(`${API_URL}/loops/${id}/instructions`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.json()
+  }, [])
+
+  // Reusable instruction-template library.
+  const [templates, setTemplates] = useState([])
+  const fetchTemplates = useCallback(async () => {
+    try { const res = await apiFetch(`${API_URL}/loop-templates`); if (res.ok) setTemplates(await res.json()) } catch { /* ignore */ }
+  }, [])
+  const createTemplate = useCallback(async (name, body) => {
+    const { template } = await mutate(`${API_URL}/loop-templates`, 'POST', { name, body })
+    setTemplates((prev) => [template, ...prev])
+    return template
+  }, [mutate])
+  const deleteTemplate = useCallback(async (id) => {
+    await mutate(`${API_URL}/loop-templates/${id}`, 'DELETE')
+    setTemplates((prev) => prev.filter((t) => t.id !== id))
+  }, [mutate])
+
+  return {
+    loops, loading, error, refresh, createLoop, updateLoop, deleteLoop, runLoop,
+    runsByLoop, fetchRuns, summarize,
+    fetchInstructions, templates, fetchTemplates, createTemplate, deleteTemplate,
+  }
 }
