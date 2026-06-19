@@ -134,9 +134,20 @@ export default function useLoops(socketRef) {
     setTemplates((prev) => prev.filter((t) => t.id !== id))
   }, [mutate])
 
+  // Live PTY terminal runs (feat-loopsv2-terminal-001).
+  const startTerminalRun = useCallback(async (id, body) => {
+    const data = await mutate(`${API_URL}/loops/${id}/terminal/start`, 'POST', body || {})
+    return data.run_id
+  }, [mutate])
+  const fetchTerminalRuns = useCallback(async (id) => {
+    const res = await apiFetch(`${API_URL}/loops/${id}/terminal/runs`)
+    return res.ok ? res.json() : []
+  }, [])
+
   return {
     loops, loading, error, refresh, createLoop, updateLoop, deleteLoop, runLoop,
     runsByLoop, fetchRuns, summarize,
     fetchInstructions, templates, fetchTemplates, createTemplate, deleteTemplate,
+    startTerminalRun, fetchTerminalRuns,
   }
 }
