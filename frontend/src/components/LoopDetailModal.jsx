@@ -205,6 +205,7 @@ export default function LoopDetailModal({ loop, runs = [], onClose, onEdit, onRu
             <div>
               <Row label="Status"><span style={{ color: status.color, fontWeight: 'var(--font-semibold)' }}>{status.label}</span>{loop.last_error ? ` — ${loop.last_error}` : ''}</Row>
               <Row label="Scope">{loop.scope === 'project' ? `project · ${loop.project}` : `independent · ${loop.repo}`}</Row>
+              <Row label="Mode">{loop.mode === 'worker' ? <span style={{ color: 'var(--apple-orange)', fontWeight: 'var(--font-semibold)' }}>worker (autonomous)</span> : 'watcher'}</Row>
               <Row label="Watch">{(loop.watch || []).map((w) => <Badge key={w} preset="muted" style={{ marginRight: 4 }}>{w}</Badge>)}</Row>
               <Row label="On change">{(loop.actions || []).join(', ') || '—'}</Row>
               <Row label="Interval">every {Math.round((loop.interval_ms || 0) / 60000)} min</Row>

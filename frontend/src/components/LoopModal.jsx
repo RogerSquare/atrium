@@ -48,6 +48,7 @@ export default function LoopModal({ loop, initialProject, projects = [], onSubmi
   const [watch, setWatch] = useState(loop?.watch || ['prs', 'ci'])
   const [actions, setActions] = useState(loop?.actions || ['update_fields', 'comment'])
   const [intervalMin, setIntervalMin] = useState(loop ? Math.round(loop.interval_ms / 60000) : 5)
+  const [mode, setMode] = useState(loop?.mode || 'watcher')
   const [enabled, setEnabled] = useState(loop ? loop.enabled : true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -67,6 +68,7 @@ export default function LoopModal({ loop, initialProject, projects = [], onSubmi
         repo: scope === 'global' ? repo.trim() : null,
         watch,
         actions,
+        mode,
         interval_ms: Math.max(60000, Math.round(Number(intervalMin) * 60000)),
         enabled,
       })
@@ -107,6 +109,19 @@ export default function LoopModal({ loop, initialProject, projects = [], onSubmi
               <option value="project">Project</option>
               <option value="global">Independent (repo)</option>
             </Select>
+          </div>
+
+          <div>
+            <label style={labelStyle} htmlFor="loop-mode">Mode</label>
+            <Select id="loop-mode" fullWidth value={mode} onChange={(e) => setMode(e.target.value)}>
+              <option value="watcher">Watcher — react to GitHub changes</option>
+              <option value="worker">Worker — autonomously pick up & execute todo tasks</option>
+            </Select>
+            {mode === 'worker' && (
+              <div style={{ marginTop: '4px', fontSize: 'var(--text-caption2)', color: 'var(--apple-orange)' }}>
+                ⚠ When enabled, this loop will claim todo tasks in the project and let an agent implement them up to a PR (never merges). Review the Instructions tab first; keep it disabled until you trust it.
+              </div>
+            )}
           </div>
 
           {scope === 'project' ? (

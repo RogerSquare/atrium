@@ -376,4 +376,44 @@ const createTask = (fields = {}) => {
   return created;
 };
 
-module.exports = { getAllTasks, findTaskFilePath, buildIndex, indexSet, indexDelete, invalidateCache, atomicWriteFileSync, cleanupTempFiles, trimActivityLog, getFullActivityLog, generateSummary, updateTaskField, appendComment, createTask };
+// Claim the next eligible `todo` task in a project for a worker loop
+// (feat-loopsv2-worker-001). Eligible = status todo, not a draft/no-code task,
+// and unassigned or already assigned to this worker. Atomically flips the first
+// match to in_progress under a per-task lock; returns the claimed task or null.
+const isEligibleForWorker = (t, project, assignee) =>
+  t && t.status === 'todo'
+  && (t.project || 'Root') === project
+  && (!t.assignee || t.assignee === assignee)
+  && !((t.tags || []).includes('no-code'));
+
+const claimNextTodo = async (project, assignee) => {
+  const { withLock } = require('./lock');
+  const candidates = getAllTasks(TASKS_DIR).filter((t) => isEligibleForWorker(t, project, assignee));
+  for (const cand of candidates) {
+    const claimed = await withLock(`task:${cand.id}`, async () => {
+      const filePath = findTaskFilePath(cand.id);
+      if (!filePath || !fs.existsSync(filePath)) return null;
+      const parsed = matter(fs.readFileSync(filePath, 'utf-8'));
+      if (parsed.data.status !== 'todo') return null; // raced — someone took it
+      const now = new Date().toISOString();
+      parsed.data.status = 'in_progress';
+      parsed.data.assignee = assignee;
+      parsed.data.started_at = parsed.data.started_at || now;
+      parsed.data.activity_log = (parsed.data.activity_log || []).concat([
+        { timestamp: now, action: `Status changed to IN PROGRESS by ${assignee}` },
+        { timestamp: now, action: `assignee changed to ${assignee} (worker-loop claim)` },
+      ]);
+      trimActivityLog(cand.id, parsed.data);
+      atomicWriteFileSync(filePath, matter.stringify(parsed.content, parsed.data));
+      invalidateCache();
+      indexSet(cand.id, filePath);
+      const taskObj = { ...parsed.data, id: cand.id, content: parsed.content, project };
+      try { const { getIO } = require('./io'); const io = getIO(); if (io) io.emit('task_updated', { ...taskObj, summary: generateSummary(taskObj) }); } catch { /* io not ready */ }
+      return taskObj;
+    });
+    if (claimed) return claimed;
+  }
+  return null;
+};
+
+module.exports = { getAllTasks, findTaskFilePath, buildIndex, indexSet, indexDelete, invalidateCache, atomicWriteFileSync, cleanupTempFiles, trimActivityLog, getFullActivityLog, generateSummary, updateTaskField, appendComment, createTask, claimNextTodo, isEligibleForWorker };
