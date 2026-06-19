@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, Play, Pencil, Trash2, Sparkles, Settings2, FileText, Activity, TerminalSquare, AlertCircle } from 'lucide-react'
 import ModalOverlay from './ModalOverlay'
+import LoopTerminal from './LoopTerminal'
 import { Button, Badge, Checkbox } from './ui'
 
 // feat-loopsv2-detail-001: first-class loop detail view ("loops act like tasks").
@@ -96,7 +97,7 @@ function Row({ label, children }) {
   )
 }
 
-export default function LoopDetailModal({ loop, runs = [], onClose, onEdit, onRun, onToggle, onDelete, onSummarize, onFetchRuns, onUpdate, onFetchInstructions, templates = [], onFetchTemplates, onCreateTemplate }) {
+export default function LoopDetailModal({ loop, runs = [], onClose, onEdit, onRun, onToggle, onDelete, onSummarize, onFetchRuns, onUpdate, onFetchInstructions, templates = [], onFetchTemplates, onCreateTemplate, socketRef, onStartTerminal, onFetchTerminalRuns }) {
   const [activeTab, setActiveTab] = useState(() => {
     try { const s = localStorage.getItem(TAB_KEY); if (s && TABS.some((t) => t.id === s)) return s } catch { /* ignore */ }
     return 'config'
@@ -137,6 +138,28 @@ export default function LoopDetailModal({ loop, runs = [], onClose, onEdit, onRu
     try { await onCreateTemplate(name, draft) } catch (e) { alert(e.message) }
   }
   const applyTemplate = (e) => { const t = templates.find((x) => x.id === e.target.value); if (t) setDraft(t.body) }
+
+  // Terminal runs (feat-loopsv2-terminal-001)
+  const [termRuns, setTermRuns] = useState([])
+  const [termRunId, setTermRunId] = useState(null)
+  const [termPr, setTermPr] = useState('')
+  const [starting, setStarting] = useState(false)
+  useEffect(() => {
+    if (activeTab !== 'terminal' || !onFetchTerminalRuns) return
+    onFetchTerminalRuns(loop.id).then((rs) => {
+      setTermRuns(rs || [])
+      setTermRunId((cur) => cur || (rs && rs[0] && rs[0].run_id) || null)
+    }).catch(() => {})
+  }, [activeTab, loop.id, onFetchTerminalRuns])
+  const startTerm = async () => {
+    if (!termPr) { alert('Enter a PR number to run a summary in the terminal'); return }
+    setStarting(true)
+    try {
+      const runId = await onStartTerminal(loop.id, { pr_number: Number(termPr) })
+      setTermRunId(runId); setTermPr('')
+      const rs = await onFetchTerminalRuns(loop.id); setTermRuns(rs || [])
+    } catch (e) { alert(e.message) } finally { setStarting(false) }
+  }
 
   const run = async () => { setBusy(true); try { await onRun(loop.id) } finally { setBusy(false) } }
   const summarize = async () => {
@@ -267,10 +290,32 @@ export default function LoopDetailModal({ loop, runs = [], onClose, onEdit, onRu
           )}
 
           {activeTab === 'terminal' && (
-            <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--text-muted)' }}>
-              <TerminalSquare className="w-8 h-8" style={{ margin: '0 auto var(--space-3)', color: 'var(--text-tertiary)' }} />
-              <div style={{ fontSize: 'var(--text-subhead)', color: 'var(--text-app)', marginBottom: '4px' }}>Live terminal coming soon</div>
-              <div style={{ fontSize: 'var(--text-caption1)' }}>A live PTY view of agent runs lands with feat-loopsv2-terminal-001 (then the autonomous executor).</div>
+            <div>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap' }}>
+                <input
+                  value={termPr}
+                  onChange={(e) => setTermPr(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="PR #"
+                  inputMode="numeric"
+                  aria-label="PR number to run in terminal"
+                  style={{ width: 70, padding: '4px 8px', borderRadius: 'var(--radius-sm)', border: '0.5px solid var(--separator)', background: 'var(--fill-secondary)', color: 'var(--text-app)', fontSize: 'var(--text-caption1)' }}
+                />
+                <Button size="sm" variant="primary" loading={starting} onClick={startTerm}><TerminalSquare className="w-3.5 h-3.5" /> Run in terminal</Button>
+                {termRuns.length > 0 && (
+                  <select
+                    value={termRunId || ''}
+                    onChange={(e) => setTermRunId(e.target.value)}
+                    aria-label="Select a terminal run to view"
+                    style={{ padding: '4px 8px', borderRadius: 'var(--radius-sm)', border: '0.5px solid var(--separator)', background: 'var(--fill-secondary)', color: 'var(--text-app)', fontSize: 'var(--text-caption1)' }}
+                  >
+                    {termRuns.map((r) => (
+                      <option key={r.run_id} value={r.run_id}>{r.label || r.run_id} · {r.status}</option>
+                    ))}
+                  </select>
+                )}
+                <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>runs the agent in a live PTY; output is persisted for replay</span>
+              </div>
+              <LoopTerminal loopId={loop.id} runId={termRunId} socketRef={socketRef} />
             </div>
           )}
         </div>

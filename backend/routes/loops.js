@@ -3,6 +3,8 @@ const loops = require('../lib/loops');
 const loopManager = require('../lib/loopManager');
 const loopAgent = require('../lib/loopAgent');
 const loopInstructions = require('../lib/loopInstructions');
+const loopPty = require('../lib/loopPty');
+const github = require('../lib/github');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
@@ -197,6 +199,65 @@ router.get('/:id/instructions', (req, res) => {
     });
   } catch (err) {
     handleError(res, err, 'Failed to get instructions');
+  }
+});
+
+/**
+ * @swagger
+ * /api/loops/{id}/terminal/start:
+ *   post:
+ *     summary: Start a live PTY agent run (summary of a PR) streamed to the Terminal tab
+ *     tags: [Loops]
+ */
+router.post('/:id/terminal/start', async (req, res) => {
+  try {
+    const loop = loops.get(req.params.id);
+    if (!loop) return res.status(404).json({ error: 'Loop not found' });
+    const prNumber = (req.body && req.body.pr_number) || null;
+    if (!prNumber) return res.status(400).json({ error: 'pr_number required' });
+
+    const prChanges = await github.getPrChanges(loop.project, prNumber, { refresh: false });
+    if (prChanges && prChanges.error) return res.status(502).json({ error: `getPrChanges: ${prChanges.error}` });
+    const context = loopAgent.buildContext(loop, { task: null, prNumber, prChanges, event: 'manual', link: null });
+    const prompt = loopAgent.buildPrompt(context);
+
+    const runId = loopPty.start(loop, { prompt, label: `summary · PR #${prNumber}` });
+    res.json({ success: true, run_id: runId });
+  } catch (err) {
+    handleError(res, err, 'Failed to start terminal run');
+  }
+});
+
+/**
+ * @swagger
+ * /api/loops/{id}/terminal/runs:
+ *   get:
+ *     summary: List terminal (PTY) runs for a loop, newest first
+ *     tags: [Loops]
+ */
+router.get('/:id/terminal/runs', (req, res) => {
+  try {
+    if (!loops.get(req.params.id)) return res.status(404).json({ error: 'Loop not found' });
+    res.json(loopPty.listRuns(req.params.id));
+  } catch (err) {
+    handleError(res, err, 'Failed to list terminal runs');
+  }
+});
+
+/**
+ * @swagger
+ * /api/loops/{id}/terminal/runs/{runId}/log:
+ *   get:
+ *     summary: Get the persisted PTY log for a terminal run (for replay)
+ *     tags: [Loops]
+ */
+router.get('/:id/terminal/runs/:runId/log', (req, res) => {
+  try {
+    const log = loopPty.getLog(req.params.id, req.params.runId);
+    if (log == null) return res.status(404).json({ error: 'Log not found' });
+    res.json({ run_id: req.params.runId, running: loopPty.isRunning(req.params.runId), log });
+  } catch (err) {
+    handleError(res, err, 'Failed to get terminal log');
   }
 });
 
