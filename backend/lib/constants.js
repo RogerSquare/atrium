@@ -25,7 +25,7 @@ const LOOPS_FILE = process.env.ATRIUM_LOOPS_FILE || path.join(__dirname, '..', '
 // Loop AI-summary run records (feat-loops-hook-agent-001). One JSON per run,
 // per-loop subdir, capped newest-first. Runtime data — gitignored. Each record
 // captures the FULL context fed to the agent + its output, for review.
-const LOOP_RUNS_DIR = path.join(__dirname, '..', 'loop-runs');
+const LOOP_RUNS_DIR = process.env.ATRIUM_LOOP_RUNS_DIR || path.join(__dirname, '..', 'loop-runs');
 const MAX_LOOP_RUNS_PER_LOOP = 30;
 // Reusable loop instruction templates (feat-loopsv2-instructions-001). Runtime
 // data, gitignored. Env override for tests.

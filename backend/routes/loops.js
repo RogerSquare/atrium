@@ -4,6 +4,7 @@ const loopManager = require('../lib/loopManager');
 const loopAgent = require('../lib/loopAgent');
 const loopInstructions = require('../lib/loopInstructions');
 const loopPty = require('../lib/loopPty');
+const loopActivity = require('../lib/loopActivity');
 const github = require('../lib/github');
 const { logger } = require('../lib/logger');
 
@@ -258,6 +259,22 @@ router.get('/:id/terminal/runs/:runId/log', (req, res) => {
     res.json({ run_id: req.params.runId, running: loopPty.isRunning(req.params.runId), log });
   } catch (err) {
     handleError(res, err, 'Failed to get terminal log');
+  }
+});
+
+/**
+ * @swagger
+ * /api/loops/{id}/activity:
+ *   get:
+ *     summary: Per-loop audit trail (what the loop changed), newest first
+ *     tags: [Loops]
+ */
+router.get('/:id/activity', (req, res) => {
+  try {
+    if (!loops.get(req.params.id)) return res.status(404).json({ error: 'Loop not found' });
+    res.json(loopActivity.list(req.params.id));
+  } catch (err) {
+    handleError(res, err, 'Failed to get activity');
   }
 });
 

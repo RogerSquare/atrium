@@ -235,6 +235,7 @@ async function summarize(loop, { taskId = null, prNumber = null, event = 'manual
     run.finished_at = new Date().toISOString();
     if (res.is_error) run.error = 'agent reported an error';
     saveRun(run); emitRun(run);
+    require('./loopActivity').append(loop.id, { type: 'ai_summary', message: `AI summary of PR #${prNumber} (${event}) — ${run.status}${run.cost_usd != null ? ` · $${Number(run.cost_usd).toFixed(4)}` : ''}`, refs: { run_id: id, pr_number: prNumber, task_id: taskId } });
 
     // Append the summary as a task comment when tied to a task.
     if (taskId && run.status === 'done' && run.output) {

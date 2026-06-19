@@ -75,7 +75,7 @@ function LoopRow({ loop, onOpen, onToggle, onRun, onEdit, onDelete }) {
  * A row opens the loop detail cockpit (feat-loopsv2-detail-001).
  */
 export default function LoopsView({ projects = [], activeProject, socketRef }) {
-  const { loops, loading, error, createLoop, updateLoop, deleteLoop, runLoop, runsByLoop, fetchRuns, summarize, fetchInstructions, templates, fetchTemplates, createTemplate, deleteTemplate, startTerminalRun, fetchTerminalRuns } = useLoops(socketRef)
+  const { loops, loading, error, createLoop, updateLoop, deleteLoop, runLoop, runsByLoop, fetchRuns, summarize, fetchInstructions, templates, fetchTemplates, createTemplate, deleteTemplate, startTerminalRun, fetchTerminalRuns, activityByLoop, fetchActivity } = useLoops(socketRef)
   const [modal, setModal] = useState(null)      // { loop, initialProject? } | null  (create/edit form)
   const [detailId, setDetailId] = useState(null) // open loop's id (detail cockpit)
 
@@ -156,6 +156,8 @@ export default function LoopsView({ projects = [], activeProject, socketRef }) {
           socketRef={socketRef}
           onStartTerminal={startTerminalRun}
           onFetchTerminalRuns={fetchTerminalRuns}
+          activity={activityByLoop[detailLoop.id] || []}
+          onFetchActivity={fetchActivity}
         />
       )}
 

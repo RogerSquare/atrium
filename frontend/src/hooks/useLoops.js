@@ -11,6 +11,7 @@ export default function useLoops(socketRef) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [runsByLoop, setRunsByLoop] = useState({}) // loopId -> run[] (AI summary runs)
+  const [activityByLoop, setActivityByLoop] = useState({}) // loopId -> activity[] (audit trail, newest-first)
 
   const upsertRun = useCallback((run) => {
     if (!run || !run.loop_id) return
@@ -55,7 +56,13 @@ export default function useLoops(socketRef) {
     // AI-summary runs stream in live (running -> done/error) as the agent works.
     const onRun = (run) => upsertRun(run)
     socket.on('loop_run_updated', onRun)
-    return () => { socket.off('loop_updated', onUpdated); socket.off('loop_run_updated', onRun) }
+    // Audit-trail entries stream in live.
+    const onAct = (e) => {
+      if (!e || !e.loop_id) return
+      setActivityByLoop((prev) => ({ ...prev, [e.loop_id]: [e, ...(prev[e.loop_id] || [])].slice(0, 200) }))
+    }
+    socket.on('loop_activity', onAct)
+    return () => { socket.off('loop_updated', onUpdated); socket.off('loop_run_updated', onRun); socket.off('loop_activity', onAct) }
   }, [socket, upsertRun])
 
   const mutate = useCallback(async (url, method, body) => {
@@ -144,10 +151,21 @@ export default function useLoops(socketRef) {
     return res.ok ? res.json() : []
   }, [])
 
+  // Per-loop audit trail.
+  const fetchActivity = useCallback(async (id) => {
+    try {
+      const res = await apiFetch(`${API_URL}/loops/${id}/activity`)
+      if (!res.ok) return
+      const data = await res.json()
+      setActivityByLoop((prev) => ({ ...prev, [id]: data }))
+    } catch { /* leave as-is */ }
+  }, [])
+
   return {
     loops, loading, error, refresh, createLoop, updateLoop, deleteLoop, runLoop,
     runsByLoop, fetchRuns, summarize,
     fetchInstructions, templates, fetchTemplates, createTemplate, deleteTemplate,
     startTerminalRun, fetchTerminalRuns,
+    activityByLoop, fetchActivity,
   }
 }

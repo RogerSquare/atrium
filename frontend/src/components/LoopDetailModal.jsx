@@ -97,7 +97,7 @@ function Row({ label, children }) {
   )
 }
 
-export default function LoopDetailModal({ loop, runs = [], onClose, onEdit, onRun, onToggle, onDelete, onSummarize, onFetchRuns, onUpdate, onFetchInstructions, templates = [], onFetchTemplates, onCreateTemplate, socketRef, onStartTerminal, onFetchTerminalRuns }) {
+export default function LoopDetailModal({ loop, runs = [], onClose, onEdit, onRun, onToggle, onDelete, onSummarize, onFetchRuns, onUpdate, onFetchInstructions, templates = [], onFetchTemplates, onCreateTemplate, socketRef, onStartTerminal, onFetchTerminalRuns, activity = [], onFetchActivity }) {
   const [activeTab, setActiveTab] = useState(() => {
     try { const s = localStorage.getItem(TAB_KEY); if (s && TABS.some((t) => t.id === s)) return s } catch { /* ignore */ }
     return 'config'
@@ -108,6 +108,7 @@ export default function LoopDetailModal({ loop, runs = [], onClose, onEdit, onRu
   const status = STATUS_STYLE[loop.status] || STATUS_STYLE.idle
 
   useEffect(() => { onFetchRuns(loop.id) }, [loop.id, onFetchRuns])
+  useEffect(() => { if (activeTab === 'activity' && onFetchActivity) onFetchActivity(loop.id) }, [activeTab, loop.id, onFetchActivity])
   const pick = (id) => { setActiveTab(id); try { localStorage.setItem(TAB_KEY, id) } catch { /* ignore */ } }
 
   // Instructions editor (feat-loopsv2-instructions-001)
@@ -259,6 +260,25 @@ export default function LoopDetailModal({ loop, runs = [], onClose, onEdit, onRu
 
           {activeTab === 'activity' && (
             <div>
+              {/* Audit trail — everything this loop changed (feat-loopsv2-activity-001) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                <Activity className="w-3.5 h-3.5" style={{ color: 'var(--accent-app)' }} />
+                <span style={{ fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>Audit trail</span>
+              </div>
+              {activity.length === 0 ? (
+                <div style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-4)' }}>Nothing recorded yet — actions appear here as the loop runs.</div>
+              ) : (
+                <div style={{ marginBottom: 'var(--space-4)' }}>
+                  {activity.slice(0, 60).map((a) => (
+                    <div key={a.id} data-testid="loop-activity-entry" style={{ display: 'flex', gap: '8px', padding: '4px 0', borderBottom: '0.5px solid var(--separator)', alignItems: 'baseline' }}>
+                      <Badge preset="muted" style={{ flexShrink: 0 }}>{a.type}</Badge>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--text-caption1)', color: 'var(--text-app)' }}>{a.message}</span>
+                      <span style={{ flexShrink: 0, fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>{relTime(a.ts)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
                 <Sparkles className="w-3.5 h-3.5" style={{ color: 'var(--accent-app)' }} />
                 <span style={{ fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>AI summaries</span>
@@ -283,9 +303,6 @@ export default function LoopDetailModal({ loop, runs = [], onClose, onEdit, onRu
               <pre className="custom-scrollbar" style={{ padding: 'var(--space-2)', background: 'var(--fill-secondary)', borderRadius: 'var(--radius-sm)', overflowX: 'auto', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', color: 'var(--text-app)' }}>
 {loop.last_result ? JSON.stringify(loop.last_result, null, 2) : 'No run yet.'}
               </pre>
-              <div style={{ marginTop: '8px', fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>
-                A full per-loop audit trail (every field update, comment, task created, PR) arrives in feat-loopsv2-activity-001.
-              </div>
             </div>
           )}
 
