@@ -17,6 +17,7 @@ const { logger } = require('./logger');
 const WATCH_TYPES = ['prs', 'ci', 'commits', 'issues'];
 const ACTION_TYPES = ['update_fields', 'comment', 'ai_summary'];
 const SCOPES = ['project', 'global'];
+const MODES = ['watcher', 'worker'];
 const STATUSES = ['idle', 'running', 'error'];
 const MIN_INTERVAL_MS = 60000;       // floor: 1 minute
 const DEFAULT_INTERVAL_MS = 300000;  // default: 5 minutes
@@ -24,7 +25,7 @@ const DEFAULT_INTERVAL_MS = 300000;  // default: 5 minutes
 // Fields a client may set on create/update. Engine-managed runtime fields
 // (status, last_run_at, next_run_at, last_result, last_error, snapshot) and
 // immutable fields (id, created_at) are never accepted from the API.
-const EDITABLE_FIELDS = ['name', 'scope', 'project', 'repo', 'watch', 'actions', 'interval_ms', 'enabled', 'instructions'];
+const EDITABLE_FIELDS = ['name', 'scope', 'project', 'repo', 'watch', 'actions', 'interval_ms', 'enabled', 'instructions', 'mode'];
 
 class LoopValidationError extends Error {
   constructor(details) {
@@ -129,6 +130,9 @@ function validate(input, { partial = false, merged = null } = {}) {
   if (has('instructions') && input.instructions !== null && typeof input.instructions !== 'string') {
     errors.instructions = 'instructions must be a string or null';
   }
+  if (has('mode') && !MODES.includes(input.mode)) {
+    errors.mode = `mode must be one of ${MODES.join(', ')}`;
+  }
 
   // Cross-field: scope-dependent requirements (evaluated against the merged view)
   const view = merged || input;
@@ -174,6 +178,7 @@ function create(input, { now = new Date().toISOString() } = {}) {
   if (clean.project === undefined) clean.project = null;
   if (clean.repo === undefined) clean.repo = null;
   if (clean.instructions === undefined) clean.instructions = null;
+  if (clean.mode === undefined) clean.mode = 'watcher';
 
   validate(clean, { partial: false });
 
@@ -190,6 +195,7 @@ function create(input, { now = new Date().toISOString() } = {}) {
     interval_ms: clean.interval_ms,
     enabled: clean.enabled,
     instructions: clean.instructions ?? null,
+    mode: clean.mode || 'watcher',
     status: 'idle',
     last_run_at: null,
     next_run_at: null,
@@ -248,5 +254,5 @@ module.exports = {
   list, get, create, update, remove, patchRuntime,
   validate, generateId, loadAll, saveAll,
   LoopValidationError,
-  WATCH_TYPES, ACTION_TYPES, SCOPES, STATUSES, MIN_INTERVAL_MS, DEFAULT_INTERVAL_MS,
+  WATCH_TYPES, ACTION_TYPES, SCOPES, MODES, STATUSES, MIN_INTERVAL_MS, DEFAULT_INTERVAL_MS,
 };

@@ -44,7 +44,7 @@ function writeMeta(meta) {
  * Start a PTY agent run. `prompt` is passed to `claude -p` as a single arg
  * (node-pty spawns without a shell, so no quoting issues). Returns the runId.
  */
-function start(loop, { prompt, label = 'agent run', cwd = os.tmpdir() } = {}) {
+function start(loop, { prompt, label = 'agent run', cwd = os.tmpdir(), allowTools = false, onExit = null } = {}) {
   const runId = `term-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const { bin } = resolveClaudeBin();
   const d = dir(loop.id);
@@ -60,7 +60,10 @@ function start(loop, { prompt, label = 'agent run', cwd = os.tmpdir() } = {}) {
 
   let child;
   try {
-    child = pty.spawn(bin, ['-p', prompt], {
+    // allowTools=true (executor) lets the agent edit files / run git+gh — it runs
+    // in the project's repo cwd. Summaries (allowTools=false) stay sandboxed.
+    const args = allowTools ? ['-p', '--dangerously-skip-permissions', prompt] : ['-p', prompt];
+    child = pty.spawn(bin, args, {
       name: 'xterm-256color',
       cols: 100,
       rows: 30,
@@ -97,6 +100,7 @@ function start(loop, { prompt, label = 'agent run', cwd = os.tmpdir() } = {}) {
     writeMeta(meta);
     try { require('./loopActivity').append(loop.id, { type: 'terminal_run', message: `Terminal run ${meta.status} (exit ${exitCode}): ${label}`, refs: { run_id: runId } }); } catch { /* ignore */ }
     emit('loopterm:exit', { runId, loopId: loop.id, code: exitCode, status: meta.status });
+    try { if (typeof onExit === 'function') onExit({ code: exitCode, status: meta.status, runId }); } catch (e) { logger.warn({ err: e.message }, 'loopPty onExit cb'); }
     // keep the entry briefly for late attach, then drop
     setTimeout(() => active.delete(runId), 60 * 1000);
   });

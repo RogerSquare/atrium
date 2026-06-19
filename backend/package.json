@@ -15,7 +15,8 @@
     "test:loop-engine": "node scripts/test-loop-engine.js",
     "test:loop-agent": "node scripts/test-loop-agent.js",
     "test:loop-instructions": "node scripts/test-loop-instructions.js",
-    "test:loop-activity": "node scripts/test-loop-activity.js"
+    "test:loop-activity": "node scripts/test-loop-activity.js",
+    "test:loop-worker": "node scripts/test-loop-worker.js"
   },
   "keywords": [],
   "author": "",

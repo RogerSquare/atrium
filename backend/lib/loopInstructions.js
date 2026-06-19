@@ -35,6 +35,19 @@ function generate(loop = {}) {
   const acts = (loop.actions || []).map((a) => `- ${ACTION_DESC[a] || a}`);
   if ((loop.watch || []).includes('issues')) acts.push('- create a `draft` Atrium task for each new issue');
 
+  if (loop.mode === 'worker') {
+    return [
+      `You are the autonomous worker behind the loop "${loop.name || '(unnamed)'}" for ${target}.`,
+      '',
+      `Every ${everyMin} minutes, claim the next eligible \`todo\` task in the project and take it from start to a pull request:`,
+      '- Branch from the latest main (branch name contains the task id), implement the change, run tests/lint/build.',
+      '- Open a PR and move the task to `review`.',
+      '',
+      'Rules: NEVER merge and NEVER push to main — a human reviews and merges. Stop at `review`. If blocked, return the task to `todo` with a comment. Keep changes scoped to the task.',
+      '',
+      '(This text is editable — it becomes the agent policy embedded in each execution run.)',
+    ].join('\n');
+  }
   const lines = [
     `You are the agent behind the loop "${loop.name || '(unnamed)'}".`,
     '',

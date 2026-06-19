@@ -273,6 +273,30 @@ async function runTick(loop) {
   };
 }
 
+// Worker mode (feat-loopsv2-worker-001): claim the next eligible todo in the
+// project and dispatch the autonomous executor. One task at a time per loop.
+// Only reached when loop.mode === 'worker' AND the loop is enabled (off by
+// default — mode defaults to 'watcher').
+async function runWorkerTick(loop) {
+  if (loop.scope !== 'project') {
+    return { result: { note: 'worker mode requires a project-scoped loop' }, snapshot: loop.snapshot };
+  }
+  const executor = require('./loopExecutor');
+  if (executor.isExecuting(loop.id)) {
+    return { result: { note: 'executor busy (one task at a time)' }, snapshot: loop.snapshot };
+  }
+  const proj = registry.resolve(loop.project);
+  if (!proj) return { result: { note: `project not found: ${loop.project}` }, snapshot: loop.snapshot };
+
+  const { claimNextTodo } = require('./tasks');
+  const task = await claimNextTodo(proj.folder, `loop:${loop.id}`);
+  if (!task) return { result: { claimed: 0, note: 'no eligible todo' }, snapshot: loop.snapshot };
+
+  require('./loopActivity').append(loop.id, { type: 'task_claimed', message: `Claimed ${task.id}: ${task.title}`, refs: { task_id: task.id } });
+  executor.run(loop, task); // fire-and-forget; streams to the Terminal tab
+  return { result: { claimed: 1, task: task.id, note: 'executor dispatched' }, snapshot: loop.snapshot };
+}
+
 function emitUpdated(loop) {
   if (!loop) return;
   try {
@@ -289,7 +313,7 @@ async function tick(loopId) {
   running.add(loopId);
   emitUpdated(loops.patchRuntime(loopId, { status: 'running', last_run_at: new Date().toISOString() }));
   try {
-    const { result, snapshot } = await runTick(loop);
+    const { result, snapshot } = loop.mode === 'worker' ? await runWorkerTick(loop) : await runTick(loop);
     const updated = loops.patchRuntime(loopId, {
       status: 'idle',
       last_result: result,
