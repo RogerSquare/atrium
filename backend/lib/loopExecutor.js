@@ -25,35 +25,32 @@ function isExecuting(loopId) {
 }
 
 // Pure (exported for tests): the execution prompt given to the agent.
+// Template-driven (feat-loopsv2-prompttemplate-001): render the loop's custom
+// `prompt_template` (or the default), then the engine always appends the hard
+// rules. Worker execution params (base_branch, commands, ...) feed the vars;
+// they default sensibly until feat-loopsv2-execparams-001 surfaces them.
 function buildExecutionPrompt(loop, task, instructions, repoPath) {
-  const branch = `loop/${task.id}`;
-  return [
-    `You are an autonomous developer agent working a task on the Atrium board.`,
-    `Repository: ${repoPath} (current working directory). Backend API: http://localhost:${PORT}`,
-    '',
-    `## Task ${task.id}: ${task.title}`,
-    `Status: ${task.status} | Priority: ${task.priority || 'medium'} | Type: ${task.type || 'fullstack'}`,
-    '',
-    '### Task description',
-    (task.content || '(no description)').slice(0, 4000),
-    '',
-    '### Loop policy / instructions',
-    instructions,
-    '',
-    '### STRICT workflow (follow exactly)',
-    '1. `git checkout main && git pull origin main` then create a branch whose name contains the task id, e.g. `git checkout -b ' + branch + '`.',
-    '2. Implement the change on that branch. Keep scope to the task.',
-    '3. Run the project tests / lint / build and make them pass before proceeding.',
-    '4. Commit with a conventional message including a `Task: ' + task.id + '` trailer, then `git push -u origin ' + branch + '`.',
-    '5. Open a PR: `gh pr create --base main --head ' + branch + '` with a summary + test plan referencing the task id.',
-    '6. Set the task to review via the API (do NOT mark it done): ',
-    '   `curl -X PUT http://localhost:' + PORT + '/api/tasks/' + task.id + ' -H "Content-Type: application/json" -d \'{"status":"review","github_pr_url":"<the PR url>","files_affected":["..."]}\'` (use your agent token if required).',
-    '',
-    '### HARD RULES',
-    '- NEVER merge the PR. NEVER push to `main`. NEVER `--force` push to `main`.',
-    '- Stop after the task is in `review`. A human reviews and merges.',
-    '- If you cannot complete it, set the task back to `todo` with a comment explaining why, and stop.',
-  ].join('\n');
+  const tpl = require('./loopPromptTemplate');
+  const w = (loop && loop.worker) || {};
+  const baseBranch = w.base_branch || 'main';
+  const branchPrefix = w.branch_prefix || 'loop/';
+  const vars = {
+    task_id: task.id,
+    task_title: task.title,
+    task_description: (task.content || '(no description)').slice(0, 4000),
+    repo_path: repoPath,
+    base_branch: baseBranch,
+    branch: `${branchPrefix}${task.id}`,
+    setup_command: w.setup_command || '',
+    test_command: w.test_command || '',
+    lint_command: w.lint_command || '',
+    build_command: w.build_command || '',
+    instructions: instructions || '',
+    extra_context: (loop && loop.extra_context) || '',
+    port: PORT,
+    final_status: 'review',
+  };
+  return tpl.build(loop && loop.prompt_template, vars);
 }
 
 // Fire-and-forget: start an executor run for a claimed task. Returns the runId
