@@ -134,6 +134,7 @@ async function handleIssues(loop, prevIssues) {
         created_by: `loop:${loop.id}`,
       });
       created++;
+      require('./loopActivity').append(loop.id, { type: 'task_created', message: `Created draft ${id} from issue #${issue.number}: ${issue.title}`, refs: { task_id: id } });
     } catch (err) {
       // 409 = the task already exists (snapshot lost but file persisted) — skip quietly.
       if (err.status !== 409) logger.warn({ err: err.message, id, loopId: loop.id }, 'loop: failed to create task from issue');
@@ -157,32 +158,39 @@ function requestSummary(loop, taskId, events, cur) {
 
 async function applyFieldUpdates(loop, task, cur) {
   const { updateTaskField } = require('./tasks');
+  const activity = require('./loopActivity');
   const actor = `loop:${loop.id}`;
   if (cur.pr_url && task.github_pr_url !== cur.pr_url) {
     await updateTaskField(task.id, 'github_pr_url', cur.pr_url, actor, 'github_pr_url set by loop');
+    activity.append(loop.id, { type: 'field_update', message: `Linked ${task.id} to ${cur.pr_url}`, refs: { task_id: task.id, pr_url: cur.pr_url, pr_number: cur.pr_number } });
   }
   if (cur.branch && task.github_branch !== cur.branch) {
     await updateTaskField(task.id, 'github_branch', cur.branch, actor, 'github_branch set by loop');
+    activity.append(loop.id, { type: 'field_update', message: `Set ${task.id} branch to ${cur.branch}`, refs: { task_id: task.id } });
   }
 }
 
 async function postComment(loop, task, events, cur) {
   const { appendComment } = require('./tasks');
+  const activity = require('./loopActivity');
   const body = [
     `- **[loop:${loop.name}]**: GitHub changes detected${cur.pr_url ? ` ([${cur.pr_number ? `#${cur.pr_number}` : 'PR'}](${cur.pr_url}))` : ''}.`,
     describeEvents(events, cur).split('\n').map((l) => `  ${l}`).join('\n'),
   ].join('\n');
   await appendComment(task.id, body, `loop:${loop.id}`);
+  activity.append(loop.id, { type: 'comment', message: `Commented on ${task.id}: ${events.map((e) => e.type).join(', ')}`, refs: { task_id: task.id, pr_number: cur.pr_number, pr_url: cur.pr_url } });
 }
 
 // Decision 1 (locked): on PR merge, move the task to review IF it's mid-flight.
 // Never auto-`done` (human-only) and don't yank drafts/waiting_input forward.
 async function applyMergePolicy(loop, task) {
   const { updateTaskField } = require('./tasks');
+  const activity = require('./loopActivity');
   if (task.status === 'todo' || task.status === 'in_progress') {
     const actor = `loop:${loop.id}`;
     await updateTaskField(task.id, 'reviewed_at', new Date().toISOString(), actor, null);
     await updateTaskField(task.id, 'status', 'review', actor, 'Moved to review on PR merge by loop');
+    activity.append(loop.id, { type: 'status_move', message: `Moved ${task.id} ${task.status} -> review (PR merged)`, refs: { task_id: task.id } });
   }
 }
 
@@ -293,6 +301,7 @@ async function tick(loopId) {
     return updated;
   } catch (err) {
     logger.error({ err, loopId }, 'loop tick failed');
+    require('./loopActivity').append(loopId, { type: 'error', message: `Tick failed: ${String((err && err.message) || err)}` });
     const updated = loops.patchRuntime(loopId, {
       status: 'error',
       last_error: String((err && err.message) || err),

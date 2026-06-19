@@ -78,6 +78,7 @@ function start(loop, { prompt, label = 'agent run', cwd = os.tmpdir() } = {}) {
 
   const entry = { pty: child, loopId: loop.id, startedAt: Date.now(), exited: false, code: null, timer: null };
   active.set(runId, entry);
+  try { require('./loopActivity').append(loop.id, { type: 'terminal_run', message: `Started terminal run: ${label}`, refs: { run_id: runId } }); } catch { /* ignore */ }
 
   entry.timer = setTimeout(() => { try { child.kill(); } catch {} }, RUN_HARD_TIMEOUT_MS);
 
@@ -94,6 +95,7 @@ function start(loop, { prompt, label = 'agent run', cwd = os.tmpdir() } = {}) {
     meta.exit_code = exitCode;
     meta.finished_at = new Date().toISOString();
     writeMeta(meta);
+    try { require('./loopActivity').append(loop.id, { type: 'terminal_run', message: `Terminal run ${meta.status} (exit ${exitCode}): ${label}`, refs: { run_id: runId } }); } catch { /* ignore */ }
     emit('loopterm:exit', { runId, loopId: loop.id, code: exitCode, status: meta.status });
     // keep the entry briefly for late attach, then drop
     setTimeout(() => active.delete(runId), 60 * 1000);
