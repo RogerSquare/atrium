@@ -4,16 +4,18 @@ const path = require('path');
 const { spawn } = require('child_process');
 const multer = require('multer');
 const crypto = require('crypto');
-const { SETTINGS_FILE } = require('../lib/constants');
+const { SETTINGS_FILE, UPLOADS_DIR, PROTOTYPES_DIR } = require('../lib/constants');
 const { getServices } = require('../lib/services');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
-const UPLOADS_DIR = path.join(__dirname, '..', 'uploads', 'design');
+// UPLOADS_DIR / PROTOTYPES_DIR now come from constants so they follow
+// ATRIUM_DATA_DIR (devops-docker-datadir-001); constants creates them on boot.
+// design-history / design-sessions are still local — see the follow-up note on
+// that task.
 const HISTORY_DIR = path.join(__dirname, '..', 'design-history');
 const SESSIONS_DIR = path.join(__dirname, '..', 'design-sessions');
 
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 if (!fs.existsSync(HISTORY_DIR)) fs.mkdirSync(HISTORY_DIR, { recursive: true });
 if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 
@@ -649,8 +651,8 @@ router.post('/apply-files', (req, res) => {
 });
 
 // --- Prototypes ---
-const PROTOTYPES_DIR = path.join(UPLOADS_DIR, 'prototypes');
-if (!fs.existsSync(PROTOTYPES_DIR)) fs.mkdirSync(PROTOTYPES_DIR, { recursive: true });
+// PROTOTYPES_DIR is imported from constants (rooted at ATRIUM_DATA_DIR) and
+// created by ensureDataDirs on boot.
 
 // Cancel an active prototype generation session
 router.delete('/prototype/session', (req, res) => {
