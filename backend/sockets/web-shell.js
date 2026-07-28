@@ -28,11 +28,14 @@
 //                     webshell:spawn  { taskId, spawnId, pid, spawnAt, sessionId, sessionSource }
 //                     webshell:evicted { taskId }
 //
-// `command` (optional): when set, server spawns `cmd.exe /c <command>`
-// directly so there's no banner/prompt before the launched CLI takes
-// over the canvas. When unset but a claude session is bound, the resolved
-// claude binary is spawned DIRECTLY (no cmd.exe) via ../lib/claudeBin.js —
-// see opt-webshell-claude-path-001. When neither, an interactive cmd.exe.
+// `command` (optional): when set, server runs it through the platform shell
+// (`cmd.exe /c <command>` on Windows, `/bin/sh -c <command>` elsewhere) so
+// there's no banner/prompt before the launched CLI takes over the canvas.
+// When unset but a claude session is bound, the resolved claude binary is
+// spawned DIRECTLY (no wrapper shell) via ../lib/claudeBin.js — see
+// opt-webshell-claude-path-001. When neither, an interactive DEFAULT_SHELL.
+// Shell selection lives in ../lib/shellDefaults.js
+// (devops-docker-shell-portable-001).
 //
 // Phase 2 introduced a `Map<taskId, ptyEntry>` per socket so background
 // sessions stay alive when the user navigates to a different task: a
@@ -48,8 +51,13 @@ const { logger } = require('../lib/logger');
 const { SETTINGS_FILE } = require('../lib/constants');
 const { getAllTasks, updateTaskField } = require('../lib/tasks');
 const { resolveClaudeBin, buildClaudeArgs, claudeVersion } = require('../lib/claudeBin');
+const { resolveDefaultShell, buildShellCommandArgs } = require('../lib/shellDefaults');
 
-const DEFAULT_SHELL = process.env.WEB_SHELL_DEFAULT_SHELL || 'cmd.exe';
+// Resolved once at module load, as before. WEB_SHELL_DEFAULT_SHELL still
+// works; ATRIUM_SHELL is the newer generic override shared with the other
+// PTY surface. Falls back to cmd.exe on Windows, /bin/bash elsewhere
+// (devops-docker-shell-portable-001).
+const DEFAULT_SHELL = resolveDefaultShell();
 
 // Soft cap on concurrent taskId-bound PTYs (`feat-shell-background-sessions-001`
 // Phase 2 introduced; `feat-shell-lifecycle-001` Slice 1 made it global).
@@ -589,8 +597,11 @@ const registerWebShellHandlers = (socket) => {
       let claudeArgInfo = null;
 
       if (customCommand) {
-        spawnCmd = 'cmd.exe';
-        spawnArgs = ['/c', customCommand];
+        // `cmd.exe /c` on Windows, `/bin/sh -c` elsewhere. The command stays a
+        // single trailing argument either way, so quoting is not re-mangled.
+        const shellCmd = buildShellCommandArgs(customCommand);
+        spawnCmd = shellCmd.cmd;
+        spawnArgs = shellCmd.args;
         command = customCommand;
       } else if (sessionId) {
         claudeBinInfo = resolveClaudeBin();
