@@ -29,9 +29,19 @@ function servicesEnabled(env = process.env) {
 
 // Snapshot for the /api/features endpoint and for logging at boot, so an
 // operator can see what this instance actually offers without reading code.
+// Is Docker-backed service control wired up? Distinct from `services` — a
+// container instance can have the Services feature ON (so the panel renders
+// and container-backed entries work) while still being unable to spawn host
+// processes. The frontend uses this to explain which kinds of service it can
+// actually act on (feat-services-containers-001).
+function dockerServicesEnabled(env = process.env) {
+  return servicesEnabled(env) && !!(env && env.DOCKER_HOST);
+}
+
 function featureSnapshot(env = process.env) {
   return {
     services: servicesEnabled(env),
+    dockerServices: dockerServicesEnabled(env),
   };
 }
 
@@ -64,6 +74,7 @@ const SERVICES_DISABLED_REASON =
 module.exports = {
   isEnabled,
   servicesEnabled,
+  dockerServicesEnabled,
   featureSnapshot,
   SERVICES_DISABLED_REASON,
 };

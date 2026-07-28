@@ -45,6 +45,30 @@ test('an empty string does not disable', () => {
 });
 
 test('the snapshot reports each flag', () => {
-  assert.deepStrictEqual(featureSnapshot({}), { services: true });
-  assert.deepStrictEqual(featureSnapshot({ ATRIUM_FEATURE_SERVICES: 'off' }), { services: false });
+  // dockerServices is a second, narrower capability: services can be ON while
+  // Docker-backed control is unavailable (a native install has no DOCKER_HOST).
+  assert.deepStrictEqual(featureSnapshot({}), { services: true, dockerServices: false });
+  assert.deepStrictEqual(
+    featureSnapshot({ ATRIUM_FEATURE_SERVICES: 'off' }),
+    { services: false, dockerServices: false },
+  );
+  assert.deepStrictEqual(
+    featureSnapshot({ DOCKER_HOST: 'http://docker-socket-proxy:2375' }),
+    { services: true, dockerServices: true },
+  );
+});
+
+// --- dockerServicesEnabled (feat-services-containers-001) ----------------
+
+test('docker service control needs BOTH the feature on and a DOCKER_HOST', () => {
+  const { dockerServicesEnabled } = require('./features');
+  // Container instance wired to the socket proxy — the real enabling case.
+  assert.strictEqual(dockerServicesEnabled({ DOCKER_HOST: 'http://docker-socket-proxy:2375' }), true);
+  // Native install: feature on, but no Docker API to drive.
+  assert.strictEqual(dockerServicesEnabled({}), false);
+  // Explicitly disabled beats a configured DOCKER_HOST.
+  assert.strictEqual(
+    dockerServicesEnabled({ ATRIUM_FEATURE_SERVICES: 'off', DOCKER_HOST: 'http://x:2375' }),
+    false,
+  );
 });
