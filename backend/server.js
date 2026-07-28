@@ -11,6 +11,7 @@ const { PORT, TASKS_DIR, HISTORY_DIR, TRASH_DIR, ARCHIVED_DIR, USERS_DIR, SETTIN
 const { setIO } = require('./lib/io');
 const { logger, requestLogger } = require('./lib/logger');
 const { resolveFrontendDist, isSpaFallbackRequest, hasBuild, cacheHeadersFor } = require('./lib/staticSite');
+const { featureSnapshot } = require('./lib/features');
 
 // --- Swagger API Docs ---
 const swaggerUi = require('swagger-ui-express');
@@ -185,6 +186,25 @@ app.get('/api/health/ready', (req, res) => {
   res.status(statusCode).json({ status: healthy ? 'ok' : 'degraded', checks });
 });
 
+/**
+ * @swagger
+ * /api/features:
+ *   get:
+ *     summary: Which optional features this instance offers
+ *     description: >
+ *       Feature flags for host-coupled surfaces. A containerized instance
+ *       cannot spawn processes on its host, so the Services manager is
+ *       typically disabled there. Public so the client can branch before
+ *       authenticating; it exposes booleans only, no configuration.
+ *     tags: [Settings]
+ *     responses:
+ *       200:
+ *         description: Map of feature name to enabled boolean
+ */
+app.get('/api/features', (req, res) => {
+  res.json(featureSnapshot());
+});
+
 // --- API Documentation ---
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',
@@ -354,6 +374,7 @@ io.on('connection', (socket) => {
 // --- Start Server ---
 server.listen(PORT, '0.0.0.0', () => {
   logger.info({ port: PORT }, `Backend server running on http://0.0.0.0:${PORT}`);
+  logger.info({ features: featureSnapshot() }, 'Feature flags');
   logger.info(`API docs at http://localhost:${PORT}/api/docs`);
   // Start the GitHub-watcher loop engine after the server is listening so a
   // slow first poll never blocks startup (feat-loops-engine-001).

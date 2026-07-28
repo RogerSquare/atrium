@@ -4,8 +4,28 @@ const { exec, spawn } = require('child_process');
 const { getServices, saveServices, checkPort } = require('../lib/services');
 const { getIO } = require('../lib/io');
 const { logger } = require('../lib/logger');
+const { servicesEnabled, SERVICES_DISABLED_REASON } = require('../lib/features');
 
 const router = express.Router();
+
+// --- Feature gate (devops-docker-flags-001) ---
+// The Services manager spawns processes on the HOST by absolute path, which a
+// container cannot do. When ATRIUM_FEATURE_SERVICES is off, every mutating
+// route answers 501 with a reason instead of failing obscurely.
+//
+// GET / is deliberately NOT gated this way — it returns an empty list instead
+// (see the route). Both Sidebar.jsx and ProjectProgress.jsx already render
+// their Services section only when the list is non-empty, so an empty array
+// makes the UI hide itself with no client changes and no empty-state flicker.
+const requireServicesEnabled = (req, res, next) => {
+  if (servicesEnabled()) return next();
+  logger.info({ method: req.method, path: req.originalUrl }, 'services: rejected — feature disabled');
+  return res.status(501).json({
+    error: 'Services manager disabled',
+    reason: SERVICES_DISABLED_REASON,
+    feature: 'services',
+  });
+};
 
 // --- In-memory log + process tracking ---
 // Map<serviceId, { process, logs: string[], startedAt, pid }>
@@ -169,6 +189,19 @@ const startInOrder = async (services) => {
  */
 router.get('/', async (req, res) => {
   try {
+    // Disabled: answer with an EMPTY ARRAY, not an error object. The shape has
+    // to stay an array — App.jsx and AppShell.jsx feed this straight into
+    // state that is later .map()ed, so an object here would throw in the UI.
+    // Empty also makes the Services sections in Sidebar.jsx and
+    // ProjectProgress.jsx hide themselves, since both already guard on
+    // `projectServices.length > 0`. The header carries the *reason* so the
+    // disabled state stays discoverable in devtools and by any future client
+    // that wants to distinguish "off" from "none registered".
+    if (!servicesEnabled()) {
+      res.set('X-Atrium-Feature-Services', 'disabled');
+      return res.json([]);
+    }
+
     const services = getServices();
     const serviceStatus = await Promise.all(services.map(async (s) => {
       const isRunning = await checkPort(s.port);
@@ -233,7 +266,7 @@ router.get('/', async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/Service'
  */
-router.post('/', (req, res) => {
+router.post('/', requireServicesEnabled, (req, res) => {
   try {
     const { name, port, cwd, startCmd, group, depends_on, preview } = req.body;
     if (!name || !port || !cwd || !startCmd) return res.status(400).json({ error: 'Missing service information' });
@@ -294,7 +327,7 @@ router.post('/', (req, res) => {
  *       200:
  *         description: Service updated
  */
-router.put('/:id', (req, res) => {
+router.put('/:id', requireServicesEnabled, (req, res) => {
   try {
     const services = getServices();
     const idx = services.findIndex(s => s.id === req.params.id);
@@ -332,7 +365,7 @@ router.put('/:id', (req, res) => {
  *       200:
  *         description: Service restarted
  */
-router.post('/:id/restart', async (req, res) => {
+router.post('/:id/restart', requireServicesEnabled, async (req, res) => {
   const services = getServices();
   const service = services.find(s => s.id === req.params.id);
   if (!service) return res.status(404).json({ error: 'Service not found' });
@@ -361,7 +394,7 @@ router.post('/:id/restart', async (req, res) => {
  *       200:
  *         description: Service deleted
  */
-router.delete('/:id', (req, res) => {
+router.delete('/:id', requireServicesEnabled, (req, res) => {
   try {
     let services = getServices();
     services = services.filter(s => s.id !== req.params.id);
@@ -390,7 +423,7 @@ router.delete('/:id', (req, res) => {
  *       200:
  *         description: Service stopped
  */
-router.post('/:id/stop', async (req, res) => {
+router.post('/:id/stop', requireServicesEnabled, async (req, res) => {
   const services = getServices();
   const service = services.find(s => s.id === req.params.id);
   if (!service) return res.status(404).json({ error: 'Service not found' });
@@ -414,7 +447,7 @@ router.post('/:id/stop', async (req, res) => {
  *       200:
  *         description: Service started
  */
-router.post('/:id/start', async (req, res) => {
+router.post('/:id/start', requireServicesEnabled, async (req, res) => {
   const services = getServices();
   const service = services.find(s => s.id === req.params.id);
   if (!service) return res.status(404).json({ error: 'Service not found' });
@@ -487,7 +520,7 @@ router.get('/:id/logs', (req, res) => {
  *       200:
  *         description: Logs cleared
  */
-router.delete('/:id/logs', (req, res) => {
+router.delete('/:id/logs', requireServicesEnabled, (req, res) => {
   const entry = runningServices.get(req.params.id);
   if (entry) entry.logs = [];
   res.json({ success: true });
@@ -510,7 +543,7 @@ router.delete('/:id/logs', (req, res) => {
  *       200:
  *         description: Group started
  */
-router.post('/groups/:name/start', async (req, res) => {
+router.post('/groups/:name/start', requireServicesEnabled, async (req, res) => {
   try {
     const services = getServices().filter(s => s.group === req.params.name);
     await startInOrder(services);
@@ -534,7 +567,7 @@ router.post('/groups/:name/start', async (req, res) => {
  *       200:
  *         description: Group stopped
  */
-router.post('/groups/:name/stop', async (req, res) => {
+router.post('/groups/:name/stop', requireServicesEnabled, async (req, res) => {
   try {
     const services = getServices().filter(s => s.group === req.params.name);
     for (const service of services) { stopByPort(service.port, () => {}); }
