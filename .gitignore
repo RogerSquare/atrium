@@ -5,6 +5,9 @@ node_modules/
 backend/.jwt-secret
 *.env
 .env.*
+# ...but the container config TEMPLATE must ship — `.env.*` above would
+# otherwise swallow it and a fresh clone would have nothing to copy from.
+!.env.example
 
 # User data & credentials
 backend/users/
