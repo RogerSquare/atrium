@@ -39,6 +39,8 @@ const {
   // Design Studio uploads + generated prototypes (were local to routes/design.js
   // until this refactor pulled them under the single data root).
   UPLOADS_DIR, PROTOTYPES_DIR,
+  // Design Studio history + saved sessions (devops-docker-designdirs-001).
+  DESIGN_HISTORY_DIR, DESIGN_SESSIONS_DIR,
   JWT_SECRET_FILE,
 } = paths;
 
@@ -94,5 +96,5 @@ module.exports = {
   AGENT_TOKENS_DIR, AGENT_TOKENS_BLOCKLIST,
   E2E_RUNS_DIR, MAX_E2E_RUNS_PER_TASK,
   AUTOENTER_DIR, AUTOENTER_CAPTURES_FILE, MAX_AUTOENTER_CAPTURES,
-  UPLOADS_DIR, PROTOTYPES_DIR,
+  UPLOADS_DIR, PROTOTYPES_DIR, DESIGN_HISTORY_DIR, DESIGN_SESSIONS_DIR,
 };

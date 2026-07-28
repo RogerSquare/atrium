@@ -48,6 +48,11 @@ test('every state path hangs off the given root', () => {
   assert.strictEqual(p.E2E_RUNS_DIR, path.join(BACKEND, 'e2e-runs'));
   assert.strictEqual(p.AUTOENTER_DIR, path.join(BACKEND, 'autoenter'));
   assert.strictEqual(p.UPLOADS_DIR, path.join(BACKEND, 'uploads', 'design'));
+  // Design Studio history + sessions (devops-docker-designdirs-001). These were
+  // left behind by the original datadir refactor and would have landed in the
+  // container's writable layer, so Design Studio history vanished on restart.
+  assert.strictEqual(p.DESIGN_HISTORY_DIR, path.join(BACKEND, 'design-history'));
+  assert.strictEqual(p.DESIGN_SESSIONS_DIR, path.join(BACKEND, 'design-sessions'));
   assert.strictEqual(p.JWT_SECRET_FILE, path.join(BACKEND, '.jwt-secret'));
 });
 
@@ -103,6 +108,7 @@ test('creates every state directory under an empty root', () => {
       p.APPROVALS_DIR, p.AGENT_TOKENS_DIR, p.USERS_DIR, p.CHAT_DIR,
       p.LOOP_RUNS_DIR, p.E2E_RUNS_DIR, p.AUTOENTER_DIR,
       p.UPLOADS_DIR, p.PROTOTYPES_DIR,
+      p.DESIGN_HISTORY_DIR, p.DESIGN_SESSIONS_DIR,
     ]) {
       assert.ok(fs.existsSync(dir), `expected ${path.relative(root, dir)} to exist`);
     }
