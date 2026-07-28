@@ -67,7 +67,19 @@ services:
       # NOTE: session HISTORY will not resume in the container. claudeBin.js
       # derives session file paths from the cwd, so /workspace/atrium hashes
       # to a different slug than C:\Users\...\opencode. New sessions are fine.
-      - "${ATRIUM_CLAUDE_CONFIG:?ATRIUM_CLAUDE_CONFIG is required — set it to your .claude directory}:/home/node/.claude:ro"
+      # Read-WRITE, deliberately. Claude Code rewrites .credentials.json on
+      # token refresh and updates state as you work; mounted read-only it
+      # cannot persist a login, so every new terminal re-prompts. The container
+      # writing here is the same user on the same machine, so sharing the
+      # host's session is the intended behaviour, not a leak.
+      - "${ATRIUM_CLAUDE_CONFIG:?ATRIUM_CLAUDE_CONFIG is required — set it to your .claude directory}:/home/node/.claude"
+
+      # Claude Code splits its state: credentials live in .claude/, but account
+      # and onboarding state live in ~/.claude.json — OUTSIDE that directory.
+      # Without this the container writes its own copy into the image's
+      # writable layer, which is destroyed on every rebuild, so the login is
+      # lost each time.
+      - "${ATRIUM_CLAUDE_JSON:?ATRIUM_CLAUDE_JSON is required — set it to your .claude.json}:/home/node/.claude.json"
 
     restart: unless-stopped
 
