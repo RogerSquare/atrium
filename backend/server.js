@@ -12,6 +12,7 @@ const { setIO } = require('./lib/io');
 const { logger, requestLogger } = require('./lib/logger');
 const { resolveFrontendDist, isSpaFallbackRequest, hasBuild, cacheHeadersFor } = require('./lib/staticSite');
 const { featureSnapshot } = require('./lib/features');
+const { buildAllowedOrigins, buildOriginChecker } = require('./lib/corsPolicy');
 
 // --- Swagger API Docs ---
 const swaggerUi = require('swagger-ui-express');
@@ -53,53 +54,38 @@ const app = express();
 const server = http.createServer(app);
 
 // --- CORS Origin Policy ---
-// In production, set ALLOWED_ORIGINS env var (comma-separated list of origins)
-// In development, localhost origins are auto-allowed
-const buildAllowedOrigins = () => {
-  const origins = new Set();
-  if (process.env.ALLOWED_ORIGINS) {
-    process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean).forEach(o => origins.add(o));
-  }
-  // Always allow same-origin (empty origin from non-browser clients / same-host)
-  // Auto-allow localhost variants in development
-  if (process.env.NODE_ENV !== 'production' || origins.size === 0) {
-    [3000, 3001, 5173, 5174, 8080].forEach(p => {
-      origins.add(`http://localhost:${p}`);
-      origins.add(`http://127.0.0.1:${p}`);
+// Policy lives in lib/corsPolicy.js so the rules are unit-tested. In short:
+// same-origin is always allowed (the Origin's host matches the Host header the
+// browser used), plus anything in ALLOWED_ORIGINS, plus the dev localhost
+// ports where Vite and the API genuinely differ.
+//
+// The same-origin rule is what makes the container work on any published port:
+// it serves its own SPA, so `docker run -p 3100:3001` must not require the
+// operator to also remember an ALLOWED_ORIGINS entry (devops-docker-compose-001).
+const allowedOrigins = buildAllowedOrigins();
+const isOriginAllowed = buildOriginChecker(allowedOrigins);
+
+// The `cors` package's options-delegate form — `(req, callback)` rather than
+// `(origin, callback)` — because deciding same-origin needs the Host header,
+// which the origin-only signature does not expose.
+const corsDelegate = (req, callback) => {
+  const origin = req.headers.origin;
+  if (isOriginAllowed(origin, req.headers.host)) {
+    return callback(null, {
+      origin: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+      credentials: true,
     });
   }
-  // Playwright's hosted trace viewer fetches our /api/e2e-runs/.../trace.zip
-  // when a reviewer clicks "Open in Playwright trace viewer" on a Tests-tab
-  // spec row. The viewer is a Microsoft-hosted SPA that opens any trace URL
-  // passed via ?trace=. Allowing it here keeps the cross-origin fetch from
-  // the viewer-page to atrium from being rejected.
-  origins.add('https://trace.playwright.dev');
-  return origins;
-};
-
-const allowedOrigins = buildAllowedOrigins();
-
-const corsOriginCheck = (origin, callback) => {
-  // Allow requests with no origin (same-origin, curl, server-to-server)
-  if (!origin) return callback(null, true);
-  if (allowedOrigins.has(origin)) return callback(null, true);
   callback(new Error(`CORS: origin ${origin} not allowed`));
 };
 
-app.use(cors({
-  origin: corsOriginCheck,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
+app.use(cors(corsDelegate));
 
-const io = new Server(server, {
-  cors: {
-    origin: (origin, callback) => corsOriginCheck(origin, callback),
-    methods: ['GET', 'POST'],
-    credentials: true
-  }
-});
+// socket.io passes its `cors` option straight to the same package, so the
+// delegate works here too and the two layers cannot drift apart.
+const io = new Server(server, { cors: corsDelegate });
 
 app.use(express.json());
 app.use(requestLogger);
