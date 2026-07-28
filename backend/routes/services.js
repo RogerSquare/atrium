@@ -330,17 +330,47 @@ router.get('/', async (req, res) => {
  */
 router.post('/', requireServicesEnabled, (req, res) => {
   try {
-    const { name, port, cwd, startCmd, group, depends_on, preview } = req.body;
-    if (!name || !port || !cwd || !startCmd) return res.status(400).json({ error: 'Missing service information' });
-    const safePort = validatePort(port);
-    if (!safePort) return res.status(400).json({ error: 'Port must be a number between 1 and 65535' });
-    const cmdCheck = validateStartCmd(startCmd);
-    if (!cmdCheck.valid) return res.status(400).json({ error: cmdCheck.error });
-    if (!validateCwd(cwd)) return res.status(400).json({ error: 'Working directory does not exist or is not a directory' });
+    const { name, port, cwd, startCmd, group, depends_on, preview, type, container_name } = req.body;
+    if (!name) return res.status(400).json({ error: 'Service name is required' });
+
+    // Two shapes now (feat-services-containers-001). A container service has no
+    // cwd or start command — Docker owns those — so validating them would make
+    // registration impossible. Anything without an explicit type stays a host
+    // process and keeps the original required fields.
+    const isContainer = type === 'container';
 
     const services = getServices();
     const id = name.toLowerCase().replace(/[^a-z0-9]/g, '-');
-    const newService = { id, name, group: group || 'Uncategorized', port: safePort, cwd, startCmd: startCmd.trim(), depends_on: depends_on || [] };
+    if (services.some((s) => s.id === id)) {
+      return res.status(409).json({ error: `A service with id "${id}" already exists` });
+    }
+
+    let newService;
+    if (isContainer) {
+      const cname = (container_name || '').trim();
+      if (!cname) return res.status(400).json({ error: 'Container name is required for a container service' });
+      // Docker's own naming rules — reject early rather than 404ing on every
+      // later start/stop with a name the daemon can never match.
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(cname)) {
+        return res.status(400).json({ error: 'Container name may contain only letters, digits, _ . and -' });
+      }
+      // Port is informational for container services — the real published port
+      // is read back from Docker on every status call.
+      const safePort = port ? validatePort(port) : null;
+      if (port && !safePort) return res.status(400).json({ error: 'Port must be a number between 1 and 65535' });
+      newService = {
+        id, name, group: group || 'Uncategorized', type: 'container',
+        container_name: cname, port: safePort || 0, depends_on: depends_on || [],
+      };
+    } else {
+      if (!port || !cwd || !startCmd) return res.status(400).json({ error: 'Missing service information' });
+      const safePort = validatePort(port);
+      if (!safePort) return res.status(400).json({ error: 'Port must be a number between 1 and 65535' });
+      const cmdCheck = validateStartCmd(startCmd);
+      if (!cmdCheck.valid) return res.status(400).json({ error: cmdCheck.error });
+      if (!validateCwd(cwd)) return res.status(400).json({ error: 'Working directory does not exist or is not a directory' });
+      newService = { id, name, group: group || 'Uncategorized', type: 'process', port: safePort, cwd, startCmd: startCmd.trim(), depends_on: depends_on || [] };
+    }
     if (preview !== undefined) newService.preview = !!preview;
     services.push(newService);
     saveServices(services);
