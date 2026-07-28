@@ -10,6 +10,7 @@ const rateLimit = require('express-rate-limit');
 const { PORT, TASKS_DIR, HISTORY_DIR, TRASH_DIR, ARCHIVED_DIR, USERS_DIR, SETTINGS_FILE, SERVICES_FILE, CHAT_DIR, CHAT_FILE } = require('./lib/constants');
 const { setIO } = require('./lib/io');
 const { logger, requestLogger } = require('./lib/logger');
+const { resolveFrontendDist, isSpaFallbackRequest, hasBuild, cacheHeadersFor } = require('./lib/staticSite');
 
 // --- Swagger API Docs ---
 const swaggerUi = require('swagger-ui-express');
@@ -276,6 +277,51 @@ app.use('/api/autoenter', requireAuth, autoEnterRoutes);
 app.get('/api/presence', (req, res) => {
   res.json(getAllTaskViewers());
 });
+
+// --- Built SPA (devops-docker-serve-spa-001) ---
+// Mounted AFTER every /api route so it can never shadow one, and BEFORE the
+// error handler, which must stay last. In development you normally hit Vite
+// on :5173 (which proxies /api here) and this block simply never matches;
+// in a container it is how the board is served at all.
+const FRONTEND_DIST = resolveFrontendDist({
+  defaultDir: path.join(__dirname, '..', 'frontend', 'dist'),
+});
+
+if (hasBuild(FRONTEND_DIST)) {
+  // index: false so '/' falls through to the handler below and index.html is
+  // served from exactly one place, with one set of headers.
+  app.use(express.static(FRONTEND_DIST, {
+    index: false,
+    setHeaders: cacheHeadersFor(FRONTEND_DIST),
+  }));
+
+  // History fallback: unknown GETs are client-side routes, so hand back the
+  // shell and let the router sort it out. Express 5 replaced path-to-regexp,
+  // so `app.get('*')` no longer parses — this must be a bare app.use.
+  app.use((req, res, next) => {
+    if (!isSpaFallbackRequest(req.method, req.path)) return next();
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(FRONTEND_DIST, 'index.html'), (err) => {
+      if (err) next(err);
+    });
+  });
+
+  logger.info({ dist: FRONTEND_DIST }, 'Serving built frontend');
+} else {
+  // Not a fatal condition: running the backend alone against Vite is the
+  // normal dev setup. Say so plainly instead of 404ing into the void.
+  logger.warn({ dist: FRONTEND_DIST }, 'No frontend build found — serving API only. Run `npm run build` in frontend/ to serve the SPA from this port.');
+
+  app.use((req, res, next) => {
+    if (!isSpaFallbackRequest(req.method, req.path)) return next();
+    res.status(503).type('text/plain').send(
+      'Atrium API is running, but no frontend build was found at:\n'
+      + `  ${FRONTEND_DIST}\n\n`
+      + 'Either run `npm run build` in frontend/, set ATRIUM_FRONTEND_DIST,\n'
+      + 'or use the Vite dev server on :5173 for development.\n'
+    );
+  });
+}
 
 // --- Global Error Handler (safety net for unhandled route errors) ---
 app.use((err, req, res, _next) => {
