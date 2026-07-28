@@ -108,7 +108,15 @@ app.use(requestLogger);
 [TASKS_DIR, HISTORY_DIR, TRASH_DIR, ARCHIVED_DIR, USERS_DIR, CHAT_DIR].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
-if (!fs.existsSync(SETTINGS_FILE)) fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ workingDirectory: '' }));
+// Seed settings.json on FIRST boot only. ATRIUM_WORKING_DIRECTORY lets the
+// container point this at its bind-mounted /workspace without a manual edit
+// inside the volume (devops-docker-compose-001). Existing settings are never
+// overwritten — the user's choice in the UI always wins after first boot.
+if (!fs.existsSync(SETTINGS_FILE)) {
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
+    workingDirectory: process.env.ATRIUM_WORKING_DIRECTORY || '',
+  }));
+}
 if (!fs.existsSync(SERVICES_FILE)) fs.writeFileSync(SERVICES_FILE, JSON.stringify([]));
 if (!fs.existsSync(CHAT_FILE)) fs.writeFileSync(CHAT_FILE, JSON.stringify([]));
 
