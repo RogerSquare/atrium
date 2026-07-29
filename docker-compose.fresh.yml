@@ -1,0 +1,46 @@
+# Throwaway first-run sandbox (feat-first-run-setup-001).
+#
+# Stands up a SECOND Atrium with completely empty state, so the first-run
+# experience — create the admin account, walk the setup guide — can be
+# exercised without disturbing the real instance on :3100.
+#
+# Everything that would collide with the real stack is renamed here: the
+# container, the published port, and the data volume. Run it under its own
+# compose project so the two never share state:
+#
+#   ATRIUM_PORT=3101 \
+#   docker compose -p atrium-fresh -f docker-compose.yml -f docker-compose.fresh.yml up -d
+#
+# ATRIUM_PORT must be set on the command line: compose APPENDS port lists
+# rather than replacing them, so overriding `ports:` here would publish both
+# 3100 and 3101 and collide with the real instance.
+#
+# Then open http://localhost:3101, register the first account (it becomes
+# admin), and the setup guide appears with all three steps outstanding.
+#
+# Tear down INCLUDING the volume when finished — this is disposable by design:
+#
+#   docker compose -p atrium-fresh -f docker-compose.yml -f docker-compose.fresh.yml down -v
+#
+# Point ATRIUM_CLAUDE_CONFIG / ATRIUM_CLAUDE_JSON at empty throwaway paths when
+# running this, or the host's real Claude Code login is inherited and the
+# terminal step starts already green — which is precisely the state you are
+# trying to test your way out of.
+
+services:
+  atrium:
+    container_name: atrium-fresh
+    volumes:
+      # Replaces the /data mount from docker-compose.yml — compose merges
+      # service volumes by container path, so this shadows atrium-data.
+      - atrium-fresh-data:/data
+      # Read-only: a sandbox has no business writing to real project files.
+      # The setup guide only needs the directory to exist.
+      - "${ATRIUM_WORKSPACE:?ATRIUM_WORKSPACE is required}:/workspace:ro"
+    environment:
+      # Isolated JWT secret so sessions cannot leak between the two instances.
+      JWT_SECRET: "${ATRIUM_FRESH_JWT_SECRET:-fresh-sandbox-secret-not-for-real-use}"
+
+volumes:
+  atrium-fresh-data:
+    name: atrium-fresh-data
