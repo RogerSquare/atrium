@@ -116,6 +116,43 @@ export async function readClipboard(deps = {}) {
   }
 }
 
+/**
+ * Query the clipboard-read permission, which is the single most likely reason
+ * paste does nothing.
+ *
+ * READ AND WRITE ARE NOT THE SAME. `writeText` is allowed off a user gesture,
+ * which is why copy works. `readText` requires the `clipboard-read`
+ * permission: Chrome prompts for it and remembers a refusal permanently, and
+ * Firefox does not expose it to web content AT ALL. Neither failure produces
+ * an error the user can see — the promise just rejects and paste appears dead.
+ *
+ * @returns {Promise<'granted'|'denied'|'prompt'|'unsupported'>}
+ */
+export async function clipboardReadPermission(deps = {}) {
+  const nav = deps.navigator ?? globalThis.navigator
+  if (!nav?.permissions?.query) return 'unsupported'
+  try {
+    const status = await nav.permissions.query({ name: 'clipboard-read' })
+    return status?.state || 'unsupported'
+  } catch {
+    // Firefox throws on an unrecognised permission name rather than
+    // returning a state, which is itself the answer.
+    return 'unsupported'
+  }
+}
+
+/** Snapshot of everything that determines whether clipboard ops can work. */
+export function clipboardEnvironment(deps = {}) {
+  const nav = deps.navigator ?? globalThis.navigator
+  const secure = deps.isSecureContext ?? globalThis.isSecureContext
+  return {
+    secureContext: !!secure,
+    hasClipboardRead: !!nav?.clipboard?.readText,
+    hasClipboardWrite: !!nav?.clipboard?.writeText,
+    userAgent: (nav?.userAgent || '').slice(0, 200),
+  }
+}
+
 /** True when the async clipboard API is usable at all. */
 export function clipboardAvailable(deps = {}) {
   const nav = deps.navigator ?? globalThis.navigator

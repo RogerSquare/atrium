@@ -39,7 +39,8 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { useAuth } from '../../contexts/AuthContext'
 import { getXtermTheme } from './terminalThemes'
-import { ACTION, decideKeyAction, writeClipboard, readClipboard, clipboardAvailable, getTerminalText, mouseTrackingActive } from './clipboard'
+import { ACTION, decideKeyAction, writeClipboard, readClipboard, clipboardAvailable, getTerminalText, mouseTrackingActive, clipboardReadPermission, clipboardEnvironment } from './clipboard'
+import { API_URL, apiFetch } from '../../config'
 
 // Per-task session id binding. The source of truth is the task YAML's
 // `claude_session_id` field — the backend mints/promotes/rotates it on
@@ -233,14 +234,48 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
       try { term.writeln('\r\n\x1b[33m[atrium] ' + msg + '\x1b[0m') } catch { /* term disposed */ }
     }
 
+    // Fire-and-forget diagnostic report. Records OUTCOMES and LENGTHS only —
+    // never clipboard content; the backend drops anything not on its
+    // allow-list. Failures here are swallowed: a diagnostic that breaks the
+    // thing it is diagnosing is worse than no diagnostic.
+    const report = async (fields) => {
+      try {
+        const env = clipboardEnvironment()
+        const permissionState = await clipboardReadPermission()
+        await apiFetch(`${API_URL}/diagnostics/client`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            category: 'clipboard',
+            taskId: task?.id || null,
+            origin: window.location.origin,
+            mouseTracking: mouseTrackingActive(term),
+            hasSelection: term.hasSelection(),
+            permissionState,
+            ...env,
+            ...fields,
+          }),
+        })
+      } catch { /* diagnostics are never allowed to surface */ }
+    }
+
     // Copies the selection, or the scrollback when there is none. The
     // fallback is the whole point: a TUI like Claude Code turns ON mouse
     // tracking, so drags go to the APPLICATION and no selection is ever
     // made — which is why every copy binding appeared dead.
-    const doCopy = () => {
+    const doCopy = (trigger = 'key') => {
       const text = getTerminalText(term)
-      if (!text) return
+      if (!text) {
+        report({ action: 'copy', trigger, result: 'empty' })
+        return
+      }
       writeClipboard(text).then((ok) => {
+        report({
+          action: 'copy', trigger,
+          result: ok ? 'ok' : 'error',
+          textLength: text.length,
+          selectionLength: (term.getSelection() || '').length,
+        })
         if (!ok) notify('Copy failed — the browser blocked clipboard access.')
       })
     }
@@ -265,8 +300,8 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
 
     term.attachCustomKeyEventHandler((e) => {
       const action = decideKeyAction(e, term.hasSelection(), isMac)
-      if (action === ACTION.COPY) { doCopy(); return false }
-      if (action === ACTION.PASTE) { doPaste(); return false }
+      if (action === ACTION.COPY) { doCopy('key'); return false }
+      if (action === ACTION.PASTE) { doPaste('key'); return false }
       return true
     })
 
@@ -279,17 +314,38 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
       if (e.shiftKey) return
       e.preventDefault()
       if (term.hasSelection()) {
-        doCopy()
+        doCopy('contextmenu')
         // Clear afterwards so the next right-click pastes, matching how the
         // same gesture behaves in a real terminal.
         term.clearSelection()
       } else {
-        doPaste()
+        doPaste('contextmenu')
       }
     }
+    // NATIVE PASTE — the route that actually works everywhere.
+    //
+    // navigator.clipboard.readText() needs the `clipboard-read` permission:
+    // Chrome prompts and remembers a refusal forever, Firefox does not expose
+    // it to web content at all. The browser's OWN paste (Ctrl+V / Cmd+V /
+    // middle-click / Edit>Paste) fires this event with the data already
+    // attached and requires NO permission — which is why it is wired
+    // explicitly rather than left to chance.
+    const onNativePaste = (e) => {
+      const text = e.clipboardData?.getData('text') || ''
+      if (!text) return
+      e.preventDefault()
+      e.stopPropagation()
+      term.paste(text)
+      report({ action: 'paste', trigger: 'native-paste', result: 'ok', textLength: text.length })
+    }
+    // Capture phase and on the wrapper: xterm's helper textarea is a child, and
+    // catching it here works whether or not focus is exactly where we expect.
+    wrapperRef.current?.addEventListener('paste', onNativePaste, true)
+
     containerRef.current.addEventListener('contextmenu', onContextMenu)
     contextMenuCleanupRef.current = () => {
       containerRef.current?.removeEventListener('contextmenu', onContextMenu)
+      wrapperRef.current?.removeEventListener('paste', onNativePaste, true)
     }
 
     if (DEBUG) {
@@ -890,7 +946,7 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation()
-          copyHandlerRef.current?.()
+          copyHandlerRef.current?.('button')
           setCopyState('copied')
           setTimeout(() => setCopyState(null), 1400)
         }}
