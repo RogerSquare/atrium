@@ -29,6 +29,8 @@ const TaskModal = lazy(() => import('../TaskModal'))
 // initial render path. Pulled in on first click of the TopBar terminal
 // button. Suspense-wrapped at the use site below.
 const GlobalShellModal = lazy(() => import('./GlobalShellModal'))
+// Lazy — only ever rendered on a fresh install or an explicit reopen.
+const SetupWizard = lazy(() => import('../SetupWizard'))
 import Settings from '../Settings'
 import HelpModal from '../HelpModal'
 import CreateProjectModal from '../CreateProjectModal'
@@ -133,6 +135,7 @@ export default function AppShell() {
   const [showPreview, setShowPreview] = useState(false)
   const [previewServices, setPreviewServices] = useState([])
   const [showGlobalShell, setShowGlobalShell] = useState(false)
+  const [showSetupWizard, setShowSetupWizard] = useState(false)
   // Narrow-viewport mode — master-detail doesn't fit below 768px, so DetailPane
   // switches to a full-screen overlay instead of sitting in its own grid column.
   const [narrow, setNarrow] = useState(() =>
@@ -162,6 +165,23 @@ export default function AppShell() {
     // See opt-view-switch-latency-001.
     startTransition(() => setActiveView(view))
     localStorage.setItem('taskBoardView', view)
+  }, [])
+
+  // --- First-run setup (feat-first-run-setup-001) -------------------------
+  // Asked once per mount. Anything other than an explicit "incomplete" leaves
+  // the wizard shut — a network blip must not pop a setup dialog at someone
+  // whose install is already configured.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await apiFetch(`${API_BASE}/api/setup/status`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (!cancelled && data && data.complete === false) setShowSetupWizard(true)
+      } catch { /* stay closed */ }
+    })()
+    return () => { cancelled = true }
   }, [])
 
   // --- Preview services (background poll) --------------------------------
@@ -429,6 +449,7 @@ export default function AppShell() {
           onClose={() => setShowSettings(false)}
           currentUser={user}
           onUserUpdate={updateUser}
+          onOpenSetup={() => { setShowSettings(false); setShowSetupWizard(true) }}
         />
       )}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
@@ -481,6 +502,17 @@ export default function AppShell() {
               handler to kill the DetailPane Shell tab's PTY when this
               modal opens. */}
           <GlobalShellModal onClose={() => setShowGlobalShell(false)} />
+        </Suspense>
+      )}
+      {/* First-run setup (feat-first-run-setup-001). Opens itself on a fresh
+          install; the terminal step hands off to the global shell above and
+          detects the Claude Code login by polling. */}
+      {showSetupWizard && (
+        <Suspense fallback={null}>
+          <SetupWizard
+            onClose={() => setShowSetupWizard(false)}
+            onOpenTerminal={() => setShowGlobalShell(true)}
+          />
         </Suspense>
       )}
       {showPreview && (
