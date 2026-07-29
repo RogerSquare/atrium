@@ -298,6 +298,15 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
     // bindings can never diverge in what they copy.
     copyHandlerRef.current = doCopy
 
+    // Report the environment once per terminal mount, without waiting for the
+    // user to do anything. The first pass at these diagnostics only recorded
+    // ATTEMPTS, so when the log came back empty it proved nothing: it could
+    // not distinguish "the instrumented code isn't running" from "the handler
+    // never fired". This makes the browser's actual capabilities — which
+    // clipboard APIs exist, whether the context is secure, what the
+    // clipboard-read permission says — visible with zero user action.
+    report({ action: 'init', trigger: 'mount', result: 'ok' })
+
     term.attachCustomKeyEventHandler((e) => {
       const action = decideKeyAction(e, term.hasSelection(), isMac)
       if (action === ACTION.COPY) { doCopy('key'); return false }
@@ -978,11 +987,11 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
           cursor: 'pointer',
           // Fades back once the pointer leaves, so it never competes with the
           // terminal content it sits on top of.
-          opacity: copyState ? 1 : 0.45,
+          opacity: copyState ? 1 : 0.8,
           transition: 'opacity var(--duration-fast), color var(--duration-fast)',
         }}
         onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
-        onMouseLeave={(e) => { if (!copyState) e.currentTarget.style.opacity = '0.45' }}
+        onMouseLeave={(e) => { if (!copyState) e.currentTarget.style.opacity = '0.8' }}
       >
         {copyState ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
         {copyState ? 'Copied' : 'Copy'}
