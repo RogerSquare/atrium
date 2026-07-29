@@ -350,7 +350,8 @@ export default function AppShell() {
         archivedCount={archivedProjects?.length || 0}
         onOpenSettings={() => setShowSettings(true)}
         onOpenHelp={() => setShowHelp(true)}
-        onOpenGlobalShell={() => setShowGlobalShell(true)}
+        onToggleGlobalShell={() => setShowGlobalShell(v => !v)}
+        globalShellOpen={showGlobalShell}
       />
 
       <FilterBar
