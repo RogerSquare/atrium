@@ -62,7 +62,8 @@ export default function DetailPane({
   width,
   onWidthChange,
   narrow = false,
-  // True when the global shell shares the side region — see asideStyle below.
+  // True when a flex wrapper owns the side region's grid cell (AppShell's
+  // side dock) rather than this pane claiming it directly.
   docked = false,
   // eslint-disable-next-line no-unused-vars
   activeAgents,
@@ -129,9 +130,8 @@ export default function DetailPane({
         overflow: 'hidden',
       }
     : {
-        // `docked` means the global shell is sharing the side region, so a
-        // flex wrapper owns the grid cell and this becomes the top half of a
-        // vertical split. Standalone, it still claims the grid area itself.
+        // Inside the side dock a flex wrapper owns the grid cell, so fill it
+        // as a flex child. Standalone, claim the grid area directly.
         ...(docked
           ? { flex: 1, minHeight: 0 }
           : { gridArea: 'detail' }),

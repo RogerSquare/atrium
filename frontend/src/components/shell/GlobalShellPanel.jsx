@@ -1,13 +1,17 @@
-// GlobalShellPanel — the global claude shell, docked into the right-hand
-// side region alongside the task DetailPane instead of floating as a modal.
+// GlobalShellPanel — the global claude shell, docked into the right-hand side
+// region rather than floating over the board as a modal.
 //
-// WHY A DOCK RATHER THAN A THIRD COLUMN: DetailPane's minimum width is 720px
-// and the board reserves MIN_FOCAL (400px), so board + task + terminal
-// side-by-side needs 1840px before the terminal gets a single usable column.
-// Sharing one side region splits it vertically instead — task on top,
-// terminal below — which keeps the terminal at the dock's full width
-// (720px is roughly 100 columns) on any screen that could show the task
-// pane at all.
+// ONE OCCUPANT AT A TIME. The dock shows the task pane or this, never both.
+// A third column was ruled out by arithmetic (DetailPane's minimum is 720px
+// and the board reserves 400px, so three columns need 1840px before the
+// terminal gets any usable width), and a vertical split was tried and
+// rejected: it left the terminal in a short strip and made the region feel
+// crowded rather than like a place you work.
+//
+// The covered task is NOT closed, only hidden, and `backgroundTask` surfaces
+// it as a chip above the header. That is the whole difference between "the
+// terminal closed my task" and "the terminal is in front of my task" — you
+// keep your place, and one click hands the dock back.
 //
 // Reuses the same ShellTerminal + CommandCard as the DetailPane Shell tab.
 // The synthetic task `{ id: '__global__' }` flows through both: ShellTerminal
@@ -28,8 +32,8 @@
 // interrupts prompts in claude. A floating modal could justify swallowing it;
 // a docked panel you type into all session cannot. Close via the X button.
 
-import { useEffect, useState, useCallback, useRef } from 'react'
-import { X, GripHorizontal } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { X, ChevronLeft } from 'lucide-react'
 import { io } from 'socket.io-client'
 import ShellTerminal from '../web-shell/Terminal'
 import CommandCard from '../web-shell/CommandCard'
@@ -41,15 +45,19 @@ const GLOBAL_TASK = { id: '__global__', title: 'Global Shell' }
 export default function GlobalShellPanel({
   onClose,
   narrow = false,
-  // Present only when a task is open too — then this panel takes a fixed
-  // height at the bottom of the dock and the divider becomes draggable.
-  height = null,
-  onHeightChange = null,
+  // The task that was open when the shell took the dock. It is not closed,
+  // only covered — this surfaces it so the thing you were working on stays
+  // visible, and clicking it hands the dock straight back.
+  backgroundTask = null,
+  onReturnToTask = null,
+  // Dock width, shared with DetailPane so the region keeps one size whichever
+  // occupant is showing. Clamping + persistence stay in AppShell.
+  width,
+  onWidthChange,
 }) {
   const [, setPopoverOpen] = useState(false)
   const [socket, setSocket] = useState(null)
-  const [dragging, setDragging] = useState(false)
-  const panelRef = useRef(null)
+  const [handleHover, setHandleHover] = useState(false)
 
   useEffect(() => {
     const s = io(API_BASE || window.location.origin)
@@ -59,31 +67,6 @@ export default function GlobalShellPanel({
       try { s.disconnect() } catch { /* already disconnected */ }
     }
   }, [])
-
-  // Vertical resize. Listeners live for the duration of a drag only, so no
-  // global mousemove handler is running while the user is just typing.
-  const startDrag = useCallback((e) => {
-    if (!onHeightChange) return
-    e.preventDefault()
-    setDragging(true)
-    const startY = e.clientY
-    const startHeight = panelRef.current?.getBoundingClientRect().height ?? height ?? 320
-
-    const onMove = (ev) => {
-      // Dragging up grows the terminal, which is the direction that matches
-      // the handle sitting on its top edge.
-      onHeightChange(startHeight + (startY - ev.clientY))
-    }
-    const onUp = () => {
-      setDragging(false)
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-  }, [onHeightChange, height])
-
-  const splitMode = !narrow && height != null
 
   const style = narrow
     ? {
@@ -96,11 +79,10 @@ export default function GlobalShellPanel({
         overflow: 'hidden',
       }
     : {
-        // In split mode the height is driven by the parent; alone in the dock
-        // it simply fills the column.
-        ...(splitMode ? { height, flexShrink: 0 } : { flex: 1, minHeight: 0 }),
+        // Sole occupant of the dock — fill it.
+        flex: 1,
+        minHeight: 0,
         borderLeft: 'var(--border-hairline)',
-        borderTop: splitMode ? 'var(--border-hairline)' : 'none',
         background: 'var(--bg-card)',
         display: 'flex',
         flexDirection: 'column',
@@ -109,31 +91,101 @@ export default function GlobalShellPanel({
         position: 'relative',
       }
 
+  // Same per-drag listener pattern as DetailPane: closures over the start
+  // point, removed by identity on mouseup, so no stale handler is left behind.
+  const handleDragStart = (e) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = width
+    const onMove = (ev) => onWidthChange?.(startWidth + (startX - ev.clientX))
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
   return (
-    <section ref={panelRef} data-testid="global-shell-panel" aria-label="Global shell" style={style}>
-      {/* Divider — only when sharing the dock with a task. Doubles as the
-          drag handle so there is no separate hit target to find. */}
-      {splitMode && (
+    <section data-testid="global-shell-panel" aria-label="Global shell" style={style}>
+      {/* Left-edge resize, mirroring DetailPane so the dock behaves the same
+          whichever occupant is showing. Without this the region would be
+          fixed-width whenever the shell is the one on top. */}
+      {!narrow && onWidthChange && (
         <div
           data-testid="global-shell-resize-handle"
-          onMouseDown={startDrag}
-          onDoubleClick={() => onHeightChange?.(320)}
+          onMouseDown={handleDragStart}
+          onDoubleClick={() => onWidthChange?.(0)}
+          onMouseEnter={() => setHandleHover(true)}
+          onMouseLeave={() => setHandleHover(false)}
           title="Drag to resize · double-click to reset"
+          aria-label="Resize side panel"
+          role="separator"
+          aria-orientation="vertical"
           style={{
-            height: 8,
-            marginTop: -4,
-            marginBottom: -4,
-            cursor: 'row-resize',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            zIndex: 1,
-            color: dragging ? 'var(--accent-app)' : 'var(--text-quaternary)',
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: '8px',
+            cursor: 'col-resize',
+            zIndex: 2,
+            touchAction: 'none',
           }}
         >
-          <GripHorizontal className="w-3 h-3" />
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: '1px',
+              background: handleHover ? 'var(--accent-app)' : 'transparent',
+              transition: 'background 120ms ease',
+            }}
+          />
         </div>
+      )}
+
+      {/* Back-chip — the task waiting behind the shell. Renders above the
+          header so it reads as "you are on top of this", and clicking it
+          hands the dock back rather than merely closing the terminal. */}
+      {backgroundTask && (
+        <button
+          type="button"
+          data-testid="global-shell-background-task"
+          onClick={() => onReturnToTask?.()}
+          title={`Back to ${backgroundTask.id}`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            width: '100%',
+            padding: '0 var(--space-3)',
+            height: 30,
+            flexShrink: 0,
+            border: 'none',
+            borderBottom: 'var(--border-hairline)',
+            background: 'var(--bg-subtle, transparent)',
+            color: 'var(--text-tertiary)',
+            fontSize: 'var(--text-caption2)',
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          <ChevronLeft className="w-3 h-3" style={{ flexShrink: 0 }} />
+          <span style={{ flexShrink: 0, fontWeight: 'var(--font-semibold)' }}>{backgroundTask.id}</span>
+          <span
+            style={{
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              minWidth: 0,
+            }}
+          >
+            {backgroundTask.title}
+          </span>
+        </button>
       )}
 
       <header

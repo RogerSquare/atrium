@@ -42,21 +42,6 @@ import ErrorToast from '../ErrorToast'
 import UndoToast from '../UndoToast'
 
 const WIDTH_STORAGE_KEY = 'taskBoardDetailWidth'
-// Height of the global shell when it shares the side dock with a task pane.
-const SHELL_HEIGHT_STORAGE_KEY = 'taskBoardGlobalShellHeight'
-const SHELL_DEFAULT_HEIGHT = 320
-// Below this the terminal shows too few rows to be worth having open; above
-// the cap the task pane it is sharing with stops being readable.
-const SHELL_MIN_HEIGHT = 180
-const SHELL_MIN_DETAIL = 220
-
-function clampShellHeight(raw, viewportHeight = window.innerHeight) {
-  const n = Number(raw)
-  if (!Number.isFinite(n) || n <= 0) return SHELL_DEFAULT_HEIGHT
-  // 88px of chrome above the content row (topbar 48 + filterbar 40).
-  const max = Math.max(SHELL_MIN_HEIGHT, viewportHeight - 88 - SHELL_MIN_DETAIL)
-  return Math.min(Math.max(n, SHELL_MIN_HEIGHT), max)
-}
 // The default width doubles as the MINIMUM — the detail pane can be dragged
 // WIDER (to give the task more room) but never narrower than its default. This
 // inverts the old behavior where default === max and you could only shrink it.
@@ -151,24 +136,6 @@ export default function AppShell() {
   const [previewServices, setPreviewServices] = useState([])
   const [showGlobalShell, setShowGlobalShell] = useState(false)
   const [showSetupWizard, setShowSetupWizard] = useState(false)
-  // Persisted like the detail width, and for the same reason: a size the user
-  // dragged should survive a reload rather than snapping back.
-  const [shellHeight, setShellHeight] = useState(() => {
-    try { return clampShellHeight(localStorage.getItem(SHELL_HEIGHT_STORAGE_KEY)) }
-    catch { return SHELL_DEFAULT_HEIGHT }
-  })
-  const setShellHeightClamped = useCallback((raw) => {
-    const h = clampShellHeight(raw)
-    setShellHeight(h)
-    try { localStorage.setItem(SHELL_HEIGHT_STORAGE_KEY, String(h)) } catch { /* storage disabled */ }
-  }, [])
-  // Re-clamp when the window shrinks, so a tall terminal can't squeeze the
-  // task pane out of existence. Mirrors the detail-width resize handler.
-  useEffect(() => {
-    const onResize = () => setShellHeight(h => clampShellHeight(h))
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
   // Narrow-viewport mode — master-detail doesn't fit below 768px, so DetailPane
   // switches to a full-screen overlay instead of sitting in its own grid column.
   const [narrow, setNarrow] = useState(() =>
@@ -313,17 +280,29 @@ export default function AppShell() {
 
   useEffect(() => { if (!selectedTask) setFocusModal(false) }, [selectedTask])
 
-  const detailOpen = Boolean(selectedTask) && !focusModal
-  // The side region is one grid column shared by the task pane and the global
-  // shell. A third column is not an option: DetailPane's MIN_WIDTH is 720 and
-  // MIN_FOCAL reserves 400, so board + task + terminal side-by-side would need
-  // 1840px before the terminal got any width at all. Sharing the column and
-  // splitting it vertically keeps the terminal at the dock's full width.
+  // Picking a task from the board hands the dock back to it. Without this the
+  // click would appear to do nothing — the task would be selected but stay
+  // hidden behind the shell, which is indistinguishable from a dead card.
+  const selectTaskFromFocal = useCallback((task) => {
+    if (task) setShowGlobalShell(false)
+    selectTask(task)
+  }, [selectTask])
+
+  // The side region shows exactly ONE thing at a time — the task pane or the
+  // global shell, never both. A vertical split was tried and rejected: it left
+  // the terminal in a short strip and made the region feel crowded rather than
+  // like a place you work.
+  //
+  // The selected task is NOT cleared when the shell takes over, only hidden.
+  // That is the difference between "the terminal closed my task" and "the
+  // terminal is in front of my task" — closing the shell brings it straight
+  // back, and the shell header carries the task as a back-chip so what you
+  // were working on stays visible the whole time.
+  const detailOpen = Boolean(selectedTask) && !focusModal && !showGlobalShell
+  const backgroundTask = showGlobalShell && !focusModal ? selectedTask : null
   const sideOpen = detailOpen || showGlobalShell
   // On narrow viewports both are fixed overlays — grid column stays 0.
   const detailGridCol = sideOpen && !narrow ? `minmax(0, ${detailWidth}px)` : '0'
-  // Only a genuine split needs a measured height; alone, each fills the dock.
-  const splitDock = detailOpen && showGlobalShell && !narrow
 
   const handleArchiveProject = useCallback(async (idOrName, displayName) => {
     const result = await archiveProject(idOrName)
@@ -402,7 +381,7 @@ export default function AppShell() {
         projects={projects}
         activeProject={activeProject}
         loading={loading}
-        onSelectTask={selectTask}
+        onSelectTask={selectTaskFromFocal}
         onUpdateTask={undoRedo.updateTaskWithUndo}
         onStartAgent={handleStartAgent}
         onStopAgent={handleStopAgent}
@@ -441,12 +420,11 @@ export default function AppShell() {
         }
       />
 
-      {/* SIDE DOCK — one grid column shared by the task pane and the global
-          shell. Three states:
-            task only    → DetailPane fills the column (unchanged behavior)
-            shell only   → GlobalShellPanel fills the column
-            both         → vertical split, task above, terminal below, with a
-                           draggable divider on the terminal's top edge
+      {/* SIDE DOCK — one grid column, one occupant at a time:
+            task open           → DetailPane fills the column
+            shell open          → GlobalShellPanel fills the column, and the
+                                  task (if any) waits behind it, surfaced as a
+                                  back-chip in the shell header
           On narrow viewports there is no column at all and both render as
           full-screen overlays, matching what DetailPane already did. */}
       <div
@@ -490,8 +468,10 @@ export default function AppShell() {
             <GlobalShellPanel
               onClose={() => setShowGlobalShell(false)}
               narrow={narrow}
-              height={splitDock ? shellHeight : null}
-              onHeightChange={splitDock ? setShellHeightClamped : null}
+              backgroundTask={backgroundTask}
+              onReturnToTask={() => setShowGlobalShell(false)}
+              width={detailWidth}
+              onWidthChange={setDetailWidthClamped}
             />
           </Suspense>
         )}
