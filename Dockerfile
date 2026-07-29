@@ -29,6 +29,17 @@ RUN apt-get update \
 COPY backend/package.json backend/package-lock.json ./
 RUN npm ci --omit=dev
 
+# The MCP server is a SEPARATE package with its own dependency
+# (@modelcontextprotocol/sdk) and its own lockfile. It was previously missed
+# entirely: .dockerignore strips every node_modules, and nothing installed
+# these, so `node backend/mcp/server.js` in a container terminal died on
+# MODULE_NOT_FOUND — the atrium_* tools simply never loaded for any agent
+# working inside the container.
+WORKDIR /build/backend/mcp
+COPY backend/mcp/package.json backend/mcp/package-lock.json ./
+RUN npm ci --omit=dev
+WORKDIR /build/backend
+
 # ---------------------------------------------------------------------------
 # Stage 2 — frontend build
 # ---------------------------------------------------------------------------
@@ -79,6 +90,8 @@ WORKDIR /app
 # image never needs the toolchain.
 COPY --from=native-deps /build/backend/node_modules ./backend/node_modules
 COPY backend/ ./backend/
+# Must come AFTER `COPY backend/`, or the source copy would overwrite it.
+COPY --from=native-deps /build/backend/mcp/node_modules ./backend/mcp/node_modules
 
 # Built SPA from stage 2. staticSite.js defaults to ../frontend/dist relative
 # to backend/, which this layout satisfies.
