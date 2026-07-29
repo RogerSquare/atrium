@@ -270,6 +270,18 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
               GitHub fetch failed: {error}
             </span>
           )}
+          {/* Branches come from plain git and always render; PR badges need an
+              authenticated gh. Say so, otherwise "signed out" is indistinguishable
+              from "this project has no pull requests". */}
+          {!error && linksData?.gh_error && (
+            <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--apple-orange, #ff9f0a)' }}>
+              {linksData.gh_error.code === 'not_authenticated'
+                ? 'Not signed in to GitHub — branches shown, pull requests hidden. Add a token in Settings → Project → GitHub.'
+                : linksData.gh_error.code === 'bad_credentials'
+                  ? 'GitHub rejected the stored token — pull requests hidden. Update it in Settings → Project → GitHub.'
+                  : 'Could not read pull requests from GitHub.'}
+            </span>
+          )}
           {focusedCategory && (
             <button
               type="button"

@@ -26,6 +26,13 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
   const [savedAiChatEnabled, setSavedAiChatEnabled] = useState(true)
   const [statusInfo, setStatusInfo] = useState(null)
 
+  // GitHub sign-in (feat-github-auth-settings-001). The container has no
+  // interactive terminal for `gh auth login`, so the token is pasted here.
+  const [githubAuth, setGithubAuth] = useState(null) // { connected, source, login, error, hint }
+  const [githubToken, setGithubToken] = useState('')
+  const [githubBusy, setGithubBusy] = useState(false)
+  const [githubMessage, setGithubMessage] = useState('')
+
   // Password change
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -137,8 +144,58 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
   }
   const fetchStatus = () => apiFetch(`${API_URL}/settings/status`).then(r => r.json()).then(d => setStatusInfo(d)).catch(() => {})
 
+  const fetchGithubAuth = async () => {
+    try {
+      const res = await apiFetch(`${API_URL}/github/auth`)
+      if (res.ok) setGithubAuth(await res.json())
+    } catch (err) { /* leave null — the section renders an unknown state */ }
+  }
+
+  const handleGithubConnect = async (e) => {
+    e.preventDefault()
+    setGithubBusy(true)
+    setGithubMessage('')
+    try {
+      const res = await apiFetch(`${API_URL}/github/auth`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: githubToken.trim() }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setGithubToken('')
+        setGithubMessage(`Connected as ${data.login}`)
+        await fetchGithubAuth()
+      } else {
+        setGithubMessage(data.error || 'Could not connect')
+      }
+    } catch (err) {
+      setGithubMessage('Could not reach the server')
+    } finally {
+      setGithubBusy(false)
+    }
+  }
+
+  const handleGithubDisconnect = async () => {
+    setGithubBusy(true)
+    setGithubMessage('')
+    try {
+      const res = await apiFetch(`${API_URL}/github/auth`, { method: 'DELETE' })
+      const data = await res.json()
+      setGithubAuth(data)
+      // An env-supplied GH_TOKEN outlives the stored one; don't claim otherwise.
+      setGithubMessage(data.connected
+        ? 'Stored token removed — still connected via GH_TOKEN in the environment'
+        : 'Disconnected')
+    } catch (err) {
+      setGithubMessage('Could not reach the server')
+    } finally {
+      setGithubBusy(false)
+    }
+  }
+
   useEffect(() => {
-    Promise.all([fetchSettings(), fetchServices(), isAdmin ? fetchUsers() : Promise.resolve(), fetchStatus(), isAdmin ? fetchAgentTokens() : Promise.resolve()])
+    Promise.all([fetchSettings(), fetchServices(), isAdmin ? fetchUsers() : Promise.resolve(), fetchStatus(), isAdmin ? fetchAgentTokens() : Promise.resolve(), isAdmin ? fetchGithubAuth() : Promise.resolve()])
       .finally(() => setLoading(false))
     const interval = setInterval(fetchServices, 10000)
     return () => clearInterval(interval)
@@ -521,6 +578,65 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                       <input type="text" value={workingDirectory} onChange={(e) => setWorkingDirectory(e.target.value)}
                         className="w-full bg-app-bg border border-app-border rounded-lg px-4 py-2.5 text-sm text-app-text focus:outline-none focus-visible:ring-2 focus-visible:ring-app-accent transition-all" placeholder="C:\Path\To\Projects" />
                     </div>
+                    {/* GitHub sign-in — without a token the Changes view can
+                        show branches but never PR badges. */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-app-text mb-1">GitHub</h3>
+                      <p className="text-[11px] text-app-text-muted mb-3">
+                        Required for pull-request badges in the Changes view. Paste a personal access token with the <code className="text-app-text">repo</code> scope.
+                      </p>
+
+                      {githubAuth?.connected ? (
+                        <div className="flex items-center justify-between gap-3 bg-app-bg border border-app-border rounded-lg px-4 py-3">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Check size={16} className="text-green-500 shrink-0" />
+                            <div className="min-w-0">
+                              <div className="text-sm text-app-text truncate">
+                                Connected as <span className="font-semibold">{githubAuth.login}</span>
+                              </div>
+                              <div className="text-[11px] text-app-text-muted">
+                                {githubAuth.source === 'env'
+                                  ? 'From GH_TOKEN in the environment'
+                                  : `Stored token ${githubAuth.hint || ''}`}
+                              </div>
+                            </div>
+                          </div>
+                          {githubAuth.source === 'settings' && (
+                            <button type="button" onClick={handleGithubDisconnect} disabled={githubBusy}
+                              className="shrink-0 px-3 py-1.5 text-xs rounded-lg border border-app-border text-app-text-muted hover:text-app-text hover:border-app-text-muted disabled:opacity-50 transition-colors">
+                              Disconnect
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <form onSubmit={handleGithubConnect} className="space-y-2">
+                          {githubAuth && githubAuth.error && (
+                            <div className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                              {githubAuth.error}
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            <input type="password" value={githubToken} onChange={(e) => setGithubToken(e.target.value)}
+                              autoComplete="off" spellCheck="false" placeholder="ghp_..."
+                              className="flex-1 bg-app-bg border border-app-border rounded-lg px-4 py-2.5 text-sm text-app-text focus:outline-none focus-visible:ring-2 focus-visible:ring-app-accent transition-all" />
+                            <button type="submit" disabled={githubBusy || !githubToken.trim()}
+                              className="shrink-0 px-4 py-2.5 text-sm rounded-lg bg-app-accent text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity">
+                              {githubBusy ? 'Checking…' : 'Connect'}
+                            </button>
+                          </div>
+                          <a href="https://github.com/settings/tokens/new?scopes=repo&description=Atrium"
+                            target="_blank" rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] text-app-text-muted hover:text-app-accent transition-colors">
+                            Create a token on GitHub <ExternalLink size={11} />
+                          </a>
+                        </form>
+                      )}
+
+                      {githubMessage && (
+                        <p className="text-[11px] text-app-text-muted mt-2">{githubMessage}</p>
+                      )}
+                    </div>
+
                     <div>
                       <h3 className="text-sm font-semibold text-app-text mb-1">Default Task Settings</h3>
                       <p className="text-[11px] text-app-text-muted mb-3">Defaults applied when creating new tasks.</p>
