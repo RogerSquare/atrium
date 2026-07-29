@@ -38,6 +38,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { useAuth } from '../../contexts/AuthContext'
 import { getXtermTheme } from './terminalThemes'
+import { ACTION, decideKeyAction, writeClipboard, readClipboard, clipboardAvailable } from './clipboard'
 
 // Per-task session id binding. The source of truth is the task YAML's
 // `claude_session_id` field — the backend mints/promotes/rotates it on
@@ -143,6 +144,9 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
   // active (DOM vs WebGL renderer), the textarea could be reachable,
   // hidden, or moved.
   const xtermRef = useRef(null)
+  // Holds the contextmenu listener's teardown so the mount effect's
+  // cleanup can remove it along with everything else it owns.
+  const contextMenuCleanupRef = useRef(null)
   // fitAddonRef exposes the fit addon so the Phase 3 re-fit-on-activate
   // effect (below the main mount effect) can call fit() without owning
   // the addon's lifecycle. ResizeObserver doesn't fire on
@@ -208,6 +212,63 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
     term.loadAddon(fitAddon)
     term.open(containerRef.current)
     dlog('term opened', { cols: term.cols, rows: term.rows })
+
+    // --- Clipboard (bug-shell-clipboard-001) -----------------------------
+    // There was previously NO clipboard handling here at all, so Ctrl+V did
+    // nothing and no key ever copied. Decision logic lives in ./clipboard.js
+    // so it can be tested without a DOM; this is just the wiring.
+    //
+    // Returning false tells xterm not to process the event, which is what
+    // keeps a copy/paste chord from also reaching the PTY as a control code.
+    const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '')
+
+    const notify = (msg) => {
+      // Written into the terminal itself rather than a toast: the user is
+      // looking here, and a paste that silently does nothing is the exact
+      // failure this fix exists to remove.
+      try { term.writeln('\r\n\x1b[33m[atrium] ' + msg + '\x1b[0m') } catch { /* term disposed */ }
+    }
+
+    const doCopy = () => {
+      const sel = term.getSelection()
+      if (!sel) return
+      writeClipboard(sel).then((ok) => {
+        if (!ok) notify('Copy failed — the browser blocked clipboard access.')
+      })
+    }
+
+    const doPaste = () => {
+      readClipboard().then((text) => {
+        if (text) {
+          // term.paste() routes through onData, so bracketed-paste mode is
+          // preserved and the PTY sees this exactly like a real paste.
+          term.paste(text)
+        } else if (!clipboardAvailable()) {
+          // The LAN case: navigator.clipboard needs a secure context.
+          // localhost qualifies, a bare IP does not.
+          notify('Paste needs a secure context. Use localhost or HTTPS, or paste with your terminal\u2019s middle-click.')
+        }
+      })
+    }
+
+    term.attachCustomKeyEventHandler((e) => {
+      const action = decideKeyAction(e, term.hasSelection(), isMac)
+      if (action === ACTION.COPY) { doCopy(); return false }
+      if (action === ACTION.PASTE) { doPaste(); return false }
+      return true
+    })
+
+    // Right-click pastes, matching PuTTY and most Linux terminals. Shift is
+    // the escape hatch back to the browser's own context menu.
+    const onContextMenu = (e) => {
+      if (e.shiftKey) return
+      e.preventDefault()
+      doPaste()
+    }
+    containerRef.current.addEventListener('contextmenu', onContextMenu)
+    contextMenuCleanupRef.current = () => {
+      containerRef.current?.removeEventListener('contextmenu', onContextMenu)
+    }
 
     if (DEBUG) {
       // After term.open(), inspect the helper textarea xterm uses to
@@ -548,6 +609,10 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
       if (pendingFit) clearTimeout(pendingFit)
       resizeObserver.disconnect()
       inputDisposable.dispose()
+      // Right-click paste listener — attached to the container element, so it
+      // outlives the xterm dispose below unless removed explicitly.
+      contextMenuCleanupRef.current?.()
+      contextMenuCleanupRef.current = null
       socket.off('webshell:spawn', handleSpawnSentinel)
       socket.off('webshell:output', handleOutputDiag)
       socket.off('webshell:exit', handleExit)
