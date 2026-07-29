@@ -84,6 +84,14 @@ function buildDataPaths(root, env = process.env) {
     UPLOADS_DIR,
     PROTOTYPES_DIR: path.join(UPLOADS_DIR, 'prototypes'),
 
+    // Design Studio per-user chat history and saved sessions. Runtime data,
+    // gitignored like the rest. Rooted here rather than left repo-relative in
+    // routes/design.js, or they land in the container's writable layer and
+    // Design Studio history disappears on every restart
+    // (devops-docker-designdirs-001).
+    DESIGN_HISTORY_DIR: path.join(root, 'design-history'),
+    DESIGN_SESSIONS_DIR: path.join(root, 'design-sessions'),
+
     JWT_SECRET_FILE: path.join(root, '.jwt-secret'),
   };
 }
@@ -102,6 +110,7 @@ function ensureDataDirs(paths) {
     paths.APPROVALS_DIR, paths.AGENT_TOKENS_DIR, paths.USERS_DIR, paths.CHAT_DIR,
     paths.LOOP_RUNS_DIR, paths.E2E_RUNS_DIR, paths.AUTOENTER_DIR,
     paths.UPLOADS_DIR, paths.PROTOTYPES_DIR,
+    paths.DESIGN_HISTORY_DIR, paths.DESIGN_SESSIONS_DIR,
   ];
   for (const dir of dirs) {
     fs.mkdirSync(dir, { recursive: true });

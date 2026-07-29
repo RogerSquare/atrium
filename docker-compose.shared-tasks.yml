@@ -1,0 +1,46 @@
+# OPT-IN OVERRIDE — share task data with the native install.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.shared-tasks.yml up -d
+#
+# By default the container keeps its own task data in the atrium-data volume,
+# fully isolated from a native `npm start` instance. This override replaces
+# those two paths with bind mounts onto the HOST's live backend/ files, so both
+# instances read and write the same tasks — no copy, no divergence.
+#
+# ---------------------------------------------------------------------------
+# Why this is safer than it sounds
+# ---------------------------------------------------------------------------
+#   * Task .md writes are ATOMIC — lib/tasks.js atomicWriteFileSync() writes a
+#     .tmp file then renames over the target, so a half-written task file is
+#     not a realistic failure mode.
+#   * The task list is re-scanned from disk every 5s (CACHE_TTL_MS), so each
+#     instance picks up the other's changes within a few seconds rather than
+#     needing a restart.
+#   * projects.json is written in place with a plain writeFileSync (no rename),
+#     which is what makes a SINGLE-FILE bind mount viable here — an atomic
+#     rename would replace the inode and silently break the mount.
+#
+# ---------------------------------------------------------------------------
+# The real risk that remains: LOST UPDATES
+# ---------------------------------------------------------------------------
+# Nothing coordinates the two instances. If you edit the SAME task in both
+# within the same few seconds, the second write wins and the first is gone —
+# no error, no conflict marker. Both backends also hold their own in-memory
+# cache, so each can be up to ~5s stale when it decides what to write.
+#
+# In practice: work in ONE instance at a time and this is fine. Having both
+# open on the same task at once is where it bites.
+#
+# Not a backup. Both instances write the same files — a bad write is a bad
+# write in both. Take a copy of backend/tasks/ before anything adventurous.
+
+services:
+  atrium:
+    volumes:
+      # Live task tree, shared with the native instance. Directory mount, so
+      # the atomic .tmp -> rename inside it works normally.
+      - "${ATRIUM_SHARED_TASKS:?set ATRIUM_SHARED_TASKS to the host backend/tasks directory}:/data/tasks"
+
+      # Project registry. Single-file mount — viable only because this file is
+      # written in place (see above).
+      - "${ATRIUM_SHARED_PROJECTS:?set ATRIUM_SHARED_PROJECTS to the host backend/projects.json}:/data/projects.json"

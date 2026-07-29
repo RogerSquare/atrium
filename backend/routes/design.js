@@ -4,20 +4,15 @@ const path = require('path');
 const { spawn } = require('child_process');
 const multer = require('multer');
 const crypto = require('crypto');
-const { SETTINGS_FILE, UPLOADS_DIR, PROTOTYPES_DIR } = require('../lib/constants');
+const { SETTINGS_FILE, UPLOADS_DIR, PROTOTYPES_DIR, DESIGN_HISTORY_DIR: HISTORY_DIR, DESIGN_SESSIONS_DIR: SESSIONS_DIR } = require('../lib/constants');
 const { getServices } = require('../lib/services');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
-// UPLOADS_DIR / PROTOTYPES_DIR now come from constants so they follow
-// ATRIUM_DATA_DIR (devops-docker-datadir-001); constants creates them on boot.
-// design-history / design-sessions are still local — see the follow-up note on
-// that task.
-const HISTORY_DIR = path.join(__dirname, '..', 'design-history');
-const SESSIONS_DIR = path.join(__dirname, '..', 'design-sessions');
-
-if (!fs.existsSync(HISTORY_DIR)) fs.mkdirSync(HISTORY_DIR, { recursive: true });
-if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+// Every state path this route touches — UPLOADS_DIR, PROTOTYPES_DIR,
+// HISTORY_DIR, SESSIONS_DIR — comes from constants so it follows
+// ATRIUM_DATA_DIR; ensureDataDirs creates them all on boot. Nothing here is
+// repo-relative any more (devops-docker-datadir-001, -designdirs-001).
 
 // --- Multer setup ---
 const storage = multer.diskStorage({

@@ -96,6 +96,16 @@ RUN mkdir -p /data /workspace \
 
 USER node
 
+# Bind-mounted host repos are owned by a different uid than `node`, so git
+# refuses them with "detected dubious ownership" and every command fails.
+# lib/github.js only logs a warning on git failure, so without this the
+# Changes view silently renders no branch/PR badges with no visible cause.
+#
+# '*' rather than a fixed path because the workspace mount point is the
+# operator's choice; the container is single-tenant and only ever sees
+# repositories its operator deliberately mounted.
+RUN git config --global --add safe.directory '*'
+
 ENV NODE_ENV=production \
     PORT=3001 \
     ATRIUM_DATA_DIR=/data \

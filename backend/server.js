@@ -11,6 +11,8 @@ const { PORT, TASKS_DIR, HISTORY_DIR, TRASH_DIR, ARCHIVED_DIR, USERS_DIR, SETTIN
 const { setIO } = require('./lib/io');
 const { logger, requestLogger } = require('./lib/logger');
 const { resolveFrontendDist, isSpaFallbackRequest, hasBuild, cacheHeadersFor } = require('./lib/staticSite');
+const { featureSnapshot } = require('./lib/features');
+const { buildAllowedOrigins, buildOriginChecker } = require('./lib/corsPolicy');
 
 // --- Swagger API Docs ---
 const swaggerUi = require('swagger-ui-express');
@@ -52,53 +54,38 @@ const app = express();
 const server = http.createServer(app);
 
 // --- CORS Origin Policy ---
-// In production, set ALLOWED_ORIGINS env var (comma-separated list of origins)
-// In development, localhost origins are auto-allowed
-const buildAllowedOrigins = () => {
-  const origins = new Set();
-  if (process.env.ALLOWED_ORIGINS) {
-    process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean).forEach(o => origins.add(o));
-  }
-  // Always allow same-origin (empty origin from non-browser clients / same-host)
-  // Auto-allow localhost variants in development
-  if (process.env.NODE_ENV !== 'production' || origins.size === 0) {
-    [3000, 3001, 5173, 5174, 8080].forEach(p => {
-      origins.add(`http://localhost:${p}`);
-      origins.add(`http://127.0.0.1:${p}`);
+// Policy lives in lib/corsPolicy.js so the rules are unit-tested. In short:
+// same-origin is always allowed (the Origin's host matches the Host header the
+// browser used), plus anything in ALLOWED_ORIGINS, plus the dev localhost
+// ports where Vite and the API genuinely differ.
+//
+// The same-origin rule is what makes the container work on any published port:
+// it serves its own SPA, so `docker run -p 3100:3001` must not require the
+// operator to also remember an ALLOWED_ORIGINS entry (devops-docker-compose-001).
+const allowedOrigins = buildAllowedOrigins();
+const isOriginAllowed = buildOriginChecker(allowedOrigins);
+
+// The `cors` package's options-delegate form — `(req, callback)` rather than
+// `(origin, callback)` — because deciding same-origin needs the Host header,
+// which the origin-only signature does not expose.
+const corsDelegate = (req, callback) => {
+  const origin = req.headers.origin;
+  if (isOriginAllowed(origin, req.headers.host)) {
+    return callback(null, {
+      origin: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+      credentials: true,
     });
   }
-  // Playwright's hosted trace viewer fetches our /api/e2e-runs/.../trace.zip
-  // when a reviewer clicks "Open in Playwright trace viewer" on a Tests-tab
-  // spec row. The viewer is a Microsoft-hosted SPA that opens any trace URL
-  // passed via ?trace=. Allowing it here keeps the cross-origin fetch from
-  // the viewer-page to atrium from being rejected.
-  origins.add('https://trace.playwright.dev');
-  return origins;
-};
-
-const allowedOrigins = buildAllowedOrigins();
-
-const corsOriginCheck = (origin, callback) => {
-  // Allow requests with no origin (same-origin, curl, server-to-server)
-  if (!origin) return callback(null, true);
-  if (allowedOrigins.has(origin)) return callback(null, true);
   callback(new Error(`CORS: origin ${origin} not allowed`));
 };
 
-app.use(cors({
-  origin: corsOriginCheck,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
+app.use(cors(corsDelegate));
 
-const io = new Server(server, {
-  cors: {
-    origin: (origin, callback) => corsOriginCheck(origin, callback),
-    methods: ['GET', 'POST'],
-    credentials: true
-  }
-});
+// socket.io passes its `cors` option straight to the same package, so the
+// delegate works here too and the two layers cannot drift apart.
+const io = new Server(server, { cors: corsDelegate });
 
 app.use(express.json());
 app.use(requestLogger);
@@ -107,7 +94,15 @@ app.use(requestLogger);
 [TASKS_DIR, HISTORY_DIR, TRASH_DIR, ARCHIVED_DIR, USERS_DIR, CHAT_DIR].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
-if (!fs.existsSync(SETTINGS_FILE)) fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ workingDirectory: '' }));
+// Seed settings.json on FIRST boot only. ATRIUM_WORKING_DIRECTORY lets the
+// container point this at its bind-mounted /workspace without a manual edit
+// inside the volume (devops-docker-compose-001). Existing settings are never
+// overwritten — the user's choice in the UI always wins after first boot.
+if (!fs.existsSync(SETTINGS_FILE)) {
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
+    workingDirectory: process.env.ATRIUM_WORKING_DIRECTORY || '',
+  }));
+}
 if (!fs.existsSync(SERVICES_FILE)) fs.writeFileSync(SERVICES_FILE, JSON.stringify([]));
 if (!fs.existsSync(CHAT_FILE)) fs.writeFileSync(CHAT_FILE, JSON.stringify([]));
 
@@ -183,6 +178,25 @@ app.get('/api/health/ready', (req, res) => {
 
   const statusCode = healthy ? 200 : 503;
   res.status(statusCode).json({ status: healthy ? 'ok' : 'degraded', checks });
+});
+
+/**
+ * @swagger
+ * /api/features:
+ *   get:
+ *     summary: Which optional features this instance offers
+ *     description: >
+ *       Feature flags for host-coupled surfaces. A containerized instance
+ *       cannot spawn processes on its host, so the Services manager is
+ *       typically disabled there. Public so the client can branch before
+ *       authenticating; it exposes booleans only, no configuration.
+ *     tags: [Settings]
+ *     responses:
+ *       200:
+ *         description: Map of feature name to enabled boolean
+ */
+app.get('/api/features', (req, res) => {
+  res.json(featureSnapshot());
 });
 
 // --- API Documentation ---
@@ -354,6 +368,7 @@ io.on('connection', (socket) => {
 // --- Start Server ---
 server.listen(PORT, '0.0.0.0', () => {
   logger.info({ port: PORT }, `Backend server running on http://0.0.0.0:${PORT}`);
+  logger.info({ features: featureSnapshot() }, 'Feature flags');
   logger.info(`API docs at http://localhost:${PORT}/api/docs`);
   // Start the GitHub-watcher loop engine after the server is listening so a
   // slow first poll never blocks startup (feat-loops-engine-001).
