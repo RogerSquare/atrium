@@ -9,7 +9,9 @@ const fs = require('fs');
 const path = require('path');
 const matter = require('gray-matter');
 
-const TASKS_DIR = path.join(__dirname, '..', 'tasks');
+// Sourced from constants so the audit follows ATRIUM_DATA_DIR instead of
+// auditing an empty backend/tasks/ when state lives on a mounted volume.
+const { TASKS_DIR } = require('../lib/constants');
 
 const VALID_STATUS = new Set(['draft', 'todo', 'in_progress', 'waiting_input', 'review', 'done']);
 const VALID_PRIORITY = new Set(['low', 'medium', 'high']);

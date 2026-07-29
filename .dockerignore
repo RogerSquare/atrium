@@ -1,0 +1,78 @@
+# Build context exclusions (devops-docker-image-001).
+#
+# Two jobs here: keep the context small, and — more importantly — keep HOST
+# state and HOST-compiled binaries out of the image. backend/node_modules in
+# particular contains node-pty compiled for Windows; copying it in would
+# shadow the Linux build from the native-deps stage and fail at runtime.
+
+# Dependencies — rebuilt inside the image for the target platform
+node_modules/
+**/node_modules/
+
+# Runtime state — belongs in the ATRIUM_DATA_DIR volume, never in the image
+backend/tasks/
+backend/users/
+backend/chat/
+backend/approvals/
+backend/agent-tokens/
+backend/uploads/
+backend/autoenter/
+backend/e2e-runs/
+backend/loop-runs/
+backend/design-history/
+backend/design-sessions/
+backend/loops.json
+backend/loop-templates.json
+backend/.jwt-secret
+
+# Machine-specific config. services.json is host-only by design (see
+# lib/features.js) — services.example.json is the template that ships.
+backend/settings.json
+backend/services.json
+
+# Build output — the frontend is rebuilt in the frontend-build stage, so a
+# stale host dist/ must not be copied over it
+frontend/dist/
+dist/
+dist-ssr/
+
+# Test + tooling artifacts
+frontend/playwright-report/
+frontend/playwright-report.json
+frontend/test-results/
+frontend/.storybook/
+**/*.test.js
+coverage/
+
+# VCS and editor
+.git/
+.gitignore
+.claude/
+# ...but agent skills ARE baked into the image (see Dockerfile), so the COPY
+# needs them in the build context.
+!.claude/skills
+!.claude/skills/**
+.vscode/
+.idea/
+
+# Docs and scratch — not needed at runtime (instructions.md IS copied
+# explicitly in the Dockerfile; it is read by lib/constants.js)
+docs/
+design-research/
+redesign-intake/
+source_backups/
+README.md
+CLAUDE.md
+UBIQUITOUS_LANGUAGE.md
+task_review.json
+start.bat
+
+# Secrets — belt and braces; these should never exist in the repo anyway
+.env
+.env.*
+*.env
+
+# Logs and OS cruft
+*.log
+.DS_Store
+Thumbs.db

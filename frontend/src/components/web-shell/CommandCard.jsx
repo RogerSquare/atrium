@@ -50,7 +50,7 @@ export default function CommandCard({ task, commands = TASK_COMMANDS, headerLabe
   const [isOpen, setIsOpenState] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
   // Wrap setState so a parent can mirror the popover-open flag without
-  // owning the state itself. The GlobalShellModal uses this to defer
+  // owning the state itself. The GlobalShellPanel uses this to defer
   // its Esc-closes-modal handler when the popover is open (first Esc
   // closes popover, second closes modal). Optional — DetailPane omits
   // it and the component keeps its existing self-contained behavior.

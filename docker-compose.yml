@@ -1,0 +1,95 @@
+# Atrium — Docker Desktop on Windows (devops-docker-compose-001).
+#
+# One service, one port. All mutable state lives in the atrium-data volume;
+# your projects directory is bind-mounted read-write at /workspace so the
+# Changes view and the terminal operate on the REAL repos rather than copies.
+#
+#   cp .env.example .env      # then fill in JWT_SECRET and the paths
+#   docker compose up -d
+#   open http://localhost:3001
+#
+# Everything machine-specific is in .env — this file has no absolute paths.
+
+services:
+  atrium:
+    build: .
+    image: atrium:latest
+    container_name: atrium
+
+    ports:
+      - "${ATRIUM_PORT:-3001}:3001"
+
+    environment:
+      # Required. constants.js hard-exits in production without it, which is
+      # the correct behaviour — generate one with:
+      #   node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required — copy .env.example to .env and set it}
+
+      # Single root for every piece of mutable state (lib/dataDir.js).
+      ATRIUM_DATA_DIR: /data
+
+      # Seeds settings.json on FIRST boot only, so the Changes view and the
+      # web-shell resolve against the bind-mount below instead of an empty
+      # path. Changing it later in the UI wins; this never overwrites.
+      ATRIUM_WORKING_DIRECTORY: /workspace
+
+      # The Services manager starts processes on the HOST by absolute path,
+      # which a container cannot do. Off here so the UI hides it rather than
+      # offering buttons that silently fail (lib/features.js).
+      ATRIUM_FEATURE_SERVICES: "off"
+
+      # Interactive shell for the web-shell terminal. The image already
+      # defaults to this; stated explicitly so it is visible in `compose config`.
+      ATRIUM_SHELL: /bin/bash
+
+      # gh auth for the Changes view. Passed as a token rather than mounting
+      # ~/.config/gh so no credential file crosses the boundary. Optional —
+      # without it, git still works and only the PR badges go quiet.
+      GH_TOKEN: ${GH_TOKEN:-}
+
+      # Browser origins allowed to reach the API. Same-origin needs no entry;
+      # add one only if you front this with a different hostname.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+
+    volumes:
+      # All Atrium state: tasks, users, chat, approvals, agent tokens,
+      # uploads, settings.json, .jwt-secret. Survives rebuilds.
+      - atrium-data:/data
+
+      # Your projects directory. Read-WRITE on purpose: the terminal and any
+      # agent you launch are expected to edit these repos, and `git` needs to
+      # write .git/ to do anything beyond a status read.
+      - "${ATRIUM_WORKSPACE:?ATRIUM_WORKSPACE is required — set it to your projects directory}:/workspace"
+
+      # Claude Code credentials. Read-only: the container needs to read the
+      # auth, not rewrite your host config.
+      #
+      # NOTE: session HISTORY will not resume in the container. claudeBin.js
+      # derives session file paths from the cwd, so /workspace/atrium hashes
+      # to a different slug than C:\Users\...\opencode. New sessions are fine.
+      # Read-WRITE, deliberately. Claude Code rewrites .credentials.json on
+      # token refresh and updates state as you work; mounted read-only it
+      # cannot persist a login, so every new terminal re-prompts. The container
+      # writing here is the same user on the same machine, so sharing the
+      # host's session is the intended behaviour, not a leak.
+      - "${ATRIUM_CLAUDE_CONFIG:?ATRIUM_CLAUDE_CONFIG is required — set it to your .claude directory}:/home/node/.claude"
+
+      # Claude Code splits its state: credentials live in .claude/, but account
+      # and onboarding state live in ~/.claude.json — OUTSIDE that directory.
+      # Without this the container writes its own copy into the image's
+      # writable layer, which is destroyed on every rebuild, so the login is
+      # lost each time.
+      - "${ATRIUM_CLAUDE_JSON:?ATRIUM_CLAUDE_JSON is required — set it to your .claude.json}:/home/node/.claude.json"
+
+    restart: unless-stopped
+
+    # No `init: true` here on purpose — the image already runs tini as PID 1
+    # (see the Dockerfile ENTRYPOINT). Adding compose's init would stack a
+    # second init process for no benefit.
+
+    # HEALTHCHECK is inherited from the image; not redefined so the two can
+    # never drift apart.
+
+volumes:
+  atrium-data:
+    name: atrium-data

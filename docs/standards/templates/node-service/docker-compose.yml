@@ -1,0 +1,35 @@
+# Template: Node service, container-first standard.
+# Replace <SERVICE> throughout and pick a port from the documented range in
+# ../../container-first-projects.md (backends 3200-3999, frontends 5100-5999).
+
+services:
+  <SERVICE>:
+    build: .
+    image: <SERVICE>:latest
+    # Atrium addresses the service by this name — it MUST match the
+    # container_name you register in Settings > Services.
+    container_name: <SERVICE>
+
+    ports:
+      # host:container. Check the host side is free before claiming it:
+      #   netstat -ano | grep ":3200" | grep LISTENING
+      - "${<SERVICE>_PORT:-3200}:3200"
+
+    environment:
+      NODE_ENV: production
+      # Secrets come from .env, never from the image. `:?` makes a missing
+      # value fail loudly at `up` instead of at some later runtime call.
+      # SOME_API_KEY: ${SOME_API_KEY:?set SOME_API_KEY in .env}
+
+    volumes:
+      # Named volume, not the writable layer — the writable layer is discarded
+      # on every rebuild, which loses data silently.
+      - <SERVICE>-data:/data
+
+    restart: unless-stopped
+    # No `init: true` — the Dockerfile already runs tini as PID 1.
+    # No healthcheck here — it is inherited from the image so the two cannot drift.
+
+volumes:
+  <SERVICE>-data:
+    name: <SERVICE>-data

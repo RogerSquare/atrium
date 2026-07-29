@@ -2,6 +2,18 @@
 
 Canonical artifacts shared across all repos. Edit here, copy out.
 
+## `container-first-projects.md`
+
+Every new project ships containerized from its first commit: Dockerfile, compose,
+`.dockerignore`, `.env.example`, registered in Atrium as a `type: "container"`
+service. Carries the documented port ranges and the four traps that cost real
+debugging time (host `node_modules` in the image, `.env.*` swallowing
+`.env.example`, single-file bind mounts breaking on atomic writes, and git's
+`dubious ownership` on bind-mounted repos).
+
+Copyable scaffold in `templates/node-service/`. The agent-executable version is
+the `containerize-project` skill.
+
 ## `gitignore-secrets.txt`
 
 Append block added to every repo's `.gitignore` to catch common secret-shaped files

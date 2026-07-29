@@ -62,6 +62,9 @@ export default function DetailPane({
   width,
   onWidthChange,
   narrow = false,
+  // True when a flex wrapper owns the side region's grid cell (AppShell's
+  // side dock) rather than this pane claiming it directly.
+  docked = false,
   // eslint-disable-next-line no-unused-vars
   activeAgents,
   // eslint-disable-next-line no-unused-vars
@@ -127,7 +130,11 @@ export default function DetailPane({
         overflow: 'hidden',
       }
     : {
-        gridArea: 'detail',
+        // Inside the side dock a flex wrapper owns the grid cell, so fill it
+        // as a flex child. Standalone, claim the grid area directly.
+        ...(docked
+          ? { flex: 1, minHeight: 0 }
+          : { gridArea: 'detail' }),
         borderLeft: 'var(--border-hairline)',
         background: 'var(--bg-card)',
         display: 'flex',

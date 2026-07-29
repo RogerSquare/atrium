@@ -5,19 +5,23 @@ const { promisify } = require('util');
 const { SETTINGS_FILE } = require('./constants');
 const { logger } = require('./logger');
 const registry = require('./projectRegistry');
+const { resolveGithubToken, buildGhEnv } = require('./githubAuth');
 
 const execFileP = promisify(execFile);
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const cache = new Map();
 
-function loadWorkingDirectory() {
+function loadSettings() {
   try {
-    const settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
-    return settings.workingDirectory || '';
+    return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
   } catch {
-    return '';
+    return {};
   }
+}
+
+function loadWorkingDirectory() {
+  return loadSettings().workingDirectory || '';
 }
 
 function resolveProjectRepoPath(projectIdOrName) {
@@ -51,12 +55,41 @@ async function gitOutput(repoPath, args, opts = {}) {
   }
 }
 
+// Records why the last gh call failed so the UI can explain an empty Changes
+// view instead of just rendering nothing (feat-github-auth-settings-001).
+let lastGhError = null;
+
+function getLastGhError() {
+  return lastGhError;
+}
+
 async function ghOutput(repoPath, args) {
+  const settings = loadSettings();
+  if (!resolveGithubToken({ settings })) {
+    // Fail fast and loudly-in-state. Calling gh unauthenticated would work for
+    // public repos but silently return nothing for private ones, which is the
+    // harder bug to spot.
+    lastGhError = { code: 'not_authenticated', message: 'No GitHub token configured' };
+    return null;
+  }
   try {
-    const { stdout } = await execFileP('gh', args, { cwd: repoPath, maxBuffer: 16 * 1024 * 1024 });
+    const { stdout } = await execFileP('gh', args, {
+      cwd: repoPath,
+      maxBuffer: 16 * 1024 * 1024,
+      env: buildGhEnv({ settings }),
+      timeout: 30_000,
+    });
+    lastGhError = null;
     return stdout;
   } catch (err) {
-    logger.warn({ err: err.message, args }, 'gh command failed');
+    const message = String(err.stderr || err.message || '');
+    // A bad or expired token is worth distinguishing from a network blip —
+    // one needs a new token, the other needs a retry.
+    const code = /401|Bad credentials|authentication/i.test(message)
+      ? 'bad_credentials'
+      : 'gh_failed';
+    lastGhError = { code, message: message.slice(0, 500) };
+    logger.warn({ err: message, args }, 'gh command failed');
     return null;
   }
 }
@@ -421,11 +454,89 @@ function clearChangesCache() {
   changesCache.clear();
 }
 
+// ---- Open issues (feat-loops-watch-types-001) -------------------------
+// Reuses the links `cache` map under an `issues#<repo>` key (same 5-min TTL)
+// so the loop engine's issue polling is rate-limit friendly. Returns open
+// issues only — the engine turns previously-unseen ones into draft tasks.
+async function getIssues(projectIdOrName, { refresh = false } = {}) {
+  const repoPath = resolveProjectRepoPath(projectIdOrName);
+  if (!repoPath) return { issues: [], reason: 'no_git_repo', fetched_at: new Date().toISOString() };
+
+  const cacheKey = `issues#${repoPath}`;
+  const cached = cache.get(cacheKey);
+  if (!refresh && cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.data;
+
+  const out = await ghOutput(repoPath, [
+    'issue', 'list',
+    '--state', 'open',
+    '--limit', '200',
+    '--json', 'number,title,url,updatedAt,state,labels',
+  ]);
+  let issues = [];
+  if (out) {
+    try { issues = JSON.parse(out); } catch (err) { logger.warn({ err: err.message }, 'gh issue list returned non-JSON'); }
+  }
+  const data = { issues, fetched_at: new Date().toISOString() };
+  cache.set(cacheKey, { fetchedAt: Date.now(), data });
+  return data;
+}
+
+/**
+ * Verify a token against GitHub and return the account it belongs to.
+ * Used by the Settings sign-in flow so a bad token is rejected at paste time
+ * rather than surfacing later as silently missing PR badges.
+ * Runs `gh` with the candidate token WITHOUT saving it first.
+ */
+async function verifyToken(token) {
+  const settings = { github_token: token };
+  try {
+    const { stdout } = await execFileP('gh', ['api', 'user', '--jq', '.login'], {
+      env: buildGhEnv({ settings }),
+      timeout: 20_000,
+      maxBuffer: 1024 * 1024,
+    });
+    const login = String(stdout || '').trim();
+    if (!login) return { ok: false, error: 'GitHub returned no account for that token' };
+    return { ok: true, login };
+  } catch (err) {
+    const message = String(err.stderr || err.message || '');
+    if (/ENOENT/.test(message)) {
+      return { ok: false, error: 'The gh CLI is not installed in this container' };
+    }
+    if (/401|Bad credentials/i.test(message)) {
+      return { ok: false, error: 'GitHub rejected that token (bad or expired credentials)' };
+    }
+    return { ok: false, error: message.slice(0, 300) || 'Could not reach GitHub' };
+  }
+}
+
+/** Current auth state, for GET /api/github/auth. */
+async function authStatus() {
+  const settings = loadSettings();
+  const token = resolveGithubToken({ settings });
+  if (!token) {
+    return { connected: false, source: null, login: null, error: null };
+  }
+  const source = settings.github_token ? 'settings' : 'env';
+  const result = await verifyToken(token);
+  return {
+    connected: result.ok,
+    source,
+    login: result.ok ? result.login : null,
+    error: result.ok ? null : result.error,
+  };
+}
+
 module.exports = {
   getLinks,
   clearCache,
   getPrChanges,
+  verifyToken,
+  authStatus,
+  getLastGhError,
+  loadSettings,
   clearChangesCache,
+  getIssues,
   parseGithubRemote,
   parsePrNumberFromUrl,
   matchBranchToTaskId,

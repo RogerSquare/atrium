@@ -1,5 +1,6 @@
 const pty = require('node-pty');
 const { logger } = require('../lib/logger');
+const { resolveDefaultShell, resolveShellCwd } = require('../lib/shellDefaults');
 
 const registerTerminalHandlers = (socket) => {
   let ptyProcess = null;
@@ -10,10 +11,14 @@ const registerTerminalHandlers = (socket) => {
         ptyProcess.kill();
       }
 
-      const cwd = config.cwd || process.env.USERPROFILE || 'C:\\';
-      const shell = 'cmd.exe';
+      // Both resolved via lib/shellDefaults so this surface behaves the same
+      // as the web-shell and works in a Linux container. On Windows with no
+      // override these are exactly the previous values (cmd.exe, the user's
+      // home) — the native run is unchanged.
+      const cwd = resolveShellCwd(config.cwd);
+      const shell = resolveDefaultShell();
 
-      logger.info({ cwd, socketId: socket.id }, 'Starting PTY session');
+      logger.info({ cwd, shell, socketId: socket.id }, 'Starting PTY session');
 
       ptyProcess = pty.spawn(shell, [], {
         name: 'xterm-color',

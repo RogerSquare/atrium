@@ -1,0 +1,93 @@
+# OPT-IN OVERRIDE — let Atrium manage sibling containers as services.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.docker-services.yml up -d
+#
+# Adds a purpose-built ALLOW-LIST proxy in front of the Docker socket and points
+# Atrium at it, so services registered with `type: "container"` can be started,
+# stopped, restarted and tailed from the board (feat-services-containers-001).
+#
+# ---------------------------------------------------------------------------
+# Why not mount /var/run/docker.sock directly
+# ---------------------------------------------------------------------------
+# The Docker socket is a ROOT-EQUIVALENT interface. Anything that can reach it
+# can create a privileged container, bind-mount the host filesystem, and read or
+# modify the whole machine. Handing it to an app that renders user-authored
+# content and runs agent-written code is giving that code root on the host.
+#
+# ---------------------------------------------------------------------------
+# Why not tecnativa/docker-socket-proxy
+# ---------------------------------------------------------------------------
+# It cannot express the policy this needs. Its HAProxy template gates whole path
+# prefixes: CONTAINERS=1 allows every /containers/* path, and POST=1 is a global
+# verb switch. Atrium needs inspect + logs (GET) AND start/stop/restart (POST),
+# so both must be on — which also permits POST /containers/create and
+# POST /containers/{id}/exec.
+#
+# This was VERIFIED against the running image rather than assumed:
+#   POST /containers/artifex/exec   -> 201 Created   (exec instance made)
+#   POST /containers/create         -> 404 "No such image"  (rejected by Docker
+#                                      for a missing image, NOT by the proxy)
+# With any locally-present image, create would have succeeded — a privileged
+# container bind-mounting / is host root.
+#
+# ---------------------------------------------------------------------------
+# What runs instead
+# ---------------------------------------------------------------------------
+# docker/socket-allowlist-proxy.js — dependency-free, deny-by-default, and small
+# enough to audit. It permits exactly six request shapes:
+#
+#   GET  /_ping
+#   GET  /containers/{name}/json
+#   GET  /containers/{name}/logs
+#   POST /containers/{name}/start | /stop | /restart
+#
+# Everything else returns 403 and is logged. Set ATRIUM_ALLOWED_CONTAINERS in
+# .env to further restrict which container names may be touched at all.
+#
+# Residual risk, stated plainly: a compromised Atrium can still stop or restart
+# any container named in the allow-list (or any container on the host if that
+# list is empty). It cannot create containers, exec into them, mount host paths,
+# pull or build images, or reach any other part of the daemon.
+
+services:
+  docker-socket-proxy:
+    # Purpose-built allow-list proxy — see docker/socket-allowlist-proxy.js for
+    # the full rationale. Short version: tecnativa/docker-socket-proxy CANNOT
+    # express "read container state, but only start/stop/restart as writes".
+    # Its CONTAINERS=1 + POST=1 combination also permits POST /containers/create
+    # and POST /containers/{id}/exec. That was VERIFIED against the real image,
+    # not assumed — exec returned 201 Created. With any local image present,
+    # create would have allowed a privileged container bind-mounting / (host
+    # root). This proxy is deny-by-default and allows exactly six request
+    # shapes.
+    image: node:22-bookworm-slim
+    container_name: atrium-docker-proxy
+    # Root is required to read the Docker socket; the process does nothing else.
+    user: root
+    command: ["node", "/proxy.js"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker/socket-allowlist-proxy.js:/proxy.js:ro
+    environment:
+      # Optional hard restriction to specific container names. Leave empty to
+      # allow any container on this host; set it to shrink the blast radius to
+      # the services you actually manage, e.g. "artifex,memos".
+      ALLOWED_CONTAINERS: "${ATRIUM_ALLOWED_CONTAINERS:-}"
+    # Never published to the host — only reachable on the compose network.
+    expose:
+      - "2375"
+    restart: unless-stopped
+
+  atrium:
+    environment:
+      # Atrium's Docker driver targets the proxy, never the socket.
+      DOCKER_HOST: http://docker-socket-proxy:2375
+
+      # Re-enable the Services feature. The base compose turns it off because a
+      # container cannot spawn host processes; this override supplies a
+      # mechanism that DOES work there, so the panel becomes useful again.
+      # Entries typed `container` are driven through Docker; any legacy
+      # `process` entry still cannot run here and reports as unavailable.
+      ATRIUM_FEATURE_SERVICES: "on"
+    depends_on:
+      - docker-socket-proxy

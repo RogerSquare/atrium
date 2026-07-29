@@ -268,4 +268,152 @@ const updateTaskField = async (taskId, field, value, actor = 'Agent', actionMess
   });
 };
 
-module.exports = { getAllTasks, findTaskFilePath, buildIndex, indexSet, indexDelete, invalidateCache, atomicWriteFileSync, cleanupTempFiles, trimActivityLog, getFullActivityLog, generateSummary, updateTaskField };
+// Append a comment to a task's `### Comments` section in-process (used by the
+// loop engine for fire-and-forget side-effects). Mirrors updateTaskField's
+// conventions: same task:<id> mutex, one activity_log entry, atomic write,
+// cache invalidation, and a task_updated socket emit. The comment is inserted
+// immediately after the `### Comments` header (newest-first), matching the MCP
+// append_comment tool. Creates the section if it's missing. Throws if the task
+// isn't found.
+const appendComment = async (taskId, comment, actor = 'Agent') => {
+  const { withLock } = require('./lock');
+  const { getIO } = require('./io');
+
+  return await withLock(`task:${taskId}`, async () => {
+    const filePath = findTaskFilePath(taskId);
+    if (!filePath || !fs.existsSync(filePath)) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    const parsed = matter(raw);
+    const data = parsed.data || {};
+    const trimmed = String(comment || '').trim();
+    let body = parsed.content || '';
+
+    const marker = '### Comments';
+    const idx = body.indexOf(marker);
+    if (idx !== -1) {
+      const before = body.slice(0, idx + marker.length);
+      const after = body.slice(idx + marker.length);
+      body = `${before}\n${trimmed}\n${after}`;
+    } else {
+      body = `${body.trimEnd()}\n\n${marker}\n${trimmed}\n`;
+    }
+
+    data.activity_log = data.activity_log || [];
+    data.activity_log.push({
+      timestamp: new Date().toISOString(),
+      action: `Comment added by ${actor}`,
+    });
+    trimActivityLog(taskId, data);
+
+    const newContent = matter.stringify(body, data);
+    atomicWriteFileSync(filePath, newContent);
+    invalidateCache();
+    indexSet(taskId, filePath);
+
+    const relativePath = path.relative(TASKS_DIR, path.dirname(filePath));
+    const project = relativePath || 'Root';
+    const taskObj = { ...data, id: taskId, project, content: body.trim() };
+    try {
+      const io = getIO();
+      if (io) io.emit('task_updated', { ...taskObj, summary: generateSummary(taskObj) });
+    } catch { /* socket.io not initialised yet during boot */ }
+    return taskObj;
+  });
+};
+
+// Create a task in-process (used by the loop engine to turn a new GitHub issue
+// into a draft task). Mirrors the POST /api/tasks core: id validation, project
+// folder resolution, atomic write, index update, task_created socket emit.
+// Throws an error with `.status` (400 invalid id / 409 duplicate) on failure.
+// Does NOT notify taskWaiters — issue-imported tasks default to `draft`, which
+// the wait-for-next-todo loop ignores anyway.
+const createTask = (fields = {}) => {
+  const { validateTaskId } = require('./taskIdValidator');
+  const { sanitizeFilename, safePath } = require('./sanitize');
+  const { getIO } = require('./io');
+  const {
+    id, title = 'Untitled', status = 'draft', priority = 'medium',
+    content = '', project = 'Root', type = 'fullstack', component = null,
+    tags = [], parent_task = null, depends_on = [], created_by = 'Agent',
+  } = fields;
+
+  const idError = validateTaskId(id);
+  if (idError) { const e = new Error('Invalid task id'); e.status = 400; e.details = idError; throw e; }
+  const taskId = sanitizeFilename(id);
+  if (!taskId || taskId !== id) { const e = new Error('id is not filename-safe'); e.status = 400; throw e; }
+
+  const safeProject = project === 'Root' ? 'Root' : sanitizeFilename(project);
+  const targetDir = safeProject === 'Root' ? TASKS_DIR : safePath(TASKS_DIR, safeProject);
+  if (!targetDir) { const e = new Error('Invalid project name'); e.status = 400; throw e; }
+  if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+
+  const filePath = safePath(targetDir, `${taskId}.md`);
+  if (!filePath) { const e = new Error('Invalid task id'); e.status = 400; throw e; }
+  if (fs.existsSync(filePath)) { const e = new Error('Task id already exists'); e.status = 409; throw e; }
+
+  const now = new Date().toISOString();
+  const data = {
+    id: taskId, title, status, priority, type, component,
+    tags, parent_task, depends_on,
+    created_at: now,
+    activity_log: [{ timestamp: now, action: `Task created by ${created_by}` }],
+  };
+  Object.keys(data).forEach((k) => {
+    if (data[k] === undefined || data[k] === null || data[k] === '') delete data[k];
+  });
+
+  const fileContent = matter.stringify(content, data);
+  atomicWriteFileSync(filePath, fileContent);
+  indexSet(taskId, filePath);
+
+  const created = { id: taskId, ...data, content, project: safeProject };
+  try {
+    const io = getIO();
+    if (io) io.emit('task_created', { ...created, summary: generateSummary(created) });
+  } catch { /* socket.io not ready */ }
+  return created;
+};
+
+// Claim the next eligible `todo` task in a project for a worker loop
+// (feat-loopsv2-worker-001). Eligible = status todo, not a draft/no-code task,
+// and unassigned or already assigned to this worker. Atomically flips the first
+// match to in_progress under a per-task lock; returns the claimed task or null.
+const isEligibleForWorker = (t, project, assignee) =>
+  t && t.status === 'todo'
+  && (t.project || 'Root') === project
+  && (!t.assignee || t.assignee === assignee)
+  && !((t.tags || []).includes('no-code'));
+
+const claimNextTodo = async (project, assignee) => {
+  const { withLock } = require('./lock');
+  const candidates = getAllTasks(TASKS_DIR).filter((t) => isEligibleForWorker(t, project, assignee));
+  for (const cand of candidates) {
+    const claimed = await withLock(`task:${cand.id}`, async () => {
+      const filePath = findTaskFilePath(cand.id);
+      if (!filePath || !fs.existsSync(filePath)) return null;
+      const parsed = matter(fs.readFileSync(filePath, 'utf-8'));
+      if (parsed.data.status !== 'todo') return null; // raced — someone took it
+      const now = new Date().toISOString();
+      parsed.data.status = 'in_progress';
+      parsed.data.assignee = assignee;
+      parsed.data.started_at = parsed.data.started_at || now;
+      parsed.data.activity_log = (parsed.data.activity_log || []).concat([
+        { timestamp: now, action: `Status changed to IN PROGRESS by ${assignee}` },
+        { timestamp: now, action: `assignee changed to ${assignee} (worker-loop claim)` },
+      ]);
+      trimActivityLog(cand.id, parsed.data);
+      atomicWriteFileSync(filePath, matter.stringify(parsed.content, parsed.data));
+      invalidateCache();
+      indexSet(cand.id, filePath);
+      const taskObj = { ...parsed.data, id: cand.id, content: parsed.content, project };
+      try { const { getIO } = require('./io'); const io = getIO(); if (io) io.emit('task_updated', { ...taskObj, summary: generateSummary(taskObj) }); } catch { /* io not ready */ }
+      return taskObj;
+    });
+    if (claimed) return claimed;
+  }
+  return null;
+};
+
+module.exports = { getAllTasks, findTaskFilePath, buildIndex, indexSet, indexDelete, invalidateCache, atomicWriteFileSync, cleanupTempFiles, trimActivityLog, getFullActivityLog, generateSummary, updateTaskField, appendComment, createTask, claimNextTodo, isEligibleForWorker };

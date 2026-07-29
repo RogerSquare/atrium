@@ -17,14 +17,47 @@ const { logger } = require('./logger');
 const WATCH_TYPES = ['prs', 'ci', 'commits', 'issues'];
 const ACTION_TYPES = ['update_fields', 'comment', 'ai_summary'];
 const SCOPES = ['project', 'global'];
+const MODES = ['watcher', 'worker'];
 const STATUSES = ['idle', 'running', 'error'];
 const MIN_INTERVAL_MS = 60000;       // floor: 1 minute
 const DEFAULT_INTERVAL_MS = 300000;  // default: 5 minutes
 
+// Worker execution-policy config (feat-loopsv2-execparams-001), nested under
+// loop.worker. Lenient: normalizeWorker coerces + fills defaults so old loops
+// (no worker field) and partial updates keep working.
+const WORKER_DEFAULTS = {
+  base_branch: 'main',
+  branch_prefix: 'loop/',
+  setup_command: '',
+  test_command: '',
+  lint_command: '',
+  build_command: '',
+  require_checks_pass: true,
+  open_pr: true,
+  draft_pr: false,
+};
+
+function normalizeWorker(w) {
+  const x = (w && typeof w === 'object' && !Array.isArray(w)) ? w : {};
+  const str = (v, d) => (typeof v === 'string' ? v : d);
+  const bool = (v, d) => (typeof v === 'boolean' ? v : d);
+  return {
+    base_branch: (str(x.base_branch, WORKER_DEFAULTS.base_branch).trim() || WORKER_DEFAULTS.base_branch),
+    branch_prefix: str(x.branch_prefix, WORKER_DEFAULTS.branch_prefix),
+    setup_command: str(x.setup_command, ''),
+    test_command: str(x.test_command, ''),
+    lint_command: str(x.lint_command, ''),
+    build_command: str(x.build_command, ''),
+    require_checks_pass: bool(x.require_checks_pass, true),
+    open_pr: bool(x.open_pr, true),
+    draft_pr: bool(x.draft_pr, false),
+  };
+}
+
 // Fields a client may set on create/update. Engine-managed runtime fields
 // (status, last_run_at, next_run_at, last_result, last_error, snapshot) and
 // immutable fields (id, created_at) are never accepted from the API.
-const EDITABLE_FIELDS = ['name', 'scope', 'project', 'repo', 'watch', 'actions', 'interval_ms', 'enabled'];
+const EDITABLE_FIELDS = ['name', 'scope', 'project', 'repo', 'watch', 'actions', 'interval_ms', 'enabled', 'instructions', 'mode', 'prompt_template', 'extra_context', 'worker'];
 
 class LoopValidationError extends Error {
   constructor(details) {
@@ -126,6 +159,18 @@ function validate(input, { partial = false, merged = null } = {}) {
   if (has('enabled') && typeof input.enabled !== 'boolean') {
     errors.enabled = 'enabled must be a boolean';
   }
+  if (has('instructions') && input.instructions !== null && typeof input.instructions !== 'string') {
+    errors.instructions = 'instructions must be a string or null';
+  }
+  if (has('mode') && !MODES.includes(input.mode)) {
+    errors.mode = `mode must be one of ${MODES.join(', ')}`;
+  }
+  for (const f of ['prompt_template', 'extra_context']) {
+    if (has(f) && input[f] !== null && typeof input[f] !== 'string') errors[f] = `${f} must be a string or null`;
+  }
+  if (has('worker') && input.worker !== null && (typeof input.worker !== 'object' || Array.isArray(input.worker))) {
+    errors.worker = 'worker must be an object';
+  }
 
   // Cross-field: scope-dependent requirements (evaluated against the merged view)
   const view = merged || input;
@@ -170,6 +215,10 @@ function create(input, { now = new Date().toISOString() } = {}) {
   if (clean.enabled === undefined) clean.enabled = true;
   if (clean.project === undefined) clean.project = null;
   if (clean.repo === undefined) clean.repo = null;
+  if (clean.instructions === undefined) clean.instructions = null;
+  if (clean.mode === undefined) clean.mode = 'watcher';
+  if (clean.prompt_template === undefined) clean.prompt_template = null;
+  if (clean.extra_context === undefined) clean.extra_context = null;
 
   validate(clean, { partial: false });
 
@@ -185,6 +234,11 @@ function create(input, { now = new Date().toISOString() } = {}) {
     actions: clean.actions,
     interval_ms: clean.interval_ms,
     enabled: clean.enabled,
+    instructions: clean.instructions ?? null,
+    mode: clean.mode || 'watcher',
+    prompt_template: clean.prompt_template ?? null,
+    extra_context: clean.extra_context ?? null,
+    worker: normalizeWorker(clean.worker),
     status: 'idle',
     last_run_at: null,
     next_run_at: null,
@@ -207,6 +261,11 @@ function update(id, patch, { now = new Date().toISOString() } = {}) {
   const clean = pickEditable(patch || {});
   const merged = { ...loops[idx], ...clean };
   validate(clean, { partial: true, merged });
+
+  // Deep-merge the nested worker config so partial worker updates don't drop fields.
+  if (clean.worker !== undefined) {
+    merged.worker = normalizeWorker({ ...(loops[idx].worker || {}), ...(clean.worker || {}) });
+  }
 
   // Keep project/repo consistent with the (possibly changed) scope.
   if (merged.scope === 'project') merged.repo = clean.repo !== undefined ? clean.repo : merged.repo;
@@ -243,5 +302,5 @@ module.exports = {
   list, get, create, update, remove, patchRuntime,
   validate, generateId, loadAll, saveAll,
   LoopValidationError,
-  WATCH_TYPES, ACTION_TYPES, SCOPES, STATUSES, MIN_INTERVAL_MS, DEFAULT_INTERVAL_MS,
+  WATCH_TYPES, ACTION_TYPES, SCOPES, MODES, STATUSES, MIN_INTERVAL_MS, DEFAULT_INTERVAL_MS, WORKER_DEFAULTS, normalizeWorker,
 };

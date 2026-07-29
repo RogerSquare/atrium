@@ -5,6 +5,9 @@ node_modules/
 backend/.jwt-secret
 *.env
 .env.*
+# ...but the container config TEMPLATE must ship — `.env.*` above would
+# otherwise swallow it and a fresh clone would have nothing to copy from.
+!.env.example
 
 # User data & credentials
 backend/users/
@@ -41,6 +44,8 @@ backend/services.json
 
 # GitHub-watcher loops (runtime data)
 backend/loops.json
+backend/loop-runs/
+backend/loop-templates.json
 
 # Claude Code local config — ignore everything by default but track project-shared skills
 .claude/*
