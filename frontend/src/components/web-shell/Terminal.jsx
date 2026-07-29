@@ -242,6 +242,17 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
       try {
         const env = clipboardEnvironment()
         const permissionState = await clipboardReadPermission()
+
+        // Console FIRST, and unconditionally. Two rounds of this investigation
+        // produced an empty server log, which proved nothing — a report that
+        // depends on a network call cannot tell you the handler never ran.
+        // This line lands in devtools whatever happens to the POST below.
+        console.log('[atrium-clipboard]', {
+          ...fields, permissionState, ...env,
+          hasSelection: term.hasSelection(),
+          mouseTracking: mouseTrackingActive(term),
+        })
+
         await apiFetch(`${API_URL}/diagnostics/client`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
