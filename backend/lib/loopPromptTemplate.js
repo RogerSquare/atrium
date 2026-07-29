@@ -14,6 +14,7 @@ const PLACEHOLDERS = [
   'repo_path', 'base_branch', 'branch',
   'setup_command', 'test_command', 'lint_command', 'build_command',
   'instructions', 'extra_context', 'port', 'final_status',
+  'checks_note', 'pr_step',
 ];
 
 const DEFAULT_TEMPLATE = [
@@ -36,8 +37,9 @@ const DEFAULT_TEMPLATE = [
   '   - test:  `{{test_command}}`',
   '   - lint:  `{{lint_command}}`',
   '   - build: `{{build_command}}`',
+  '   {{checks_note}}',
   '4. Commit (conventional message with a `Task: {{task_id}}` trailer) and `git push -u origin {{branch}}`.',
-  '5. Open a PR against `{{base_branch}}` referencing the task, then set the task to `{{final_status}}` via the API.',
+  '5. {{pr_step}}',
 ].join('\n');
 
 // Always appended after the (possibly custom) template body. Non-removable.

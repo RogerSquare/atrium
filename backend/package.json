@@ -17,7 +17,8 @@
     "test:loop-instructions": "node scripts/test-loop-instructions.js",
     "test:loop-activity": "node scripts/test-loop-activity.js",
     "test:loop-worker": "node scripts/test-loop-worker.js",
-    "test:loop-prompttemplate": "node scripts/test-loop-prompttemplate.js"
+    "test:loop-prompttemplate": "node scripts/test-loop-prompttemplate.js",
+    "test:loop-execparams": "node scripts/test-loop-execparams.js"
   },
   "keywords": [],
   "author": "",

@@ -31,24 +31,34 @@ function isExecuting(loopId) {
 // they default sensibly until feat-loopsv2-execparams-001 surfaces them.
 function buildExecutionPrompt(loop, task, instructions, repoPath) {
   const tpl = require('./loopPromptTemplate');
-  const w = (loop && loop.worker) || {};
-  const baseBranch = w.base_branch || 'main';
-  const branchPrefix = w.branch_prefix || 'loop/';
+  const { normalizeWorker } = require('./loops');
+  const w = normalizeWorker(loop && loop.worker);
+  const baseBranch = w.base_branch;
+  const branchPrefix = w.branch_prefix;
+  const branch = `${branchPrefix}${task.id}`;
+  const pr_step = w.open_pr === false
+    ? `Do NOT open a PR — push \`${branch}\` and report the branch name; a human will open the PR. Then set the task to \`review\`.`
+    : `Open a${w.draft_pr ? ' DRAFT' : ''} PR against \`${baseBranch}\` (e.g. \`gh pr create --base ${baseBranch} --head ${branch}${w.draft_pr ? ' --draft' : ''}\`) referencing the task, then set the task to \`review\` via the API.`;
+  const checks_note = w.require_checks_pass === false
+    ? '(Checks are advisory for this loop — run them if quick, but they need not all pass.)'
+    : '(All of the above that are set MUST pass before you open the PR.)';
   const vars = {
     task_id: task.id,
     task_title: task.title,
     task_description: (task.content || '(no description)').slice(0, 4000),
     repo_path: repoPath,
     base_branch: baseBranch,
-    branch: `${branchPrefix}${task.id}`,
-    setup_command: w.setup_command || '',
-    test_command: w.test_command || '',
-    lint_command: w.lint_command || '',
-    build_command: w.build_command || '',
+    branch,
+    setup_command: w.setup_command,
+    test_command: w.test_command,
+    lint_command: w.lint_command,
+    build_command: w.build_command,
     instructions: instructions || '',
     extra_context: (loop && loop.extra_context) || '',
     port: PORT,
     final_status: 'review',
+    checks_note,
+    pr_step,
   };
   return tpl.build(loop && loop.prompt_template, vars);
 }
