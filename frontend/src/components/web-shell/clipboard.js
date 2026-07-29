@@ -41,8 +41,21 @@ export function decideKeyAction(e, hasSelection, isMac = false) {
     return ACTION.PASS
   }
 
+  // Ctrl+Insert / Shift+Insert — the classic terminal bindings, and the ones
+  // that actually survive. They are checked FIRST because they are the only
+  // copy/paste chords no browser claims for itself.
+  if (key === 'insert') {
+    if (e.ctrlKey && !e.shiftKey) return ACTION.COPY
+    if (e.shiftKey && !e.ctrlKey) return ACTION.PASTE
+    return ACTION.PASS
+  }
+
   if (e.ctrlKey && e.shiftKey) {
-    // The standard Linux/Windows terminal bindings.
+    // Kept for the browsers that allow it, but Ctrl+Shift+C is NOT reliable:
+    // Chrome and Edge bind it to the DevTools element picker and swallow it
+    // before the page ever sees a keydown. That is why it appeared to do
+    // nothing — the handler was never called. Ctrl+Insert and right-click
+    // are the dependable routes; this stays as a bonus where it works.
     if (key === 'c') return ACTION.COPY
     if (key === 'v') return ACTION.PASTE
     return ACTION.PASS

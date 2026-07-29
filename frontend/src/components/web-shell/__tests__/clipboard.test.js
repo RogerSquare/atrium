@@ -240,3 +240,33 @@ describe('mouseTrackingActive', () => {
     expect(mouseTrackingActive(null)).toBe(false)
   })
 })
+
+// --- Ctrl+Insert / Shift+Insert -----------------------------------------
+//
+// These exist because Ctrl+Shift+C is NOT reliable: Chrome and Edge bind it
+// to the DevTools element picker and swallow it before the page sees a
+// keydown, so the handler was never called and copy appeared broken.
+// Ctrl+Insert / Shift+Insert are the classic terminal chords and no browser
+// claims them.
+
+describe('Insert-key bindings survive the browser', () => {
+  it('Ctrl+Insert copies', () => {
+    expect(decideKeyAction(keydown('Insert', { ctrlKey: true }), true)).toBe(ACTION.COPY)
+  })
+
+  it('Ctrl+Insert copies even with no selection — the buffer fallback covers it', () => {
+    expect(decideKeyAction(keydown('Insert', { ctrlKey: true }), false)).toBe(ACTION.COPY)
+  })
+
+  it('Shift+Insert pastes', () => {
+    expect(decideKeyAction(keydown('Insert', { shiftKey: true }), false)).toBe(ACTION.PASTE)
+  })
+
+  it('bare Insert is passed through to the PTY', () => {
+    expect(decideKeyAction(keydown('Insert'), false)).toBe(ACTION.PASS)
+  })
+
+  it('Ctrl+Shift+Insert is ambiguous and passes through', () => {
+    expect(decideKeyAction(keydown('Insert', { ctrlKey: true, shiftKey: true }), false)).toBe(ACTION.PASS)
+  })
+})

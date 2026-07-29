@@ -270,12 +270,22 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
       return true
     })
 
-    // Right-click pastes, matching PuTTY and most Linux terminals. Shift is
-    // the escape hatch back to the browser's own context menu.
+    // Right-click COPIES when there is a selection and pastes otherwise —
+    // the PuTTY / Windows Terminal convention. It was paste-only in the first
+    // cut of this fix, which is why right-clicking a selection appeared to do
+    // nothing useful: it silently replaced the copy you wanted with a paste.
+    // Shift is the escape hatch back to the browser's own context menu.
     const onContextMenu = (e) => {
       if (e.shiftKey) return
       e.preventDefault()
-      doPaste()
+      if (term.hasSelection()) {
+        doCopy()
+        // Clear afterwards so the next right-click pastes, matching how the
+        // same gesture behaves in a real terminal.
+        term.clearSelection()
+      } else {
+        doPaste()
+      }
     }
     containerRef.current.addEventListener('contextmenu', onContextMenu)
     contextMenuCleanupRef.current = () => {
@@ -884,11 +894,15 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
           setCopyState('copied')
           setTimeout(() => setCopyState(null), 1400)
         }}
-        title={
+        title={[
+          'Copy selection, or the visible output',
+          'Ctrl+Insert or right-click a selection',
+          // Ctrl+Shift+C is deliberately not advertised: Chrome and Edge bind
+          // it to the DevTools picker and never deliver it to the page.
           mouseTrackingActive(xtermRef.current)
-            ? 'Copy selection, or the visible output. Hold Shift while dragging to select text — this program is using the mouse.'
-            : 'Copy selection, or the visible output'
-        }
+            ? 'This program is using the mouse — hold Shift while dragging to select'
+            : null,
+        ].filter(Boolean).join('\n')}
         aria-label="Copy terminal output"
         style={{
           position: 'absolute',
