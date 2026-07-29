@@ -502,8 +502,11 @@ export default function AppShell() {
       {(() => {
         const projectServices = previewServices.filter((s) => s.group === activeProject)
         const runningCount = projectServices.filter((s) => s.status === 'running').length
-        const shouldShow =
-          projectServices.length > 0 && !detailOpen && !showPreview
+        // Previously also hid on `detailOpen`, because the button was pinned to
+        // the VIEWPORT's bottom-right and would have sat on top of the detail
+        // pane. Now that it is anchored bottom-LEFT it never overlaps the pane,
+        // so it can stay reachable while a task is open.
+        const shouldShow = projectServices.length > 0 && !showPreview
         if (!shouldShow) return null
         return (
         <button
@@ -516,7 +519,13 @@ export default function AppShell() {
           aria-label="Preview services"
           style={{
             position: 'fixed',
-            right: 'calc(var(--space-4) + env(safe-area-inset-right, 0px))',
+            // Bottom-LEFT, not bottom-right. The right corner is contested:
+            // GraphView renders its own zoom controls at
+            // `absolute; right/bottom: var(--space-3)` inside the focal area,
+            // so a viewport-pinned button landed on top of them. The detail
+            // pane also occupies the right column when a task is open.
+            // The left corner is unclaimed in every view.
+            left: 'calc(var(--space-4) + env(safe-area-inset-left, 0px))',
             bottom: 'calc(var(--space-4) + env(safe-area-inset-bottom, 0px))',
             width: '48px',
             height: '48px',

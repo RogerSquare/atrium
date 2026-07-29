@@ -1,0 +1,16 @@
+# Template: DEVELOPMENT override. Compose applies this automatically for local
+# `docker compose up`; CI and production use -f docker-compose.yml only.
+#
+# Bind-mounts source for hot reload. The anonymous volume on node_modules is the
+# load-bearing line: without it the host's node_modules shadow the image's, and
+# any native module fails with a platform error at runtime.
+
+services:
+  <SERVICE>:
+    command: ["npm", "run", "dev"]
+    environment:
+      NODE_ENV: development
+    volumes:
+      - .:/app
+      # Keep the image's node_modules — do NOT let the host's mount over them.
+      - /app/node_modules

@@ -5,6 +5,10 @@ const { getServices, saveServices, checkPort } = require('../lib/services');
 const { getIO } = require('../lib/io');
 const { logger } = require('../lib/logger');
 const { servicesEnabled, SERVICES_DISABLED_REASON } = require('../lib/features');
+const {
+  dockerConfigured, inspectContainer, containerAction, containerLogs,
+  isContainerService, containerNameFor,
+} = require('../lib/dockerServices');
 
 const router = express.Router();
 
@@ -169,6 +173,44 @@ const startInOrder = async (services) => {
   }
 };
 
+// --- Container-vs-process dispatch (feat-services-containers-001) ---
+//
+// A service entry is now polymorphic. `type: "container"` is driven through
+// the Docker Engine API; anything else (including every legacy entry, which
+// has no `type` at all) keeps the original host-spawn path. That is what makes
+// this change safe for an existing services.json.
+//
+// Returns null when the service is NOT container-backed, so callers fall
+// through to their existing process logic untouched.
+const dockerDispatch = async (service, action) => {
+  if (!isContainerService(service)) return null;
+  const name = containerNameFor(service);
+
+  if (!dockerConfigured()) {
+    return {
+      code: 501,
+      payload: {
+        error: 'Docker API unavailable',
+        reason: `Service "${service.id}" is container-backed, but this instance has no Docker API configured (DOCKER_HOST unset). Start Atrium with the docker-services compose override.`,
+      },
+    };
+  }
+
+  if (action === 'logs') {
+    const r = await containerLogs(name);
+    return r.ok
+      ? { code: 200, payload: { logs: r.logs } }
+      : { code: 404, payload: { error: r.error } };
+  }
+
+  const r = await containerAction(name, action);
+  if (!r.ok) return { code: 400, payload: { error: r.error } };
+  return {
+    code: 200,
+    payload: { success: true, ...(r.alreadyInState ? { message: `Already ${action}ed` } : {}) },
+  };
+};
+
 // --- Routes ---
 
 /**
@@ -204,6 +246,26 @@ router.get('/', async (req, res) => {
 
     const services = getServices();
     const serviceStatus = await Promise.all(services.map(async (s) => {
+      // Container-backed: ask Docker. Its container state and published port
+      // are authoritative — a host checkPort would report "running" for
+      // whatever else happens to hold that port.
+      if (isContainerService(s)) {
+        if (!dockerConfigured()) {
+          return { ...s, status: 'unavailable', pid: null, startedAt: null, hasLogs: false,
+            reason: 'Docker API not configured' };
+        }
+        const info = await inspectContainer(containerNameFor(s));
+        return {
+          ...s,
+          status: info.found ? info.status : 'stopped',
+          port: info.found && info.port ? info.port : s.port,
+          pid: info.found ? info.pid : null,
+          startedAt: info.found ? info.startedAt : null,
+          hasLogs: info.found,
+          ...(info.found ? {} : { reason: 'Container does not exist yet' }),
+        };
+      }
+
       const isRunning = await checkPort(s.port);
       const tracked = runningServices.get(s.id);
       return {
@@ -268,17 +330,47 @@ router.get('/', async (req, res) => {
  */
 router.post('/', requireServicesEnabled, (req, res) => {
   try {
-    const { name, port, cwd, startCmd, group, depends_on, preview } = req.body;
-    if (!name || !port || !cwd || !startCmd) return res.status(400).json({ error: 'Missing service information' });
-    const safePort = validatePort(port);
-    if (!safePort) return res.status(400).json({ error: 'Port must be a number between 1 and 65535' });
-    const cmdCheck = validateStartCmd(startCmd);
-    if (!cmdCheck.valid) return res.status(400).json({ error: cmdCheck.error });
-    if (!validateCwd(cwd)) return res.status(400).json({ error: 'Working directory does not exist or is not a directory' });
+    const { name, port, cwd, startCmd, group, depends_on, preview, type, container_name } = req.body;
+    if (!name) return res.status(400).json({ error: 'Service name is required' });
+
+    // Two shapes now (feat-services-containers-001). A container service has no
+    // cwd or start command — Docker owns those — so validating them would make
+    // registration impossible. Anything without an explicit type stays a host
+    // process and keeps the original required fields.
+    const isContainer = type === 'container';
 
     const services = getServices();
     const id = name.toLowerCase().replace(/[^a-z0-9]/g, '-');
-    const newService = { id, name, group: group || 'Uncategorized', port: safePort, cwd, startCmd: startCmd.trim(), depends_on: depends_on || [] };
+    if (services.some((s) => s.id === id)) {
+      return res.status(409).json({ error: `A service with id "${id}" already exists` });
+    }
+
+    let newService;
+    if (isContainer) {
+      const cname = (container_name || '').trim();
+      if (!cname) return res.status(400).json({ error: 'Container name is required for a container service' });
+      // Docker's own naming rules — reject early rather than 404ing on every
+      // later start/stop with a name the daemon can never match.
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(cname)) {
+        return res.status(400).json({ error: 'Container name may contain only letters, digits, _ . and -' });
+      }
+      // Port is informational for container services — the real published port
+      // is read back from Docker on every status call.
+      const safePort = port ? validatePort(port) : null;
+      if (port && !safePort) return res.status(400).json({ error: 'Port must be a number between 1 and 65535' });
+      newService = {
+        id, name, group: group || 'Uncategorized', type: 'container',
+        container_name: cname, port: safePort || 0, depends_on: depends_on || [],
+      };
+    } else {
+      if (!port || !cwd || !startCmd) return res.status(400).json({ error: 'Missing service information' });
+      const safePort = validatePort(port);
+      if (!safePort) return res.status(400).json({ error: 'Port must be a number between 1 and 65535' });
+      const cmdCheck = validateStartCmd(startCmd);
+      if (!cmdCheck.valid) return res.status(400).json({ error: cmdCheck.error });
+      if (!validateCwd(cwd)) return res.status(400).json({ error: 'Working directory does not exist or is not a directory' });
+      newService = { id, name, group: group || 'Uncategorized', type: 'process', port: safePort, cwd, startCmd: startCmd.trim(), depends_on: depends_on || [] };
+    }
     if (preview !== undefined) newService.preview = !!preview;
     services.push(newService);
     saveServices(services);
@@ -370,6 +462,11 @@ router.post('/:id/restart', requireServicesEnabled, async (req, res) => {
   const service = services.find(s => s.id === req.params.id);
   if (!service) return res.status(404).json({ error: 'Service not found' });
 
+  // Container-backed services are driven through Docker, not spawn().
+  const dispatched = await dockerDispatch(service, 'restart');
+  if (dispatched) return res.status(dispatched.code).json(dispatched.payload);
+
+
   stopByPort(service.port, () => {
     setTimeout(() => {
       try { startService(service); res.json({ success: true }); }
@@ -427,6 +524,11 @@ router.post('/:id/stop', requireServicesEnabled, async (req, res) => {
   const services = getServices();
   const service = services.find(s => s.id === req.params.id);
   if (!service) return res.status(404).json({ error: 'Service not found' });
+
+  // Container-backed services are driven through Docker, not spawn().
+  const dispatched = await dockerDispatch(service, 'stop');
+  if (dispatched) return res.status(dispatched.code).json(dispatched.payload);
+
   stopByPort(service.port, () => res.json({ success: true }));
 });
 
@@ -451,6 +553,11 @@ router.post('/:id/start', requireServicesEnabled, async (req, res) => {
   const services = getServices();
   const service = services.find(s => s.id === req.params.id);
   if (!service) return res.status(404).json({ error: 'Service not found' });
+
+  // Container-backed services are driven through Docker, not spawn().
+  const dispatched = await dockerDispatch(service, 'start');
+  if (dispatched) return res.status(dispatched.code).json(dispatched.payload);
+
   const isRunning = await checkPort(service.port);
   if (isRunning) return res.json({ success: true, message: 'Already running' });
 
@@ -498,7 +605,13 @@ router.post('/:id/start', requireServicesEnabled, async (req, res) => {
  *                   items:
  *                     type: string
  */
-router.get('/:id/logs', (req, res) => {
+router.get('/:id/logs', async (req, res) => {
+  // Container-backed services have no in-process log buffer — the logs live in
+  // Docker's journal, so tail them from there instead.
+  const service = getServices().find((s) => s.id === req.params.id);
+  const dispatched = await dockerDispatch(service, 'logs');
+  if (dispatched) return res.status(dispatched.code).json(dispatched.payload);
+
   const entry = runningServices.get(req.params.id);
   res.json({ logs: entry ? entry.logs : [] });
 });

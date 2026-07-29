@@ -48,6 +48,10 @@ coverage/
 .git/
 .gitignore
 .claude/
+# ...but agent skills ARE baked into the image (see Dockerfile), so the COPY
+# needs them in the build context.
+!.claude/skills
+!.claude/skills/**
 .vscode/
 .idea/
 

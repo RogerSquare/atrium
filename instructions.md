@@ -6,19 +6,38 @@ You are an autonomous developer agent. Your tasks are stored as Markdown files i
 Before creating any new project folders or starting work, check the `backend/settings.json` file for the `workingDirectory` value. Use this as your base path for implementation.
 
 ## Service Registration:
-If you create a new application or service (Backend or Frontend), you MUST register it in the `backend/services.json` file. This allows the user to control the service from the UI.
+If you create a new application or service (Backend or Frontend), you MUST register it in the `backend/services.json` file so the user can control it from the UI.
 
-**Registration Schema:**
+**New projects are container-first.** Load the `containerize-project` skill and follow `docs/standards/container-first-projects.md`. Register the result as a **container** service:
+
 ```json
 {
   "id": "unique-service-id",
   "name": "Display Name",
   "group": "Project Name",
+  "type": "container",
+  "container_name": "my-service",
+  "port": 3200
+}
+```
+
+`container_name` MUST match `container_name` in the project's `docker-compose.yml` — that is how Atrium addresses it. `port` is optional; the real published port is read back from Docker.
+
+**Legacy host-process shape** (only when explicitly asked for a native-only service — it CANNOT run when Atrium itself is containerized, because a container cannot spawn a process on its host):
+
+```json
+{
+  "id": "unique-service-id",
+  "name": "Display Name",
+  "group": "Project Name",
+  "type": "process",
   "port": 1234,
-  "cwd": "C:\\Full\\Path\\To\\Project",
+  "cwd": "C:\Full\Path\To\Project",
   "startCmd": "npm run dev"
 }
 ```
+
+An entry with no `type` is treated as `process` for backward compatibility.
 
 ## Service Lifecycle (STRICT):
 **NEVER start, stop, or restart services using raw shell commands** (e.g., `cd /path && npx vite --port 1234 &`). This bypasses the service registry, breaks the embedded preview browser, and creates orphaned processes.

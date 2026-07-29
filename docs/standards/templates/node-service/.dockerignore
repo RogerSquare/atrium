@@ -1,0 +1,41 @@
+# Template: container-first standard.
+#
+# This file is load-bearing, not hygiene. node_modules in particular holds
+# platform-specific binaries (e.g. @img/sharp-win32-x64 on a Windows host) that
+# will shadow the Linux build and fail at runtime with:
+#   Could not load the "sharp" module using the linux-x64 runtime
+
+node_modules/
+**/node_modules/
+
+# Build output — rebuilt inside the image; a stale host copy must not win
+dist/
+build/
+.next/
+
+# Local state and secrets
+.env
+.env.*
+*.env
+data/
+*.sqlite
+*.db
+*.log
+
+# VCS, editors, CI
+.git/
+.gitignore
+.github/
+.vscode/
+.idea/
+.claude/
+
+# Tests and docs — not needed at runtime
+coverage/
+test-results/
+playwright-report/
+**/*.test.js
+README.md
+
+.DS_Store
+Thumbs.db

@@ -10,6 +10,7 @@
     "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "audit:tasks": "node scripts/audit-tasks.js",
+    "sync:skills": "node ../scripts/sync-skills.js",
     "audit:linkage": "node scripts/audit-review-linkage.js",
     "test:loops": "node scripts/test-loops.js",
     "test:loop-engine": "node scripts/test-loop-engine.js",

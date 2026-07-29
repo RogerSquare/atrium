@@ -88,11 +88,27 @@ COPY --from=frontend-build /build/frontend/dist ./frontend/dist
 # root, one level above backend/.
 COPY instructions.md ./instructions.md
 
+# Agent skills, baked in so they travel with the IMAGE rather than depending on
+# whatever the host's ~/.claude happens to contain. A container started from
+# this image on any machine has them.
+#
+# Interaction with the compose mount, stated plainly: docker-compose.yml mounts
+# the host's ~/.claude over /home/node/.claude read-only, which SHADOWS this
+# copy. That is fine and intended for the normal setup — the host's skills are
+# richer (atrium, project-guardrails, ...) and shadowing them would lose the
+# task-lifecycle skill. Mounting per-skill instead does not work: the parent
+# mount is read-only, so Docker cannot create a mountpoint for a skill the host
+# does not already have.
+#
+# So this copy is the fallback that makes the image self-sufficient: run
+# WITHOUT the .claude mount and the skills are still there.
+COPY .claude/skills /home/node/.claude/skills
+
 # The `node` user (uid 1000) ships with the base image. /data is the volume
 # mount point; create and chown it so the non-root user can write on first boot
 # even when the volume is empty.
 RUN mkdir -p /data /workspace \
- && chown -R node:node /app /data
+ && chown -R node:node /app /data /home/node/.claude
 
 USER node
 

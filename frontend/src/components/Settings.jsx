@@ -18,7 +18,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
   const [refreshing, setRefreshing] = useState(false)
   const [message, setMessage] = useState('')
   const [showAddService, setShowAddService] = useState(false)
-  const [newService, setNewService] = useState({ name: '', group: '', port: '', cwd: '', startCmd: '' })
+  const [newService, setNewService] = useState({ name: '', group: '', port: '', cwd: '', startCmd: '', type: 'process', container_name: '' })
   const [users, setUsers] = useState([])
   const [agentsEnabled, setAgentsEnabled] = useState(true)
   const [savedAgentsEnabled, setSavedAgentsEnabled] = useState(true)
@@ -577,12 +577,51 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                           <input required placeholder="Service Name" value={newService.name} onChange={(e) => setNewService({...newService, name: e.target.value})} className="bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
                           <input required placeholder="Group" value={newService.group} onChange={(e) => setNewService({...newService, group: e.target.value})} className="bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <input required type="number" placeholder="Port" value={newService.port} onChange={(e) => setNewService({...newService, port: e.target.value})} className="bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
-                          <input required placeholder="Start Cmd" value={newService.startCmd} onChange={(e) => setNewService({...newService, startCmd: e.target.value})} className="bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
+                        {/* Kind selector. A container service is driven through Docker and
+                            has no cwd/start command; a process service is spawned on the
+                            host and cannot run in container mode. */}
+                        <div className="flex gap-2" role="radiogroup" aria-label="Service kind">
+                          {[['container', 'Container'], ['process', 'Process']].map(([val, label]) => (
+                            <button
+                              key={val}
+                              type="button"
+                              role="radio"
+                              aria-checked={newService.type === val}
+                              onClick={() => setNewService({ ...newService, type: val })}
+                              className={`flex-1 px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase transition-all border ${
+                                newService.type === val
+                                  ? 'bg-app-accent text-white border-app-accent'
+                                  : 'bg-app-card text-app-text-muted border-app-border hover:text-app-text'
+                              }`}
+                            >{label}</button>
+                          ))}
                         </div>
-                        <div className="flex gap-2">
-                          <input required placeholder="Working Dir" value={newService.cwd} onChange={(e) => setNewService({...newService, cwd: e.target.value})} className="flex-1 bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
+
+                        {newService.type === 'container' ? (
+                          <>
+                            <div className="grid grid-cols-2 gap-3">
+                              <input required placeholder="Container Name (docker ps)" value={newService.container_name} onChange={(e) => setNewService({...newService, container_name: e.target.value})} className="bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
+                              <input type="number" placeholder="Port (optional)" value={newService.port} onChange={(e) => setNewService({...newService, port: e.target.value})} className="bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
+                            </div>
+                            <p className="text-[10px] text-app-text-muted leading-relaxed">
+                              Managed through Docker. Status and the published port are read from
+                              the container, so Port is only a hint for links.
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <div className="grid grid-cols-2 gap-3">
+                              <input required type="number" placeholder="Port" value={newService.port} onChange={(e) => setNewService({...newService, port: e.target.value})} className="bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
+                              <input required placeholder="Start Cmd" value={newService.startCmd} onChange={(e) => setNewService({...newService, startCmd: e.target.value})} className="bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
+                            </div>
+                            <input required placeholder="Working Dir" value={newService.cwd} onChange={(e) => setNewService({...newService, cwd: e.target.value})} className="w-full bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
+                            <p className="text-[10px] text-app-text-muted leading-relaxed">
+                              Spawned on the host. Not available when Atrium runs in a container.
+                            </p>
+                          </>
+                        )}
+
+                        <div className="flex justify-end">
                           <button type="submit" className="bg-app-accent hover:bg-app-accent-hover text-white px-4 py-1.5 rounded-lg text-[10px] font-semibold uppercase transition-all shadow-md">Register</button>
                         </div>
                       </form>
