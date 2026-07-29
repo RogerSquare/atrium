@@ -62,6 +62,8 @@ export default function DetailPane({
   width,
   onWidthChange,
   narrow = false,
+  // True when the global shell shares the side region — see asideStyle below.
+  docked = false,
   // eslint-disable-next-line no-unused-vars
   activeAgents,
   // eslint-disable-next-line no-unused-vars
@@ -127,7 +129,12 @@ export default function DetailPane({
         overflow: 'hidden',
       }
     : {
-        gridArea: 'detail',
+        // `docked` means the global shell is sharing the side region, so a
+        // flex wrapper owns the grid cell and this becomes the top half of a
+        // vertical split. Standalone, it still claims the grid area itself.
+        ...(docked
+          ? { flex: 1, minHeight: 0 }
+          : { gridArea: 'detail' }),
         borderLeft: 'var(--border-hairline)',
         background: 'var(--bg-card)',
         display: 'flex',

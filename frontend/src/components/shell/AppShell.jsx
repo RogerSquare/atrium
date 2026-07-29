@@ -28,7 +28,7 @@ const TaskModal = lazy(() => import('../TaskModal'))
 // Lazy-loaded — xterm + the global commands list aren't part of the
 // initial render path. Pulled in on first click of the TopBar terminal
 // button. Suspense-wrapped at the use site below.
-const GlobalShellModal = lazy(() => import('./GlobalShellModal'))
+const GlobalShellPanel = lazy(() => import('./GlobalShellPanel'))
 // Lazy — only ever rendered on a fresh install or an explicit reopen.
 const SetupWizard = lazy(() => import('../SetupWizard'))
 import Settings from '../Settings'
@@ -42,6 +42,21 @@ import ErrorToast from '../ErrorToast'
 import UndoToast from '../UndoToast'
 
 const WIDTH_STORAGE_KEY = 'taskBoardDetailWidth'
+// Height of the global shell when it shares the side dock with a task pane.
+const SHELL_HEIGHT_STORAGE_KEY = 'taskBoardGlobalShellHeight'
+const SHELL_DEFAULT_HEIGHT = 320
+// Below this the terminal shows too few rows to be worth having open; above
+// the cap the task pane it is sharing with stops being readable.
+const SHELL_MIN_HEIGHT = 180
+const SHELL_MIN_DETAIL = 220
+
+function clampShellHeight(raw, viewportHeight = window.innerHeight) {
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return SHELL_DEFAULT_HEIGHT
+  // 88px of chrome above the content row (topbar 48 + filterbar 40).
+  const max = Math.max(SHELL_MIN_HEIGHT, viewportHeight - 88 - SHELL_MIN_DETAIL)
+  return Math.min(Math.max(n, SHELL_MIN_HEIGHT), max)
+}
 // The default width doubles as the MINIMUM — the detail pane can be dragged
 // WIDER (to give the task more room) but never narrower than its default. This
 // inverts the old behavior where default === max and you could only shrink it.
@@ -136,6 +151,24 @@ export default function AppShell() {
   const [previewServices, setPreviewServices] = useState([])
   const [showGlobalShell, setShowGlobalShell] = useState(false)
   const [showSetupWizard, setShowSetupWizard] = useState(false)
+  // Persisted like the detail width, and for the same reason: a size the user
+  // dragged should survive a reload rather than snapping back.
+  const [shellHeight, setShellHeight] = useState(() => {
+    try { return clampShellHeight(localStorage.getItem(SHELL_HEIGHT_STORAGE_KEY)) }
+    catch { return SHELL_DEFAULT_HEIGHT }
+  })
+  const setShellHeightClamped = useCallback((raw) => {
+    const h = clampShellHeight(raw)
+    setShellHeight(h)
+    try { localStorage.setItem(SHELL_HEIGHT_STORAGE_KEY, String(h)) } catch { /* storage disabled */ }
+  }, [])
+  // Re-clamp when the window shrinks, so a tall terminal can't squeeze the
+  // task pane out of existence. Mirrors the detail-width resize handler.
+  useEffect(() => {
+    const onResize = () => setShellHeight(h => clampShellHeight(h))
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
   // Narrow-viewport mode — master-detail doesn't fit below 768px, so DetailPane
   // switches to a full-screen overlay instead of sitting in its own grid column.
   const [narrow, setNarrow] = useState(() =>
@@ -243,9 +276,13 @@ export default function AppShell() {
   // --- Keyboard -----------------------------------------------------------
   useEffect(() => {
     const handler = (e) => {
-      // Global shell modal owns Esc + Cmd+Shift+Enter while it's open;
-      // bail so it doesn't double-fire with task-level shortcuts.
-      if (showGlobalShell) return
+      // The global shell used to be a modal, so simply being open suppressed
+      // these. As a dock it coexists with an open task, and suppressing on
+      // "open" would disable task shortcuts for the whole session. Gate on
+      // FOCUS instead: keys typed into the terminal belong to the terminal
+      // (Esc leaves insert mode in vim, interrupts prompts in claude), while
+      // the same keys pressed on the board still drive the task pane.
+      if (showGlobalShell && document.activeElement?.closest?.('[data-testid="global-shell-panel"]')) return
       if (!selectedTask) return
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'Enter') {
         e.preventDefault()
@@ -277,8 +314,16 @@ export default function AppShell() {
   useEffect(() => { if (!selectedTask) setFocusModal(false) }, [selectedTask])
 
   const detailOpen = Boolean(selectedTask) && !focusModal
-  // On narrow viewports, detail pane is a fixed overlay — grid column stays 0.
-  const detailGridCol = detailOpen && !narrow ? `minmax(0, ${detailWidth}px)` : '0'
+  // The side region is one grid column shared by the task pane and the global
+  // shell. A third column is not an option: DetailPane's MIN_WIDTH is 720 and
+  // MIN_FOCAL reserves 400, so board + task + terminal side-by-side would need
+  // 1840px before the terminal got any width at all. Sharing the column and
+  // splitting it vertically keeps the terminal at the dock's full width.
+  const sideOpen = detailOpen || showGlobalShell
+  // On narrow viewports both are fixed overlays — grid column stays 0.
+  const detailGridCol = sideOpen && !narrow ? `minmax(0, ${detailWidth}px)` : '0'
+  // Only a genuine split needs a measured height; alone, each fills the dock.
+  const splitDock = detailOpen && showGlobalShell && !narrow
 
   const handleArchiveProject = useCallback(async (idOrName, displayName) => {
     const result = await archiveProject(idOrName)
@@ -396,27 +441,61 @@ export default function AppShell() {
         }
       />
 
-      <AnimatePresence initial={false}>
-        {detailOpen && (
-          <DetailPane
-            key="detail-pane"
-            task={selectedTask}
-            currentUser={user}
-            onClose={() => selectTask(null)}
-            onUpdateTask={undoRedo.updateTaskWithUndo}
-            activeAgents={activeAgents}
-            onStartAgent={handleStartAgent}
-            onStopAgent={handleStopAgent}
-            socket={socketRef?.current}
-            agentsEnabled={agentsEnabled}
-            canRunAgents={user?.can_run_agents !== false}
-            aiChatEnabled={aiChatEnabled}
-            width={detailWidth}
-            onWidthChange={setDetailWidthClamped}
-            narrow={narrow}
-          />
+      {/* SIDE DOCK — one grid column shared by the task pane and the global
+          shell. Three states:
+            task only    → DetailPane fills the column (unchanged behavior)
+            shell only   → GlobalShellPanel fills the column
+            both         → vertical split, task above, terminal below, with a
+                           draggable divider on the terminal's top edge
+          On narrow viewports there is no column at all and both render as
+          full-screen overlays, matching what DetailPane already did. */}
+      <div
+        style={narrow ? undefined : {
+          gridArea: 'detail',
+          display: sideOpen ? 'flex' : 'none',
+          flexDirection: 'column',
+          minWidth: 0,
+          minHeight: 0,
+          overflow: 'hidden',
+        }}
+      >
+        <AnimatePresence initial={false}>
+          {detailOpen && (
+            <DetailPane
+              key="detail-pane"
+              task={selectedTask}
+              currentUser={user}
+              onClose={() => selectTask(null)}
+              onUpdateTask={undoRedo.updateTaskWithUndo}
+              activeAgents={activeAgents}
+              onStartAgent={handleStartAgent}
+              onStopAgent={handleStopAgent}
+              socket={socketRef?.current}
+              agentsEnabled={agentsEnabled}
+              canRunAgents={user?.can_run_agents !== false}
+              aiChatEnabled={aiChatEnabled}
+              width={detailWidth}
+              onWidthChange={setDetailWidthClamped}
+              narrow={narrow}
+              docked={!narrow}
+            />
+          )}
+        </AnimatePresence>
+        {showGlobalShell && (
+          <Suspense fallback={null}>
+            {/* Own socket — see SOCKET LIFECYCLE in GlobalShellPanel.jsx.
+                Sharing AuthContext's socket would trip the backend's
+                one-PTY-per-socket cap and kill the DetailPane Shell tab's
+                terminal the moment this one opens. */}
+            <GlobalShellPanel
+              onClose={() => setShowGlobalShell(false)}
+              narrow={narrow}
+              height={splitDock ? shellHeight : null}
+              onHeightChange={splitDock ? setShellHeightClamped : null}
+            />
+          </Suspense>
         )}
-      </AnimatePresence>
+      </div>
 
       {/* Focus modal — opt-in via Cmd+Shift+Enter */}
       {focusModal && selectedTask && (
@@ -493,16 +572,6 @@ export default function AppShell() {
           onClose={() => setShowArchived(false)}
           onUnarchiveProject={(idOrName, displayName) => unarchiveProject(idOrName, displayName)}
         />
-      )}
-      {showGlobalShell && (
-        <Suspense fallback={null}>
-          {/* Modal owns its own socket — see SOCKET LIFECYCLE in
-              GlobalShellModal.jsx. Sharing AuthContext's socket would
-              cause the per-socket PTY cap in the backend web-shell
-              handler to kill the DetailPane Shell tab's PTY when this
-              modal opens. */}
-          <GlobalShellModal onClose={() => setShowGlobalShell(false)} />
-        </Suspense>
       )}
       {/* First-run setup (feat-first-run-setup-001). Opens itself on a fresh
           install; the terminal step hands off to the global shell above and

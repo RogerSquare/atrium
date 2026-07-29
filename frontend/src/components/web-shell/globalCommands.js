@@ -1,4 +1,4 @@
-// Copy-paste prompt registry for the GlobalShellModal CommandCard.
+// Copy-paste prompt registry for the GlobalShellPanel CommandCard.
 //
 // Same shape as ./commands.js (`{ id, label, build }`) but the prompts
 // are creation-oriented — start a new project, draft an unassigned task,
