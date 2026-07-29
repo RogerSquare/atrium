@@ -573,13 +573,14 @@ export default function AppShell() {
         />
       )}
 
-      {/* Floating Preview button — bottom-right FAB.
+      {/* Floating Preview button — bottom-LEFT FAB (see the anchor comment
+          below for why it moved off the right).
           Only renders when the active project has at least one service
-          registered in services.json — avoids showing a dead affordance
-          on projects that don't have a dev server to preview. Hidden
-          whenever a task DetailPane is open (any viewport) so it doesn't
-          overlap with the detail content; also hidden while the
-          PreviewPanel itself is open. */}
+          registered in services.json — avoids showing a dead affordance on
+          projects that don't have a dev server to preview. Also hidden while
+          the PreviewPanel itself is open. It is NOT hidden when a task is
+          open; that suppression existed only to dodge the right-hand column
+          and is no longer needed. */}
       {(() => {
         const projectServices = previewServices.filter((s) => s.group === activeProject)
         const runningCount = projectServices.filter((s) => s.status === 'running').length
