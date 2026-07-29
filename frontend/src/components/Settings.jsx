@@ -4,7 +4,7 @@ import { API_URL, apiFetch } from '../config'
 import ModalOverlay from './ModalOverlay'
 import useIsMobile from '../hooks/useIsMobile'
 
-export default function Settings({ theme, onSetTheme, onClose, currentUser, onUserUpdate, onOpenPreview }) {
+export default function Settings({ theme, onSetTheme, onClose, currentUser, onUserUpdate, onOpenPreview, onOpenSetup }) {
   const [activeTab, setActiveTab] = useState('appearance')
   const [workingDirectory, setWorkingDirectory] = useState('')
   const [savedWorkingDirectory, setSavedWorkingDirectory] = useState('')
@@ -578,6 +578,25 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                       <input type="text" value={workingDirectory} onChange={(e) => setWorkingDirectory(e.target.value)}
                         className="w-full bg-app-bg border border-app-border rounded-lg px-4 py-2.5 text-sm text-app-text focus:outline-none focus-visible:ring-2 focus-visible:ring-app-accent transition-all" placeholder="C:\Path\To\Projects" />
                     </div>
+                    {/* Re-run the first-run wizard. Reopening clears the
+                        dismissal server-side so it reflects live state again. */}
+                    {onOpenSetup && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-app-text mb-1">Setup</h3>
+                        <p className="text-[11px] text-app-text-muted mb-3">
+                          Walk through the workspace folder, GitHub, and Claude Code sign-in again.
+                        </p>
+                        <button type="button"
+                          onClick={async () => {
+                            try { await apiFetch(`${API_URL}/setup/reopen`, { method: 'POST' }) } catch { /* open anyway */ }
+                            onOpenSetup()
+                          }}
+                          className="px-4 py-2 text-sm rounded-lg border border-app-border text-app-text hover:border-app-text-muted transition-colors">
+                          Run setup guide
+                        </button>
+                      </div>
+                    )}
+
                     {/* GitHub sign-in — without a token the Changes view can
                         show branches but never PR badges. */}
                     <div>
