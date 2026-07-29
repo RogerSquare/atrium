@@ -20,6 +20,15 @@ export const ACTION = {
   PASTE: 'paste',
   /** Let xterm handle it — i.e. send it to the PTY. */
   PASS: 'pass',
+  /**
+   * Take it away from xterm but do NOT act on it — let the browser's own
+   * default run. Used for Ctrl+V: xterm would otherwise send the raw control
+   * byte ^V to the PTY (which Claude Code visibly rejects) AND swallow the
+   * keystroke, so the browser's native paste event never fires. Returning
+   * false from xterm's handler without preventing the default lets the real
+   * paste through, and that path needs no clipboard permission at all.
+   */
+  BROWSER: 'browser',
 }
 
 /**
@@ -37,7 +46,9 @@ export function decideKeyAction(e, hasSelection, isMac = false) {
   // macOS: Cmd+C / Cmd+V are unambiguous — Ctrl+C stays SIGINT there too.
   if (isMac && e.metaKey && !e.ctrlKey) {
     if (key === 'c') return hasSelection ? ACTION.COPY : ACTION.PASS
-    if (key === 'v') return ACTION.PASTE
+    // Hand Cmd+V to the browser rather than reading the clipboard ourselves —
+    // the native paste event carries the data and needs no permission.
+    if (key === 'v') return ACTION.BROWSER
     return ACTION.PASS
   }
 
@@ -66,8 +77,16 @@ export function decideKeyAction(e, hasSelection, isMac = false) {
     return hasSelection ? ACTION.COPY : ACTION.PASS
   }
 
-  // Bare Ctrl+V is deliberately NOT paste: it is a legitimate control code
-  // (literal-next in some readline configs), and shells expect to receive it.
+  // Bare Ctrl+V hands off to the browser's own paste.
+  //
+  // This previously passed through to the PTY on the reasoning that ^V is
+  // literal-next in some readline configs. Measured against the real thing,
+  // that was wrong and actively harmful: xterm sent the raw 0x16 byte, Claude
+  // Code visibly rejected it, and because xterm consumed the keystroke the
+  // browser's native paste event never fired. So the most obvious paste
+  // shortcut on the platform did nothing except make the terminal flinch.
+  if (e.ctrlKey && !e.shiftKey && key === 'v') return ACTION.BROWSER
+
   return ACTION.PASS
 }
 

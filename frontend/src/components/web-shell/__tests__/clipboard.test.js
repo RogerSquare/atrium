@@ -58,17 +58,23 @@ describe('decideKeyAction — paste', () => {
     expect(decideKeyAction(keydown('v', { ctrlKey: true, shiftKey: true }), false)).toBe(ACTION.PASTE)
   })
 
-  it('Cmd+V pastes on mac', () => {
-    expect(decideKeyAction(keydown('v', { metaKey: true }), false, true)).toBe(ACTION.PASTE)
+  // Measured against the real terminal: passing Ctrl+V through sent the raw
+  // 0x16 byte, Claude Code visibly rejected it, and xterm consuming the key
+  // meant the browser's native paste never fired. Hand it to the browser.
+  it('bare Ctrl+V hands off to the browser, not the PTY', () => {
+    expect(decideKeyAction(keydown('v', { ctrlKey: true }), false)).toBe(ACTION.BROWSER)
   })
 
-  // Ctrl+V is literal-next in some readline configs; the shell expects it.
-  it('bare Ctrl+V is NOT paste — it is a real control code', () => {
-    expect(decideKeyAction(keydown('v', { ctrlKey: true }), false)).toBe(ACTION.PASS)
+  it('Cmd+V hands off to the browser on mac', () => {
+    expect(decideKeyAction(keydown('v', { metaKey: true }), false, true)).toBe(ACTION.BROWSER)
   })
 
   it('Cmd+V does not fire on non-mac', () => {
     expect(decideKeyAction(keydown('v', { metaKey: true }), false, false)).toBe(ACTION.PASS)
+  })
+
+  it('Ctrl+V never reaches the PTY as a control code', () => {
+    expect(decideKeyAction(keydown('v', { ctrlKey: true }), false)).not.toBe(ACTION.PASS)
   })
 })
 

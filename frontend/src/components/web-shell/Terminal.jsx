@@ -322,6 +322,13 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
       const action = decideKeyAction(e, term.hasSelection(), isMac)
       if (action === ACTION.COPY) { doCopy('key'); return false }
       if (action === ACTION.PASTE) { doPaste('key'); return false }
+      // BROWSER: returning false stops xterm sending the raw control byte,
+      // and because we do NOT preventDefault the browser still performs its
+      // own paste — which fires the native handler below.
+      if (action === ACTION.BROWSER) {
+        report({ action: 'paste', trigger: 'key-to-browser', result: 'ok' })
+        return false
+      }
       return true
     })
 
@@ -361,11 +368,25 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
     // Capture phase and on the wrapper: xterm's helper textarea is a child, and
     // catching it here works whether or not focus is exactly where we expect.
     wrapperRef.current?.addEventListener('paste', onNativePaste, true)
+    // Also at document level. If focus has drifted off xterm's helper
+    // textarea, the paste event fires somewhere else entirely and a
+    // wrapper-scoped listener never sees it. Guarded so that with several
+    // terminals mounted only the visible, focused one acts.
+    const onDocumentPaste = (e) => {
+      const w = wrapperRef.current
+      if (!w || !w.isConnected) return
+      if (w.contains(e.target)) return          // wrapper listener already handled it
+      if (!w.contains(document.activeElement) && document.activeElement !== document.body) return
+      if (w.offsetParent === null) return       // hidden tab
+      onNativePaste(e)
+    }
+    document.addEventListener('paste', onDocumentPaste, true)
 
     containerRef.current.addEventListener('contextmenu', onContextMenu)
     contextMenuCleanupRef.current = () => {
       containerRef.current?.removeEventListener('contextmenu', onContextMenu)
       wrapperRef.current?.removeEventListener('paste', onNativePaste, true)
+      document.removeEventListener('paste', onDocumentPaste, true)
     }
 
     if (DEBUG) {
