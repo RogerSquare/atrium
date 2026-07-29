@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { SETTINGS_FILE, TASKS_DIR, HISTORY_DIR, USERS_DIR, CHAT_DIR, CHAT_FILE } = require('../lib/constants');
 const { logger } = require('../lib/logger');
+const { redactSettings } = require('../lib/githubAuth');
 
 const router = express.Router();
 const serverStartTime = Date.now();
@@ -63,7 +64,9 @@ router.get('/', (req, res) => {
   try {
     const settings = loadSettings();
     if (settings.agents_enabled === undefined) settings.agents_enabled = true;
-    res.json(settings);
+    // The GitHub token lives in settings.json but must never reach the browser
+    // — redactSettings swaps it for a github_token_set boolean.
+    res.json(redactSettings(settings));
   } catch (error) {
     logger.error({ err: error }, 'Request failed');
     res.status(500).json({ error: 'Internal server error' });
@@ -95,7 +98,9 @@ router.post('/', (req, res) => {
     if (default_priority !== undefined) current.default_priority = default_priority;
     if (default_type !== undefined) current.default_type = default_type;
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(current, null, 2));
-    res.json({ success: true, settings: current });
+    // Same redaction as GET — this response echoes the saved settings back.
+    // The token is set through PUT /api/github/auth, never through here.
+    res.json({ success: true, settings: redactSettings(current) });
   } catch (error) {
     logger.error({ err: error }, 'Request failed');
     res.status(500).json({ error: 'Internal server error' });
