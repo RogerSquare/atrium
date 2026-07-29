@@ -32,13 +32,14 @@
 // settings.workingDirectory (no per-task folder mapping today).
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Copy, Check } from 'lucide-react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { useAuth } from '../../contexts/AuthContext'
 import { getXtermTheme } from './terminalThemes'
-import { ACTION, decideKeyAction, writeClipboard, readClipboard, clipboardAvailable } from './clipboard'
+import { ACTION, decideKeyAction, writeClipboard, readClipboard, clipboardAvailable, getTerminalText, mouseTrackingActive } from './clipboard'
 
 // Per-task session id binding. The source of truth is the task YAML's
 // `claude_session_id` field — the backend mints/promotes/rotates it on
@@ -147,6 +148,9 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
   // Holds the contextmenu listener's teardown so the mount effect's
   // cleanup can remove it along with everything else it owns.
   const contextMenuCleanupRef = useRef(null)
+  const copyHandlerRef = useRef(null)
+  // Transient 'Copied' confirmation on the copy button.
+  const [copyState, setCopyState] = useState(null)
   // fitAddonRef exposes the fit addon so the Phase 3 re-fit-on-activate
   // effect (below the main mount effect) can call fit() without owning
   // the addon's lifecycle. ResizeObserver doesn't fire on
@@ -229,10 +233,14 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
       try { term.writeln('\r\n\x1b[33m[atrium] ' + msg + '\x1b[0m') } catch { /* term disposed */ }
     }
 
+    // Copies the selection, or the scrollback when there is none. The
+    // fallback is the whole point: a TUI like Claude Code turns ON mouse
+    // tracking, so drags go to the APPLICATION and no selection is ever
+    // made — which is why every copy binding appeared dead.
     const doCopy = () => {
-      const sel = term.getSelection()
-      if (!sel) return
-      writeClipboard(sel).then((ok) => {
+      const text = getTerminalText(term)
+      if (!text) return
+      writeClipboard(text).then((ok) => {
         if (!ok) notify('Copy failed — the browser blocked clipboard access.')
       })
     }
@@ -250,6 +258,10 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
         }
       })
     }
+
+    // Handed to the toolbar button below, so the button and the key
+    // bindings can never diverge in what they copy.
+    copyHandlerRef.current = doCopy
 
     term.attachCustomKeyEventHandler((e) => {
       const action = decideKeyAction(e, term.hasSelection(), isMac)
@@ -851,6 +863,61 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
           position: 'relative',
         }}
       />
+
+      {/* Copy affordance (bug-shell-clipboard-001). Lives in Terminal.jsx
+          itself rather than in either shell's chrome, so the task Shell tab
+          and the global shell dock get it from the same place and cannot
+          drift apart.
+
+          A button is necessary, not just nice: a full-screen TUI turns on
+          mouse tracking, and while that is active xterm hands drags to the
+          APPLICATION — there is no selection, so the key bindings have
+          nothing to copy. Holding Shift bypasses it, but nothing in the UI
+          ever said so. */}
+      <button
+        type="button"
+        data-testid="terminal-copy-button"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation()
+          copyHandlerRef.current?.()
+          setCopyState('copied')
+          setTimeout(() => setCopyState(null), 1400)
+        }}
+        title={
+          mouseTrackingActive(xtermRef.current)
+            ? 'Copy selection, or the visible output. Hold Shift while dragging to select text — this program is using the mouse.'
+            : 'Copy selection, or the visible output'
+        }
+        aria-label="Copy terminal output"
+        style={{
+          position: 'absolute',
+          top: '6px',
+          right: '6px',
+          zIndex: 5,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px',
+          padding: '3px 8px',
+          borderRadius: 'var(--radius-sm)',
+          fontSize: 'var(--text-caption2)',
+          fontWeight: 'var(--font-medium)',
+          color: copyState ? 'var(--apple-green)' : 'var(--text-tertiary)',
+          background: 'color-mix(in srgb, var(--bg-card) 82%, transparent)',
+          border: 'var(--border-hairline)',
+          cursor: 'pointer',
+          // Fades back once the pointer leaves, so it never competes with the
+          // terminal content it sits on top of.
+          opacity: copyState ? 1 : 0.45,
+          transition: 'opacity var(--duration-fast), color var(--duration-fast)',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+        onMouseLeave={(e) => { if (!copyState) e.currentTarget.style.opacity = '0.45' }}
+      >
+        {copyState ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+        {copyState ? 'Copied' : 'Copy'}
+      </button>
+
       {exitInfo && (
         <ExitRecoveryOverlay
           taskId={task?.id}

@@ -111,6 +111,55 @@ export function clipboardAvailable(deps = {}) {
 }
 
 /**
+ * Text to copy when the user asks for "copy" without a selection.
+ *
+ * WHY THIS EXISTS: a full-screen TUI like Claude Code turns ON mouse tracking
+ * (DECSET 1000/1002/1006). While that is active xterm forwards drags to the
+ * APPLICATION instead of selecting text, so there is no selection to copy and
+ * the key bindings appear to do nothing. Holding Shift bypasses mouse
+ * reporting, but that is folklore — nothing in the UI says so.
+ *
+ * So: copy the selection when there is one, otherwise fall back to the
+ * scrollback, which is what someone reaching for "copy" almost always wants.
+ *
+ * @param {object} term xterm Terminal
+ * @param {number} maxLines cap so a 5000-line scrollback isn't dumped whole
+ */
+export function getTerminalText(term, maxLines = 2000) {
+  if (!term) return ''
+  const selection = typeof term.getSelection === 'function' ? term.getSelection() : ''
+  if (selection) return selection
+
+  const buf = term.buffer?.active
+  if (!buf) return ''
+
+  const end = buf.length
+  const start = Math.max(0, end - maxLines)
+  const lines = []
+  for (let i = start; i < end; i++) {
+    const line = buf.getLine(i)
+    if (!line) continue
+    // translateToString(true) trims trailing whitespace, which otherwise
+    // pads every line out to the full terminal width.
+    lines.push(line.translateToString(true))
+  }
+  // Drop trailing blank lines — the buffer is padded to the viewport height,
+  // so without this every copy ends in a screenful of empty lines.
+  while (lines.length && !lines[lines.length - 1]) lines.pop()
+  return lines.join('\n')
+}
+
+/**
+ * Whether the running program has taken over the mouse, which is the reason
+ * drag-to-select silently stops working. xterm exposes this; when it is on,
+ * the UI can say "hold Shift to select" instead of leaving people guessing.
+ */
+export function mouseTrackingActive(term) {
+  const mode = term?.modes?.mouseTrackingMode
+  return !!mode && mode !== 'none'
+}
+
+/**
  * execCommand('copy') via a temporary textarea. Deprecated, but it is the only
  * thing that works on a non-secure origin, and copy is the direction users
  * hit most often (pulling a stack trace out of the terminal).

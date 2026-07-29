@@ -176,3 +176,67 @@ describe('clipboardAvailable', () => {
     expect(clipboardAvailable({ navigator: {}, isSecureContext: true })).toBe(false)
   })
 })
+
+// --- getTerminalText / mouseTrackingActive -------------------------------
+//
+// These cover the actual reported failure: a TUI (Claude Code) turns on mouse
+// tracking, xterm forwards drags to the application, no selection is ever
+// made, and every copy binding appears dead. Copy then has to fall back to
+// the buffer rather than copying nothing.
+
+import { getTerminalText, mouseTrackingActive } from '../clipboard'
+
+const fakeTerm = ({ selection = '', lines = [], modes = {} } = {}) => ({
+  getSelection: () => selection,
+  modes,
+  buffer: {
+    active: {
+      length: lines.length,
+      getLine: (i) => (lines[i] === undefined ? null : { translateToString: () => lines[i] }),
+    },
+  },
+})
+
+describe('getTerminalText', () => {
+  it('prefers the selection when there is one', () => {
+    expect(getTerminalText(fakeTerm({ selection: 'picked', lines: ['a', 'b'] }))).toBe('picked')
+  })
+
+  it('falls back to the buffer when nothing is selected', () => {
+    expect(getTerminalText(fakeTerm({ lines: ['one', 'two'] }))).toBe('one\ntwo')
+  })
+
+  // The buffer is padded to the viewport height, so without trimming, every
+  // copy ends in a screenful of blank lines.
+  it('drops trailing blank lines', () => {
+    expect(getTerminalText(fakeTerm({ lines: ['one', '', '', ''] }))).toBe('one')
+  })
+
+  it('keeps blank lines that sit between content', () => {
+    expect(getTerminalText(fakeTerm({ lines: ['a', '', 'b'] }))).toBe('a\n\nb')
+  })
+
+  it('caps how much scrollback it takes', () => {
+    const lines = Array.from({ length: 100 }, (_, i) => 'line' + i)
+    const out = getTerminalText(fakeTerm({ lines }), 10)
+    expect(out.split('\n')).toHaveLength(10)
+    expect(out.startsWith('line90')).toBe(true)
+  })
+
+  it('returns empty rather than throwing on a disposed terminal', () => {
+    expect(getTerminalText(null)).toBe('')
+    expect(getTerminalText({})).toBe('')
+  })
+})
+
+describe('mouseTrackingActive', () => {
+  it('detects an application that has grabbed the mouse', () => {
+    expect(mouseTrackingActive(fakeTerm({ modes: { mouseTrackingMode: 'any' } }))).toBe(true)
+  })
+
+  it('is false when the mouse is the terminal\'s own', () => {
+    expect(mouseTrackingActive(fakeTerm({ modes: { mouseTrackingMode: 'none' } }))).toBe(false)
+    expect(mouseTrackingActive(fakeTerm())).toBe(false)
+    expect(mouseTrackingActive(null)).toBe(false)
+  })
+})
