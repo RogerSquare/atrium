@@ -38,7 +38,7 @@ import { io } from 'socket.io-client'
 import ShellTerminal from '../web-shell/Terminal'
 import CommandCard from '../web-shell/CommandCard'
 import { GLOBAL_COMMANDS } from '../web-shell/globalCommands'
-import { API_BASE } from '../../config'
+import { API_BASE, getStoredToken } from '../../config'
 
 const GLOBAL_TASK = { id: '__global__', title: 'Global Shell' }
 
@@ -60,7 +60,7 @@ export default function GlobalShellPanel({
   const [handleHover, setHandleHover] = useState(false)
 
   useEffect(() => {
-    const s = io(API_BASE || window.location.origin)
+    const s = io(API_BASE || window.location.origin, { auth: { token: getStoredToken() } })
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSocket(s)
     return () => {
