@@ -47,6 +47,20 @@ services:
       # without it, git still works and only the PR badges go quiet.
       GH_TOKEN: ${GH_TOKEN:-}
 
+      # Lets the atrium MCP server (backend/mcp/server.js) reach this board
+      # from a terminal INSIDE the container, so agents working here get the
+      # atrium_* tools instead of falling back to raw curl.
+      #
+      # The URL is the in-container backend, not the published port — 3001 is
+      # what the server actually listens on; ATRIUM_PORT only maps the host side.
+      #
+      # The token is an agent token minted in Settings; without it the MCP
+      # server starts but every call returns 401. It is deliberately not
+      # auto-generated: agent tokens are admin-minted and revocable by jti,
+      # so minting one is the operator's call, not the container's.
+      ATRIUM_URL: http://localhost:3001
+      ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:-}
+
       # Browser origins allowed to reach the API. Same-origin needs no entry;
       # add one only if you front this with a different hostname.
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}

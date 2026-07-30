@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "atrium": {
+      "command": "node",
+      "args": ["backend/mcp/server.js"],
+      "env": {
+        "ATRIUM_URL": "${ATRIUM_URL:-http://localhost:3001}",
+        "ATRIUM_API_TOKEN": "${ATRIUM_API_TOKEN}"
+      }
+    }
+  }
+}
