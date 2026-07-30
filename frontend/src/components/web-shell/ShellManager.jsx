@@ -77,7 +77,10 @@ export default function ShellManager({ activeTask, socket }) {
               display: isActive ? 'block' : 'none',
             }}
           >
-            <ShellTerminal task={t} socket={socket} isActive={isActive} />
+            {/* Reserve the corner this component's close-session button
+                occupies (right:4 + width:24 + 4px gap) so the terminal's own
+                Copy button lands beside it rather than underneath it. */}
+            <ShellTerminal task={t} socket={socket} isActive={isActive} topRightInset={32} />
           </div>
         )
       })}

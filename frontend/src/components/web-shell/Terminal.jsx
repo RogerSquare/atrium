@@ -124,7 +124,7 @@ function computeWireTaskId(task) {
   return task.id || null
 }
 
-export default function ShellTerminal({ task, socket, isActive = true }) {
+export default function ShellTerminal({ task, socket, isActive = true, topRightInset = 0 }) {
   const { theme } = useAuth()
   const wireTaskId = computeWireTaskId(task)
   const wrapperRef = useRef(null)
@@ -1003,13 +1003,18 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
         aria-label="Copy terminal output"
         style={{
           position: 'absolute',
-          top: '6px',
-          right: '6px',
+          // Aligned to the same 4px inset and 24px height as ShellManager's
+          // close-session button, and shifted left by whatever space the host
+          // reserved — otherwise the two sit on top of each other in the task
+          // Shell tab, which is exactly what happened.
+          top: 4,
+          right: 4 + topRightInset,
+          height: 24,
           zIndex: 5,
           display: 'inline-flex',
           alignItems: 'center',
           gap: '4px',
-          padding: '3px 8px',
+          padding: '0 8px',
           borderRadius: 'var(--radius-sm)',
           fontSize: 'var(--text-caption2)',
           fontWeight: 'var(--font-medium)',
