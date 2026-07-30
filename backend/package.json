@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test \"lib/**/*.test.js\" \"routes/**/*.test.js\"",
     "audit:tasks": "node scripts/audit-tasks.js",
     "sync:skills": "node ../scripts/sync-skills.js",
     "audit:linkage": "node scripts/audit-review-linkage.js",
