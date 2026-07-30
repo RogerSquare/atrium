@@ -3,7 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const matter = require('gray-matter');
-const { TASKS_DIR, USERS_DIR, SETTINGS_FILE, INSTRUCTIONS_FILE } = require('../lib/constants');
+const { TASKS_DIR, USERS_DIR, SETTINGS_FILE, INSTRUCTIONS_FILE, CLAUDE_LOCAL_FILE, DATA_DIR } = require('../lib/constants');
+const { resolveClaudeBin } = require('../lib/claudeBin');
 const { getAllTasks, findTaskFilePath, atomicWriteFileSync } = require('../lib/tasks');
 const { activeAgents, buildAgentPrompt } = require('../lib/agents');
 const { withLock } = require('../lib/lock');
@@ -121,8 +122,16 @@ router.post('/start', async (req, res) => {
     try {
       instructions = fs.readFileSync(INSTRUCTIONS_FILE, 'utf-8');
     } catch (e) {
-      instructions = '(instructions.md not found)';
+      instructions = '(CLAUDE.md not found)';
     }
+    // Optional house-rules overlay: appended only when present, so the shipped
+    // CLAUDE.md stays generic while an operator can add private rules in an
+    // untracked CLAUDE.local.md (devops-agent-contract-001).
+    try {
+      if (fs.existsSync(CLAUDE_LOCAL_FILE)) {
+        instructions += `\n\n${fs.readFileSync(CLAUDE_LOCAL_FILE, 'utf-8')}`;
+      }
+    } catch (e) { /* overlay is best-effort — never block the agent on it */ }
 
     let workDir;
     try {
@@ -135,12 +144,19 @@ router.post('/start', async (req, res) => {
     const prompt = buildAgentPrompt(task, instructions);
 
     const safeTaskId = sanitizeFilename(taskId);
-    const promptFile = path.join(__dirname, '..', `.agent-prompt-${safeTaskId}.txt`);
+    // Under ATRIUM_DATA_DIR (the state root), not the repo dir — a crashed agent
+    // no longer leaves an untracked file in the checkout (devops-agent-contract-001).
+    const promptFile = path.join(DATA_DIR, `.agent-prompt-${safeTaskId}.txt`);
     fs.writeFileSync(promptFile, prompt);
 
-    const agentProcess = spawn('claude', ['--print', '--dangerously-skip-permissions'], {
+    // Resolve the claude binary through the shared resolver instead of relying
+    // on PATH order + shell:true — the same path loopAgent/loopPty already use,
+    // so agent-running here can't drift from the loops engine
+    // (devops-agent-contract-001).
+    const { bin: claudeBin } = resolveClaudeBin();
+    const agentProcess = spawn(claudeBin, ['--print', '--dangerously-skip-permissions'], {
       cwd: workDir,
-      shell: true,
+      windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe']
     });
 

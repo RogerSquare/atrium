@@ -29,10 +29,16 @@ const USER_SKILLS = path.join(os.homedir(), '.claude', 'skills');
 const CHECK_ONLY = process.argv.includes('--check');
 
 // Skills the repo owns and therefore syncs. Deliberately an allow-list rather
-// than "everything in .claude/skills": the user's own skills (atrium,
-// project-guardrails, ...) live only at user level and must never be clobbered
+// than "everything in .claude/skills": the user's personal skills
+// (project-guardrails, ...) live only at user level and must never be clobbered
 // or deleted by this script.
-const OWNED = ['containerize-project'];
+//
+// `atrium` IS owned: the task-lifecycle skill is the agent contract and must be
+// a single source of truth, not a user-level copy that quietly drifts from the
+// repo (devops-agent-contract-001). Its canonical source is
+// .claude/skills/atrium/SKILL.md — the same file the image COPYs and the CLI
+// installer ships.
+const OWNED = ['containerize-project', 'atrium'];
 
 function readIfExists(p) {
   try { return fs.readFileSync(p, 'utf8'); } catch { return null; }
