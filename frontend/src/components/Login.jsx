@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { API_URL } from '../config'
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, sessionExpired = false }) {
   const [isRegistering, setIsRegistering] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')

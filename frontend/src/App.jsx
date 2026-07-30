@@ -483,8 +483,10 @@ function AppRoot() {
 }
 
 function AppInner() {
-  const { user, handleLogin, socketRef } = useAuth()
-  if (!user) return <Login onLogin={handleLogin} />
+  const { user, handleLogin, socketRef, sessionExpired } = useAuth()
+  // sessionExpired tells Login to explain the automatic logout, so it does not
+  // look like the app forgot the user for no reason.
+  if (!user) return <Login onLogin={handleLogin} sessionExpired={sessionExpired} />
   // Facelift feature flag — off by default. Toggle via:
   //   localStorage.atriumFacelift = 'true'  (then reload)
   const useFacelift = faceliftShellEnabled()
