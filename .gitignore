@@ -47,6 +47,13 @@ backend/loops.json
 backend/loop-runs/
 backend/loop-templates.json
 
+# Transient agent prompt files (written under ATRIUM_DATA_DIR, which defaults to
+# backend/ on a native install) — devops-agent-contract-001
+backend/.agent-prompt-*.txt
+
+# Optional untracked agent house-rules overlay appended to CLAUDE.md
+CLAUDE.local.md
+
 # Claude Code local config — ignore everything by default but track project-shared skills
 .claude/*
 !.claude/skills/

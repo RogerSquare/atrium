@@ -71,7 +71,11 @@ async function main() {
   console.log(`OK (${verified.username || 'unknown'})`);
 
   // 2. Install skill
-  const skillSrc = path.resolve(__dirname, '..', 'mcp', 'skill', 'SKILL.md');
+  // Canonical skill source: .claude/skills/atrium/SKILL.md at the repo root —
+  // the same file the Docker image COPYs and `npm run sync:skills` propagates,
+  // so the CLI installs the real skill rather than a drifting copy
+  // (devops-agent-contract-001).
+  const skillSrc = path.resolve(__dirname, '..', '..', '.claude', 'skills', 'atrium', 'SKILL.md');
   const skillDir = path.join(os.homedir(), '.claude', 'skills', name);
   const skillDest = path.join(skillDir, 'SKILL.md');
   process.stdout.write(`[2/3] Installing skill → ${skillDest}... `);

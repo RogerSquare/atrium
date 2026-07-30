@@ -49,10 +49,18 @@ const MAX_LOOP_RUNS_PER_LOOP = 30;
 const MAX_E2E_RUNS_PER_TASK = 5;
 const MAX_AUTOENTER_CAPTURES = 500;
 
-// Source, not state — instructions.md lives in the repo and is read-only at
+// Source, not state — the agent contract lives in the repo and is read-only at
 // runtime, so it stays repo-relative and deliberately does NOT move with
 // ATRIUM_DATA_DIR. In a container it ships inside the image.
-const INSTRUCTIONS_FILE = path.join(__dirname, '..', '..', 'instructions.md');
+//
+// This is CLAUDE.md, the SINGLE source of truth. It used to be a separate
+// instructions.md that silently forked from CLAUDE.md and taught spawned agents
+// the wrong lifecycle (devops-agent-contract-001). CLAUDE_LOCAL_FILE is an
+// optional, gitignored overlay: when present, routes/agents.js appends it so an
+// operator can add house rules (personal paths, a private wiki mandate) without
+// editing the shipped, generic CLAUDE.md.
+const INSTRUCTIONS_FILE = path.join(__dirname, '..', '..', 'CLAUDE.md');
+const CLAUDE_LOCAL_FILE = path.join(__dirname, '..', '..', 'CLAUDE.local.md');
 
 // JWT secret resolution: env var > persisted file > generate (dev) > fail (prod)
 
@@ -92,7 +100,7 @@ const JWT_SECRET = resolveJwtSecret();
 module.exports = {
   PORT, DATA_DIR, TASKS_DIR, HISTORY_DIR, USERS_DIR, SETTINGS_FILE,
   SERVICES_FILE, CHAT_DIR, CHAT_FILE, MAX_CHAT_MESSAGES,
-  INSTRUCTIONS_FILE, JWT_SECRET, TRASH_DIR, ARCHIVED_DIR, PROJECTS_FILE, LOOPS_FILE, LOOP_RUNS_DIR, MAX_LOOP_RUNS_PER_LOOP, LOOP_TEMPLATES_FILE, APPROVALS_DIR,
+  INSTRUCTIONS_FILE, CLAUDE_LOCAL_FILE, JWT_SECRET, TRASH_DIR, ARCHIVED_DIR, PROJECTS_FILE, LOOPS_FILE, LOOP_RUNS_DIR, MAX_LOOP_RUNS_PER_LOOP, LOOP_TEMPLATES_FILE, APPROVALS_DIR,
   AGENT_TOKENS_DIR, AGENT_TOKENS_BLOCKLIST,
   E2E_RUNS_DIR, MAX_E2E_RUNS_PER_TASK,
   AUTOENTER_DIR, AUTOENTER_CAPTURES_FILE, MAX_AUTOENTER_CAPTURES,
