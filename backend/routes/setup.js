@@ -14,6 +14,7 @@ const {
   buildSetupSteps,
   isSetupComplete,
 } = require('../lib/setupStatus');
+const { agentHasConnected } = require('../lib/agentActivity');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
@@ -47,6 +48,7 @@ router.get('/status', async (req, res) => {
       claudeAccount,
       githubConnected: github.connected,
       githubLogin: github.login,
+      agentConnected: agentHasConnected(),
     });
 
     res.json({

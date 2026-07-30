@@ -9,11 +9,12 @@
 // should not have to configure anything first, so Skip is always available.
 
 import { useState, useEffect, useCallback } from 'react'
-import { Check, Circle, AlertTriangle, Terminal, GitBranch, FolderOpen, X, RefreshCw, ExternalLink } from 'lucide-react'
+import { Check, Circle, AlertTriangle, Terminal, GitBranch, FolderOpen, X, RefreshCw, ExternalLink, Bot, Copy } from 'lucide-react'
 import { API_URL, apiFetch } from '../config'
+import { useAuth } from '../contexts/AuthContext'
 import ModalOverlay from './ModalOverlay'
 
-const ICONS = { workspace: FolderOpen, github: GitBranch, terminal: Terminal }
+const ICONS = { workspace: FolderOpen, agent: Bot, github: GitBranch, terminal: Terminal }
 
 export default function SetupWizard({ onClose, onOpenTerminal }) {
   const [status, setStatus] = useState(null)
@@ -24,6 +25,14 @@ export default function SetupWizard({ onClose, onOpenTerminal }) {
   // Local inputs for the two steps that take one
   const [workingDirectory, setWorkingDirectory] = useState('')
   const [githubToken, setGithubToken] = useState('')
+
+  // Agent step (feat-setup-wizard-v2-001): admins mint a token here, then run
+  // the setup command; the step goes green when the agent authenticates.
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
+  const [agentToken, setAgentToken] = useState(null)
+  const [instanceUrl, setInstanceUrl] = useState('')
+  const [copied, setCopied] = useState(false)
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -47,20 +56,31 @@ export default function SetupWizard({ onClose, onOpenTerminal }) {
     })
   }, [fetchStatus])
 
-  // The Claude Code login happens in a terminal, outside this component, so
-  // the only way to notice it is to keep asking. Polling stops as soon as the
-  // step goes green.
+  // The Claude sign-in AND the agent connection both happen outside this
+  // component (in a terminal / on another machine), so the only way to notice
+  // them is to keep asking. Polling stops as soon as the active step goes green.
   useEffect(() => {
-    if (activeId !== 'terminal') return
-    const step = status?.steps?.find((s) => s.id === 'terminal')
+    if (activeId !== 'terminal' && activeId !== 'agent') return
+    const step = status?.steps?.find((s) => s.id === activeId)
     if (step?.complete) return
     const id = setInterval(fetchStatus, 3000)
     return () => clearInterval(id)
   }, [activeId, status, fetchStatus])
 
+  // The MCP setup command needs the URL the agent should point at. /api/instance
+  // reports the URL this client actually reached, so it's correct behind a proxy
+  // or a non-default port (feat-mcp-bootstrap-001).
+  useEffect(() => {
+    apiFetch(`${API_URL}/instance`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.url) setInstanceUrl(d.url) })
+      .catch(() => {})
+  }, [])
+
   const steps = status?.steps || []
   const step = steps.find((s) => s.id === activeId) || steps[0]
   const doneCount = steps.filter((s) => s.complete).length
+  const allComplete = steps.length > 0 && doneCount === steps.length
 
   const saveWorkingDirectory = async () => {
     setBusy(true); setMessage('')
@@ -90,6 +110,32 @@ export default function SetupWizard({ onClose, onOpenTerminal }) {
       setGithubToken('')
       await fetchStatus()
     } catch { setMessage('Could not reach the server') } finally { setBusy(false) }
+  }
+
+  const mintAgentToken = async () => {
+    setBusy(true); setMessage('')
+    try {
+      const res = await apiFetch(`${API_URL}/agent-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'setup-wizard' }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setMessage(data.error || 'Could not mint a token'); return }
+      setAgentToken(data.token) // shown ONCE — the server never returns it again
+    } catch { setMessage('Could not reach the server') } finally { setBusy(false) }
+  }
+
+  const agentUrl = instanceUrl || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3001')
+  const agentCommand = agentToken
+    ? `node backend/cli/atrium-mcp-setup.js --token ${agentToken} --url ${agentUrl}`
+    : ''
+
+  const copyCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(agentCommand)
+      setCopied(true); setTimeout(() => setCopied(false), 1500)
+    } catch { setMessage('Copy failed — select and copy manually') }
   }
 
   const finish = async () => {
@@ -158,7 +204,21 @@ export default function SetupWizard({ onClose, onOpenTerminal }) {
 
           {/* Step body */}
           <div className="flex-1 p-6 min-w-0">
-            {step && (
+            {allComplete ? (
+              <div className="h-full flex flex-col items-center justify-center text-center px-4">
+                <div className="w-11 h-11 rounded-full bg-green-500/10 border border-green-500/20 flex items-center justify-center mb-3">
+                  <Check size={20} className="text-green-500" />
+                </div>
+                <h3 className="text-sm font-semibold text-app-text mb-1">You&apos;re all set</h3>
+                <p className="text-xs text-app-text-muted max-w-xs">
+                  Create your first project from the project switcher (top-left), then add work with New Task.
+                </p>
+                <button onClick={finish}
+                  className="mt-4 px-4 py-2 text-sm rounded-lg bg-app-accent text-white font-medium hover:opacity-90 transition-opacity">
+                  Get started
+                </button>
+              </div>
+            ) : step && (
               <>
                 <h3 className="text-sm font-semibold text-app-text mb-1">{step.title}</h3>
                 <p className="text-[11px] text-app-text-muted mb-4">{step.description}</p>
@@ -193,6 +253,45 @@ export default function SetupWizard({ onClose, onOpenTerminal }) {
                       className="px-4 py-2 text-sm rounded-lg bg-app-accent text-white font-medium disabled:opacity-40 hover:opacity-90 transition-opacity">
                       {busy ? 'Saving…' : 'Save'}
                     </button>
+                  </div>
+                )}
+
+                {/* Agent — mint a token here, run the command elsewhere, then
+                    watch for the connection. Verified, not assumed. */}
+                {step.id === 'agent' && !step.complete && (
+                  <div className="space-y-3">
+                    {!isAdmin ? (
+                      <p className="text-xs text-app-text-muted">
+                        Ask an admin to mint an agent token (Settings → Agent Tokens), then run the
+                        <code className="text-app-text bg-app-bg px-1.5 py-0.5 rounded mx-1">atrium-mcp-setup</code>
+                        command on the machine where your agent runs.
+                      </p>
+                    ) : !agentToken ? (
+                      <>
+                        <p className="text-xs text-app-text-muted">
+                          Mint a token, then run the printed command where your agent lives — Claude Code, a
+                          script, anything that speaks MCP or the REST API.
+                        </p>
+                        <button onClick={mintAgentToken} disabled={busy}
+                          className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-app-accent text-white font-medium disabled:opacity-40 hover:opacity-90 transition-opacity">
+                          <Bot size={14} /> {busy ? 'Minting…' : 'Mint an agent token'}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-[11px] text-app-text-muted">Shown once — copy it now, then run it where your agent lives:</p>
+                        <div className="relative">
+                          <pre className="text-[11px] text-app-text bg-app-bg border border-app-border rounded-lg p-3 pr-10 overflow-x-auto whitespace-pre-wrap break-all">{agentCommand}</pre>
+                          <button onClick={copyCommand} title="Copy command"
+                            className="absolute top-2 right-2 text-app-text-muted hover:text-app-text transition-colors">
+                            {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                          </button>
+                        </div>
+                        <span className="inline-flex items-center gap-1.5 text-[11px] text-app-text-muted">
+                          <RefreshCw size={11} className="animate-spin" /> Watching for the agent to connect…
+                        </span>
+                      </>
+                    )}
                   </div>
                 )}
 

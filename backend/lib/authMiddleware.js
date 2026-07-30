@@ -4,6 +4,7 @@ const path = require('path');
 const { JWT_SECRET, USERS_DIR, AGENT_TOKENS_BLOCKLIST } = require('./constants');
 const { sanitizeFilename, safePath } = require('./sanitize');
 const { logger } = require('./logger');
+const { recordAgentSeen } = require('./agentActivity');
 
 // Load revoked agent-token JTIs. Cheap JSON read on every auth check — blocklist
 // is tiny in practice (revocations are rare). Falls back to empty list on error.
@@ -48,6 +49,9 @@ const requireAuth = (req, res, next) => {
         agent: true,
         agent_jti: decoded.jti,
       };
+      // Verified-activity signal for the first-run wizard's "Connect an agent"
+      // step (feat-setup-wizard-v2-001). Write-once, best-effort.
+      recordAgentSeen();
       return next();
     }
 
