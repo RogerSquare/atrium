@@ -48,7 +48,10 @@ export function AuthProvider({ children }) {
   // Socket connection
   useEffect(() => {
     if (!user) return
-    const socket = io(API_BASE || window.location.origin)
+    // Attach the session JWT to the handshake — the backend rejects any socket
+    // without a valid token (devops-socket-auth-001). `user` is truthy here and
+    // carries the token from login.
+    const socket = io(API_BASE || window.location.origin, { auth: { token: user?.token } })
     socketRef.current = socket
     return () => {
       socket.disconnect()

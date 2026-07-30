@@ -4,7 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { io } from 'socket.io-client';
 import '@xterm/xterm/css/xterm.css';
 import { Play } from 'lucide-react';
-import { API_BASE, apiFetch } from '../config';
+import { API_BASE, apiFetch, getStoredToken } from '../config';
 
 export default function TerminalTab({ task }) {
   const terminalRef = useRef(null);
@@ -99,7 +99,7 @@ export default function TerminalTab({ task }) {
       socket.disconnect();
     }
 
-    const newSocket = io(API_BASE);
+    const newSocket = io(API_BASE, { auth: { token: getStoredToken() } });
     setSocket(newSocket);
     setIsRunning(true);
 

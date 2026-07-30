@@ -27,20 +27,27 @@ function announceSessionExpired() {
   window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
 }
 
+// Read the stored session JWT, or null. Shared by apiFetch (Authorization
+// header) AND every Socket.IO connection (handshake auth), so a socket identity
+// means the same thing as a REST identity. Before devops-socket-auth-001 the
+// sockets sent no token at all. (devops-socket-auth-001)
+export function getStoredToken() {
+  try {
+    const saved = localStorage.getItem('taskBoardUser');
+    if (!saved) return null;
+    const user = JSON.parse(saved);
+    return user && user.token ? user.token : null;
+  } catch {
+    return null;
+  }
+}
+
 // Authenticated fetch wrapper — auto-attaches JWT token from stored user
 export function apiFetch(url, options = {}) {
   const headers = { ...options.headers };
-  let usedSessionToken = false;
-  try {
-    const saved = localStorage.getItem('taskBoardUser');
-    if (saved) {
-      const user = JSON.parse(saved);
-      if (user.token) {
-        headers['Authorization'] = `Bearer ${user.token}`;
-        usedSessionToken = true;
-      }
-    }
-  } catch (e) { /* ignore parse errors */ }
+  const token = getStoredToken();
+  const usedSessionToken = !!token;
+  if (token) headers['Authorization'] = `Bearer ${token}`;
 
   return fetch(url, { ...options, headers }).then((res) => {
     // Central expiry detection. There was previously no 401 handling anywhere

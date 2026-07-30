@@ -20,6 +20,7 @@ const swaggerSpec = require('./lib/swagger');
 
 // --- Auth Middleware ---
 const { requireAuth, optionalAuth } = require('./lib/authMiddleware');
+const { createSocketAuthMiddleware, socketAuthEnabled } = require('./lib/socketAuth');
 
 // --- Route Modules ---
 const authRoutes = require('./routes/auth');
@@ -89,6 +90,12 @@ app.use(cors(corsDelegate));
 // socket.io passes its `cors` option straight to the same package, so the
 // delegate works here too and the two layers cannot drift apart.
 const io = new Server(server, { cors: corsDelegate });
+
+// Authenticate every handshake BEFORE any connection handler runs. Without this
+// io.use(), sockets/terminal.js and sockets/web-shell.js spawn PTYs for any
+// socket that connects — an unauthenticated remote shell on an 0.0.0.0 bind.
+// (devops-socket-auth-001). Disable only via ATRIUM_SOCKET_AUTH=off.
+io.use(createSocketAuthMiddleware({ logger }));
 
 app.use(express.json());
 app.use(requestLogger);
@@ -299,7 +306,7 @@ app.use('/api/autoenter', requireAuth, autoEnterRoutes);
  *                 items:
  *                   type: string
  */
-app.get('/api/presence', (req, res) => {
+app.get('/api/presence', requireAuth, (req, res) => {
   res.json(getAllTaskViewers());
 });
 
@@ -380,6 +387,11 @@ io.on('connection', (socket) => {
 server.listen(PORT, '0.0.0.0', () => {
   logger.info({ port: PORT }, `Backend server running on http://0.0.0.0:${PORT}`);
   logger.info({ features: featureSnapshot() }, 'Feature flags');
+  if (socketAuthEnabled()) {
+    logger.info('Socket.IO auth enabled — handshakes require a valid JWT');
+  } else {
+    logger.warn('Socket.IO auth DISABLED (ATRIUM_SOCKET_AUTH is off) — any client can open a terminal. This override is temporary and will be removed.');
+  }
   logger.info(`API docs at http://localhost:${PORT}/api/docs`);
   // Start the GitHub-watcher loop engine after the server is listening so a
   // slow first poll never blocks startup (feat-loops-engine-001).
