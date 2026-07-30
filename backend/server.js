@@ -13,6 +13,8 @@ const { logger, requestLogger } = require('./lib/logger');
 const { resolveFrontendDist, isSpaFallbackRequest, hasBuild, cacheHeadersFor } = require('./lib/staticSite');
 const { featureSnapshot } = require('./lib/features');
 const { buildAllowedOrigins, buildOriginChecker } = require('./lib/corsPolicy');
+const { buildInstanceInfo } = require('./lib/instanceInfo');
+const { version: APP_VERSION } = require('./package.json');
 
 // --- Swagger API Docs ---
 const swaggerUi = require('swagger-ui-express');
@@ -148,6 +150,31 @@ setWebShellIO(io);
  */
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() });
+});
+
+/**
+ * @swagger
+ * /api/instance:
+ *   get:
+ *     summary: Instance identity for installers/clients
+ *     description: >
+ *       Name, version, listen port, and the URL the client actually reached
+ *       (proxy-aware). Public so `atrium-mcp-setup` can probe the running
+ *       instance and write MCP config for the real URL instead of assuming
+ *       localhost:3001 (feat-mcp-bootstrap-001).
+ *     tags: [Settings]
+ *     responses:
+ *       200:
+ *         description: Instance metadata
+ */
+app.get('/api/instance', (req, res) => {
+  res.json(buildInstanceInfo({
+    headers: req.headers,
+    protocol: req.protocol,
+    host: req.get('host'),
+    port: PORT,
+    version: APP_VERSION,
+  }));
 });
 
 // Deep health/readiness check — verifies filesystem, memory
