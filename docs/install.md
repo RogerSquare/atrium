@@ -87,6 +87,23 @@ completing it.
 
 ---
 
+## Upgrading an existing install
+
+`backend/projects.json`, `backend/settings.json`, and `backend/services.json` are
+gitignored — they hold your machine's data, not shipped defaults. If you have an
+**older clone where `projects.json` was tracked**, back it up before pulling this
+change: git removes the previously-tracked file on merge, and an unmodified
+working copy is deleted with it.
+
+```bash
+cp backend/projects.json backend/projects.json.bak   # before pulling
+git pull                                              # projects.json is now untracked
+cp backend/projects.json.bak backend/projects.json    # restore if git removed it
+```
+
+A fresh clone has no `projects.json`; the backend starts with an empty registry
+and you add projects from the UI.
+
 ## Troubleshooting
 
 - **`JWT_SECRET is required`** on `docker compose up` — you didn't fill in `.env`.
