@@ -1,0 +1,7 @@
+{
+  "_comment": "Project registry template. Copy to projects.json (gitignored) — the backend also creates/updates it for you as you add projects in the UI. Keys are short project ids; each maps to a display name and the folder under backend/tasks/ that holds its task markdown. Add \"archived\": true (+ \"archived_at\": <ISO>) to soft-retire a project. The implicit \"Root\" project (tasks with no folder) renders as \"Unassigned\" and needs no entry here.",
+  "myproject": {
+    "name": "My Project",
+    "folder": "My Project"
+  }
+}

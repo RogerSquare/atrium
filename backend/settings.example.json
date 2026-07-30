@@ -1,3 +1,21 @@
 {
-  "workingDirectory": "C:\\Path\\To\\Your\\Projects"
+  "_comment": "Board settings template. Copy to settings.json (gitignored). The backend auto-creates settings.json on first boot and the UI writes it as you change settings, so copying this is optional. Keys below are every setting the code reads.",
+
+  "workingDirectory": "C:\\Path\\To\\Your\\Projects",
+
+  "_workingDirectory": "Absolute path to the folder that holds your repos. The Changes view, the web terminal, and spawned agents all resolve against it. In the container this is the /workspace mount (seeded from ATRIUM_WORKING_DIRECTORY).",
+
+  "agents_enabled": true,
+  "_agents_enabled": "System-wide switch for the 'run an agent on this task' feature. Set false to hide/deny it for everyone.",
+
+  "default_priority": "medium",
+  "_default_priority": "Priority preselected in the New Task form: low | medium | high.",
+
+  "default_type": "fullstack",
+  "_default_type": "Type preselected in the New Task form: frontend | backend | fullstack | devops.",
+
+  "_optional": "The keys below are optional and usually set via the UI, not by hand.",
+  "_claudeBin": "Absolute path to the claude executable, if it isn't on PATH (overrides lib/claudeBin resolution).",
+  "_github_token": "GitHub token for the Changes view's PR badges. Prefer the GH_TOKEN env var; this is the settings-based fallback. Redacted from GET /api/settings responses.",
+  "_setup_completed_at": "ISO timestamp the first-run wizard writes when dismissed. Managed by the app; do not set by hand."
 }
