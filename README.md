@@ -144,6 +144,24 @@ On Windows, you can also use the provided start script:
 
 Then open [http://localhost:5173](http://localhost:5173) in your browser.
 
+### Testing
+
+The backend ships a suite of `node:test` unit tests covering the core libraries and routes:
+
+```bash
+cd backend
+npm test          # runs node --test across lib/ and routes/
+```
+
+The frontend uses Vitest for unit tests and Playwright for end-to-end tests:
+
+```bash
+cd frontend
+npm run test:e2e  # Playwright end-to-end suite
+```
+
+All of the above — plus the task-file audit (`npm run audit:tasks`) and the frontend production build — run automatically in CI on every pull request (see `.github/workflows/ci.yml`).
+
 ---
 
 ## Architecture
