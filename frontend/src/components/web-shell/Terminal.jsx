@@ -32,12 +32,15 @@
 // settings.workingDirectory (no per-task folder mapping today).
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Copy, Check } from 'lucide-react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { useAuth } from '../../contexts/AuthContext'
 import { getXtermTheme } from './terminalThemes'
+import { ACTION, decideKeyAction, writeClipboard, readClipboard, clipboardAvailable, getTerminalText, mouseTrackingActive, clipboardReadPermission, clipboardEnvironment } from './clipboard'
+import { API_URL, apiFetch } from '../../config'
 
 // Per-task session id binding. The source of truth is the task YAML's
 // `claude_session_id` field — the backend mints/promotes/rotates it on
@@ -121,7 +124,7 @@ function computeWireTaskId(task) {
   return task.id || null
 }
 
-export default function ShellTerminal({ task, socket, isActive = true }) {
+export default function ShellTerminal({ task, socket, isActive = true, topRightInset = 0 }) {
   const { theme } = useAuth()
   const wireTaskId = computeWireTaskId(task)
   const wrapperRef = useRef(null)
@@ -143,6 +146,12 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
   // active (DOM vs WebGL renderer), the textarea could be reachable,
   // hidden, or moved.
   const xtermRef = useRef(null)
+  // Holds the contextmenu listener's teardown so the mount effect's
+  // cleanup can remove it along with everything else it owns.
+  const contextMenuCleanupRef = useRef(null)
+  const copyHandlerRef = useRef(null)
+  // Transient 'Copied' confirmation on the copy button.
+  const [copyState, setCopyState] = useState(null)
   // fitAddonRef exposes the fit addon so the Phase 3 re-fit-on-activate
   // effect (below the main mount effect) can call fit() without owning
   // the addon's lifecycle. ResizeObserver doesn't fire on
@@ -208,6 +217,177 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
     term.loadAddon(fitAddon)
     term.open(containerRef.current)
     dlog('term opened', { cols: term.cols, rows: term.rows })
+
+    // --- Clipboard (bug-shell-clipboard-001) -----------------------------
+    // There was previously NO clipboard handling here at all, so Ctrl+V did
+    // nothing and no key ever copied. Decision logic lives in ./clipboard.js
+    // so it can be tested without a DOM; this is just the wiring.
+    //
+    // Returning false tells xterm not to process the event, which is what
+    // keeps a copy/paste chord from also reaching the PTY as a control code.
+    const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '')
+
+    const notify = (msg) => {
+      // Written into the terminal itself rather than a toast: the user is
+      // looking here, and a paste that silently does nothing is the exact
+      // failure this fix exists to remove.
+      try { term.writeln('\r\n\x1b[33m[atrium] ' + msg + '\x1b[0m') } catch { /* term disposed */ }
+    }
+
+    // Fire-and-forget diagnostic report. Records OUTCOMES and LENGTHS only —
+    // never clipboard content; the backend drops anything not on its
+    // allow-list. Failures here are swallowed: a diagnostic that breaks the
+    // thing it is diagnosing is worse than no diagnostic.
+    const report = async (fields) => {
+      try {
+        const env = clipboardEnvironment()
+        const permissionState = await clipboardReadPermission()
+
+        // Console FIRST, and unconditionally. Two rounds of this investigation
+        // produced an empty server log, which proved nothing — a report that
+        // depends on a network call cannot tell you the handler never ran.
+        // This line lands in devtools whatever happens to the POST below.
+        console.log('[atrium-clipboard]', {
+          ...fields, permissionState, ...env,
+          hasSelection: term.hasSelection(),
+          mouseTracking: mouseTrackingActive(term),
+        })
+
+        await apiFetch(`${API_URL}/diagnostics/client`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            category: 'clipboard',
+            taskId: task?.id || null,
+            origin: window.location.origin,
+            mouseTracking: mouseTrackingActive(term),
+            hasSelection: term.hasSelection(),
+            permissionState,
+            ...env,
+            ...fields,
+          }),
+        })
+      } catch { /* diagnostics are never allowed to surface */ }
+    }
+
+    // Copies the selection, or the scrollback when there is none. The
+    // fallback is the whole point: a TUI like Claude Code turns ON mouse
+    // tracking, so drags go to the APPLICATION and no selection is ever
+    // made — which is why every copy binding appeared dead.
+    const doCopy = (trigger = 'key') => {
+      const text = getTerminalText(term)
+      if (!text) {
+        report({ action: 'copy', trigger, result: 'empty' })
+        return
+      }
+      writeClipboard(text).then((ok) => {
+        report({
+          action: 'copy', trigger,
+          result: ok ? 'ok' : 'error',
+          textLength: text.length,
+          selectionLength: (term.getSelection() || '').length,
+        })
+        if (!ok) notify('Copy failed — the browser blocked clipboard access.')
+      })
+    }
+
+    const doPaste = () => {
+      readClipboard().then((text) => {
+        if (text) {
+          // term.paste() routes through onData, so bracketed-paste mode is
+          // preserved and the PTY sees this exactly like a real paste.
+          term.paste(text)
+        } else if (!clipboardAvailable()) {
+          // The LAN case: navigator.clipboard needs a secure context.
+          // localhost qualifies, a bare IP does not.
+          notify('Paste needs a secure context. Use localhost or HTTPS, or paste with your terminal\u2019s middle-click.')
+        }
+      })
+    }
+
+    // Handed to the toolbar button below, so the button and the key
+    // bindings can never diverge in what they copy.
+    copyHandlerRef.current = doCopy
+
+    // Report the environment once per terminal mount, without waiting for the
+    // user to do anything. The first pass at these diagnostics only recorded
+    // ATTEMPTS, so when the log came back empty it proved nothing: it could
+    // not distinguish "the instrumented code isn't running" from "the handler
+    // never fired". This makes the browser's actual capabilities — which
+    // clipboard APIs exist, whether the context is secure, what the
+    // clipboard-read permission says — visible with zero user action.
+    report({ action: 'init', trigger: 'mount', result: 'ok' })
+
+    term.attachCustomKeyEventHandler((e) => {
+      const action = decideKeyAction(e, term.hasSelection(), isMac)
+      if (action === ACTION.COPY) { doCopy('key'); return false }
+      if (action === ACTION.PASTE) { doPaste('key'); return false }
+      // BROWSER: returning false stops xterm sending the raw control byte,
+      // and because we do NOT preventDefault the browser still performs its
+      // own paste — which fires the native handler below.
+      if (action === ACTION.BROWSER) {
+        report({ action: 'paste', trigger: 'key-to-browser', result: 'ok' })
+        return false
+      }
+      return true
+    })
+
+    // Right-click COPIES when there is a selection and pastes otherwise —
+    // the PuTTY / Windows Terminal convention. It was paste-only in the first
+    // cut of this fix, which is why right-clicking a selection appeared to do
+    // nothing useful: it silently replaced the copy you wanted with a paste.
+    // Shift is the escape hatch back to the browser's own context menu.
+    const onContextMenu = (e) => {
+      if (e.shiftKey) return
+      e.preventDefault()
+      if (term.hasSelection()) {
+        doCopy('contextmenu')
+        // Clear afterwards so the next right-click pastes, matching how the
+        // same gesture behaves in a real terminal.
+        term.clearSelection()
+      } else {
+        doPaste('contextmenu')
+      }
+    }
+    // NATIVE PASTE — the route that actually works everywhere.
+    //
+    // navigator.clipboard.readText() needs the `clipboard-read` permission:
+    // Chrome prompts and remembers a refusal forever, Firefox does not expose
+    // it to web content at all. The browser's OWN paste (Ctrl+V / Cmd+V /
+    // middle-click / Edit>Paste) fires this event with the data already
+    // attached and requires NO permission — which is why it is wired
+    // explicitly rather than left to chance.
+    const onNativePaste = (e) => {
+      const text = e.clipboardData?.getData('text') || ''
+      if (!text) return
+      e.preventDefault()
+      e.stopPropagation()
+      term.paste(text)
+      report({ action: 'paste', trigger: 'native-paste', result: 'ok', textLength: text.length })
+    }
+    // Capture phase and on the wrapper: xterm's helper textarea is a child, and
+    // catching it here works whether or not focus is exactly where we expect.
+    wrapperRef.current?.addEventListener('paste', onNativePaste, true)
+    // Also at document level. If focus has drifted off xterm's helper
+    // textarea, the paste event fires somewhere else entirely and a
+    // wrapper-scoped listener never sees it. Guarded so that with several
+    // terminals mounted only the visible, focused one acts.
+    const onDocumentPaste = (e) => {
+      const w = wrapperRef.current
+      if (!w || !w.isConnected) return
+      if (w.contains(e.target)) return          // wrapper listener already handled it
+      if (!w.contains(document.activeElement) && document.activeElement !== document.body) return
+      if (w.offsetParent === null) return       // hidden tab
+      onNativePaste(e)
+    }
+    document.addEventListener('paste', onDocumentPaste, true)
+
+    containerRef.current.addEventListener('contextmenu', onContextMenu)
+    contextMenuCleanupRef.current = () => {
+      containerRef.current?.removeEventListener('contextmenu', onContextMenu)
+      wrapperRef.current?.removeEventListener('paste', onNativePaste, true)
+      document.removeEventListener('paste', onDocumentPaste, true)
+    }
 
     if (DEBUG) {
       // After term.open(), inspect the helper textarea xterm uses to
@@ -548,6 +728,10 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
       if (pendingFit) clearTimeout(pendingFit)
       resizeObserver.disconnect()
       inputDisposable.dispose()
+      // Right-click paste listener — attached to the container element, so it
+      // outlives the xterm dispose below unless removed explicitly.
+      contextMenuCleanupRef.current?.()
+      contextMenuCleanupRef.current = null
       socket.off('webshell:spawn', handleSpawnSentinel)
       socket.off('webshell:output', handleOutputDiag)
       socket.off('webshell:exit', handleExit)
@@ -786,6 +970,70 @@ export default function ShellTerminal({ task, socket, isActive = true }) {
           position: 'relative',
         }}
       />
+
+      {/* Copy affordance (bug-shell-clipboard-001). Lives in Terminal.jsx
+          itself rather than in either shell's chrome, so the task Shell tab
+          and the global shell dock get it from the same place and cannot
+          drift apart.
+
+          A button is necessary, not just nice: a full-screen TUI turns on
+          mouse tracking, and while that is active xterm hands drags to the
+          APPLICATION — there is no selection, so the key bindings have
+          nothing to copy. Holding Shift bypasses it, but nothing in the UI
+          ever said so. */}
+      <button
+        type="button"
+        data-testid="terminal-copy-button"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation()
+          copyHandlerRef.current?.('button')
+          setCopyState('copied')
+          setTimeout(() => setCopyState(null), 1400)
+        }}
+        title={[
+          'Copy selection, or the visible output',
+          'Ctrl+Insert or right-click a selection',
+          // Ctrl+Shift+C is deliberately not advertised: Chrome and Edge bind
+          // it to the DevTools picker and never deliver it to the page.
+          mouseTrackingActive(xtermRef.current)
+            ? 'This program is using the mouse — hold Shift while dragging to select'
+            : null,
+        ].filter(Boolean).join('\n')}
+        aria-label="Copy terminal output"
+        style={{
+          position: 'absolute',
+          // Aligned to the same 4px inset and 24px height as ShellManager's
+          // close-session button, and shifted left by whatever space the host
+          // reserved — otherwise the two sit on top of each other in the task
+          // Shell tab, which is exactly what happened.
+          top: 4,
+          right: 4 + topRightInset,
+          height: 24,
+          zIndex: 5,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px',
+          padding: '0 8px',
+          borderRadius: 'var(--radius-sm)',
+          fontSize: 'var(--text-caption2)',
+          fontWeight: 'var(--font-medium)',
+          color: copyState ? 'var(--apple-green)' : 'var(--text-tertiary)',
+          background: 'color-mix(in srgb, var(--bg-card) 82%, transparent)',
+          border: 'var(--border-hairline)',
+          cursor: 'pointer',
+          // Fades back once the pointer leaves, so it never competes with the
+          // terminal content it sits on top of.
+          opacity: copyState ? 1 : 0.8,
+          transition: 'opacity var(--duration-fast), color var(--duration-fast)',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+        onMouseLeave={(e) => { if (!copyState) e.currentTarget.style.opacity = '0.8' }}
+      >
+        {copyState ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+        {copyState ? 'Copied' : 'Copy'}
+      </button>
+
       {exitInfo && (
         <ExitRecoveryOverlay
           taskId={task?.id}
