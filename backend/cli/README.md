@@ -10,7 +10,7 @@ Installs the Atrium skill and registers the stdio MCP server with Claude Code on
 
 1. Claude Code CLI installed and on PATH (`claude --version` should work).
 2. Atrium backend running (`npm start` in the backend directory), default at http://localhost:3001.
-3. An agent token — generate via the Atrium admin UI's "Agent Tokens" section, or `POST /api/auth/agent-token`.
+3. An agent token — generate via the Atrium admin UI's "Agent Tokens" section, or `POST /api/agent-token`.
 
 ### One-time setup per machine
 
@@ -35,9 +35,25 @@ node backend/cli/atrium-mcp-setup.js --token <agent-token>
 
 The command:
 
-1. Verifies the token against `GET /api/auth/verify`.
-2. Copies `backend/mcp/skill/SKILL.md` → `~/.claude/skills/atrium/SKILL.md`.
-3. Calls `claude mcp add --transport stdio --scope user atrium ...` to register the MCP server.
+1. Verifies the token against `GET /api/verify`.
+2. Probes `GET /api/instance` and records the URL the instance reports, so the
+   MCP entry points at the real backend instead of assuming `localhost:3001`.
+3. Copies the canonical `.claude/skills/atrium/SKILL.md` → `~/.claude/skills/atrium/SKILL.md`.
+4. Registers the stdio server via `claude mcp add --transport stdio --scope user atrium ...`.
+   An existing entry of the same name is left untouched unless you pass `--force`.
+5. Runs a health check (skill installed / MCP entry present / Atrium reachable /
+   token verified) and prints a pass-fail line for each.
+
+Flags:
+
+- `--dry-run` — print the intended actions and write nothing.
+- `--force` — overwrite an existing MCP entry of the same name (default: skip it).
+- `--url <url>` — backend URL to reach (default `http://localhost:3001`); the
+  instance probe refines what gets written into the config.
+- `--name <name>` — MCP server name in Claude's config (default `atrium`).
+
+Re-running is idempotent: the skill copy is byte-identical and an existing MCP
+entry is skipped, so a second run produces no config diff.
 
 ### After setup
 
@@ -50,4 +66,4 @@ claude mcp remove atrium
 rm -rf ~/.claude/skills/atrium
 ```
 
-And revoke the token via the Atrium admin UI (or `DELETE /api/auth/agent-tokens/<jti>`).
+And revoke the token via the Atrium admin UI (or `DELETE /api/agent-tokens/<jti>`).
