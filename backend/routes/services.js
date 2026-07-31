@@ -9,6 +9,8 @@ const {
   dockerConfigured, inspectContainer, containerAction, containerLogs,
   isContainerService, containerNameFor,
 } = require('../lib/dockerServices');
+const { SETTINGS_FILE } = require('../lib/constants');
+const { SURFACES, HEALTHCHECKS, portRequired, resolveStatus } = require('../lib/serviceModel');
 
 const router = express.Router();
 
@@ -54,8 +56,27 @@ const appendLog = (serviceId, data) => {
 
 // --- Validation Helpers ---
 
-const ALLOWED_COMMANDS = ['npm', 'node', 'python', 'python3', 'pip', 'pip3', 'npx', 'yarn', 'pnpm', 'deno', 'bun', 'cargo', 'go', 'java', 'dotnet'];
+// Base allow-list for host-process start commands. Thick-client + build tools
+// (swift/xcodebuild/make/…) are here so a Swift or native app can be registered
+// at all (feat-service-surfaces-001). An admin can add more via an
+// `allowed_commands` array in settings.json — no code change.
+const ALLOWED_COMMANDS = [
+  'npm', 'node', 'python', 'python3', 'pip', 'pip3', 'npx', 'yarn', 'pnpm', 'deno', 'bun',
+  'cargo', 'go', 'java', 'dotnet',
+  'swift', 'xcodebuild', 'make', 'cmake', 'ctest', 'gradle', 'mvn', 'dart', 'flutter',
+];
 const SHELL_OPERATORS = /[;|&`$(){}><\n\r]/;
+
+// Base list plus any admin-configured extras from settings.json.
+const allowedCommands = () => {
+  try {
+    const settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
+    const extra = Array.isArray(settings.allowed_commands) ? settings.allowed_commands : [];
+    return [...new Set([...ALLOWED_COMMANDS, ...extra.map((c) => String(c).toLowerCase())])];
+  } catch {
+    return ALLOWED_COMMANDS;
+  }
+};
 
 const validatePort = (port) => {
   const num = parseInt(port);
@@ -65,8 +86,9 @@ const validatePort = (port) => {
 const validateStartCmd = (cmd) => {
   if (!cmd || typeof cmd !== 'string') return { valid: false, error: 'Start command required' };
   if (SHELL_OPERATORS.test(cmd)) return { valid: false, error: 'Start command contains disallowed shell operators' };
+  const allowed = allowedCommands();
   const baseCmd = cmd.trim().split(/\s+/)[0].toLowerCase().replace('.cmd', '').replace('.exe', '');
-  if (!ALLOWED_COMMANDS.includes(baseCmd)) return { valid: false, error: `Command "${baseCmd}" is not in the allowed list: ${ALLOWED_COMMANDS.join(', ')}` };
+  if (!allowed.includes(baseCmd)) return { valid: false, error: `Command "${baseCmd}" is not in the allowed list: ${allowed.join(', ')}` };
   return { valid: true };
 };
 
@@ -97,7 +119,10 @@ const startService = (service) => {
     detached: !useShell,
     stdio: ['ignore', 'pipe', 'pipe'],
     shell: useShell,
-    windowsHide: true
+    windowsHide: true,
+    // Per-service env overlay (feat-service-surfaces-001) — merged over the
+    // backend's own env so a service can carry its own configuration.
+    env: { ...process.env, ...(service.env && typeof service.env === 'object' ? service.env : {}) },
   });
 
   // Track the process and capture logs
@@ -114,9 +139,10 @@ const startService = (service) => {
 
   child.on('close', (code) => {
     appendLog(service.id, `\n--- Process exited with code ${code} ---\n`);
-    // Keep logs but remove process reference
+    // Keep logs but remove the process reference. Record the exit so a `job`
+    // surface can report succeeded/failed after it finishes (serviceModel).
     const e = runningServices.get(service.id);
-    if (e) { e.process = null; e.pid = null; }
+    if (e) { e.process = null; e.pid = null; e.lastExitCode = code; e.exitedAt = new Date().toISOString(); }
   });
 
   child.on('error', (err) => {
@@ -266,11 +292,14 @@ router.get('/', async (req, res) => {
         };
       }
 
-      const isRunning = await checkPort(s.port);
+      // Probe the network only for surfaces whose health is a port (web/server/
+      // legacy); desktop/cli/job resolve from the tracked process instead
+      // (feat-service-surfaces-001).
+      const reachable = portRequired(s) ? await checkPort(s.port) : false;
       const tracked = runningServices.get(s.id);
       return {
         ...s,
-        status: isRunning ? 'running' : 'stopped',
+        status: resolveStatus(s, { reachable, tracked }),
         pid: tracked?.pid || null,
         startedAt: tracked?.startedAt || null,
         hasLogs: tracked ? tracked.logs.length > 0 : false
@@ -330,8 +359,14 @@ router.get('/', async (req, res) => {
  */
 router.post('/', requireServicesEnabled, (req, res) => {
   try {
-    const { name, port, cwd, startCmd, group, depends_on, preview, type, container_name } = req.body;
+    const { name, port, cwd, startCmd, group, depends_on, preview, type, container_name, surface, healthcheck, env, autostart } = req.body;
     if (!name) return res.status(400).json({ error: 'Service name is required' });
+    if (surface !== undefined && !SURFACES.includes(surface)) {
+      return res.status(400).json({ error: `surface must be one of: ${SURFACES.join(', ')}` });
+    }
+    if (healthcheck !== undefined && !HEALTHCHECKS.includes(healthcheck)) {
+      return res.status(400).json({ error: `healthcheck must be one of: ${HEALTHCHECKS.join(', ')}` });
+    }
 
     // Two shapes now (feat-services-containers-001). A container service has no
     // cwd or start command — Docker owns those — so validating them would make
@@ -363,13 +398,27 @@ router.post('/', requireServicesEnabled, (req, res) => {
         container_name: cname, port: safePort || 0, depends_on: depends_on || [],
       };
     } else {
-      if (!port || !cwd || !startCmd) return res.status(400).json({ error: 'Missing service information' });
-      const safePort = validatePort(port);
-      if (!safePort) return res.status(400).json({ error: 'Port must be a number between 1 and 65535' });
+      // A port is required only when the surface's health is probed over the
+      // network (web/server/legacy). desktop/cli/job need none — that is what
+      // retires the old `port: 0` workaround (feat-service-surfaces-001).
+      const wantsPort = portRequired({ surface, healthcheck });
+      if (!cwd || !startCmd) return res.status(400).json({ error: 'Working directory and start command are required' });
+      let safePort = null;
+      if (port !== undefined && port !== null && port !== '') {
+        safePort = validatePort(port);
+        if (!safePort) return res.status(400).json({ error: 'Port must be a number between 1 and 65535' });
+      } else if (wantsPort) {
+        return res.status(400).json({ error: 'Port is required for a web/server surface' });
+      }
       const cmdCheck = validateStartCmd(startCmd);
       if (!cmdCheck.valid) return res.status(400).json({ error: cmdCheck.error });
       if (!validateCwd(cwd)) return res.status(400).json({ error: 'Working directory does not exist or is not a directory' });
-      newService = { id, name, group: group || 'Uncategorized', type: 'process', port: safePort, cwd, startCmd: startCmd.trim(), depends_on: depends_on || [] };
+      newService = { id, name, group: group || 'Uncategorized', type: 'process', cwd, startCmd: startCmd.trim(), depends_on: depends_on || [] };
+      if (safePort !== null) newService.port = safePort;
+      if (surface !== undefined) newService.surface = surface;
+      if (healthcheck !== undefined) newService.healthcheck = healthcheck;
+      if (env && typeof env === 'object' && !Array.isArray(env)) newService.env = env;
+      if (autostart !== undefined) newService.autostart = !!autostart;
     }
     if (preview !== undefined) newService.preview = !!preview;
     services.push(newService);
@@ -424,8 +473,10 @@ router.put('/:id', requireServicesEnabled, (req, res) => {
     const services = getServices();
     const idx = services.findIndex(s => s.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Service not found' });
-    const { name, port, cwd, startCmd, group, depends_on, preview } = req.body;
+    const { name, port, cwd, startCmd, group, depends_on, preview, surface, healthcheck, env, autostart } = req.body;
 
+    if (surface !== undefined && !SURFACES.includes(surface)) return res.status(400).json({ error: `surface must be one of: ${SURFACES.join(', ')}` });
+    if (healthcheck !== undefined && !HEALTHCHECKS.includes(healthcheck)) return res.status(400).json({ error: `healthcheck must be one of: ${HEALTHCHECKS.join(', ')}` });
     if (port !== undefined) { const p = validatePort(port); if (!p) return res.status(400).json({ error: 'Invalid port' }); services[idx].port = p; }
     if (startCmd !== undefined) { const c = validateStartCmd(startCmd); if (!c.valid) return res.status(400).json({ error: c.error }); services[idx].startCmd = startCmd.trim(); }
     if (cwd !== undefined) { if (!validateCwd(cwd)) return res.status(400).json({ error: 'Invalid working directory' }); services[idx].cwd = cwd; }
@@ -433,6 +484,10 @@ router.put('/:id', requireServicesEnabled, (req, res) => {
     if (group !== undefined) services[idx].group = group;
     if (depends_on !== undefined) services[idx].depends_on = depends_on;
     if (preview !== undefined) services[idx].preview = !!preview;
+    if (surface !== undefined) services[idx].surface = surface;
+    if (healthcheck !== undefined) services[idx].healthcheck = healthcheck;
+    if (env !== undefined) { if (env && typeof env === 'object' && !Array.isArray(env)) services[idx].env = env; else return res.status(400).json({ error: 'env must be an object' }); }
+    if (autostart !== undefined) services[idx].autostart = !!autostart;
     saveServices(services);
     res.json({ success: true, service: services[idx] });
   } catch (error) {
@@ -688,4 +743,21 @@ router.post('/groups/:name/stop', requireServicesEnabled, async (req, res) => {
   } catch (error) { logger.error({ err: error }, 'Request failed'); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// Start services flagged `autostart: true`, in dependency order. Called once at
+// boot from server.js. No-op when the Services feature is off (a container can't
+// spawn host processes) or when nothing opts in — default `autostart` is false,
+// so existing setups see no change (feat-service-surfaces-001).
+const startAutostartServices = async () => {
+  try {
+    if (!servicesEnabled()) return;
+    const auto = getServices().filter((s) => s.autostart && !isContainerService(s));
+    if (!auto.length) return;
+    logger.info({ count: auto.length }, 'Autostarting services');
+    await startInOrder(auto);
+  } catch (err) {
+    logger.error({ err }, 'Autostart failed');
+  }
+};
+
 module.exports = router;
+module.exports.startAutostartServices = startAutostartServices;

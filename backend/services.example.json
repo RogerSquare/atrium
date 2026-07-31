@@ -1,10 +1,44 @@
 [
   {
-    "id": "example-service",
-    "name": "Example Service",
+    "_comment": "Service registry template. Copy to services.json (gitignored); the UI writes it as you add services. `type` is process (host-spawned) or container (Docker-managed). `surface` describes what the service IS — web|server|desktop|cli|job — and decides how 'running' is judged: web/server = a port is probed; desktop/cli = its process is tracked; job = the last run's exit code. A service with no `surface` behaves like the old port-based model. Delete these examples once you add your own.",
+
+    "id": "example-container",
+    "name": "Example (container-first, recommended)",
     "group": "My Project",
-    "port": 3000,
-    "cwd": "C:\\Path\\To\\Project",
+    "type": "container",
+    "container_name": "my-service",
+    "surface": "web",
+    "port": 3200
+  },
+  {
+    "id": "example-web",
+    "name": "Example web app (host process)",
+    "group": "My Project",
+    "type": "process",
+    "surface": "web",
+    "port": 5173,
+    "cwd": "/absolute/path/to/project",
+    "startCmd": "npm run dev",
+    "preview": true,
+    "env": { "NODE_ENV": "development" }
+  },
+  {
+    "id": "example-cli",
+    "name": "Example CLI / TUI (no port)",
+    "group": "My Project",
+    "type": "process",
+    "surface": "cli",
+    "cwd": "/absolute/path/to/tui",
     "startCmd": "npm run dev"
+  },
+  {
+    "id": "example-swift-test",
+    "name": "Example Swift test job",
+    "group": "My Project",
+    "type": "process",
+    "surface": "job",
+    "cwd": "/absolute/path/to/swift/package",
+    "startCmd": "swift test",
+    "autostart": false
   }
 ]
