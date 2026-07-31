@@ -1,6 +1,7 @@
 const fs = require('fs');
 const net = require('net');
 const { SERVICES_FILE } = require('./constants');
+const { portRequired, resolveStatus } = require('./serviceModel');
 
 const getServices = () => {
   try {
@@ -35,7 +36,10 @@ const getServicesWithStatus = async () => {
   const services = getServices();
   return Promise.all(services.map(async (s) => ({
     ...s,
-    status: (await checkPort(s.port)) ? 'running' : 'stopped',
+    // Probe the port only for surfaces whose health is a port; pid/job surfaces
+    // resolve to 'stopped' here (this view has no process tracking) rather than
+    // uselessly probing port 0 (feat-service-surfaces-001).
+    status: resolveStatus(s, { reachable: portRequired(s) ? await checkPort(s.port) : false, tracked: null }),
   })));
 };
 

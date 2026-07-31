@@ -427,4 +427,7 @@ server.listen(PORT, '0.0.0.0', () => {
   } catch (err) {
     logger.error({ err }, 'Failed to start loop engine');
   }
+  // Start any services flagged autostart:true (feat-service-surfaces-001).
+  // Default-off, so this is a no-op for existing setups.
+  servicesRoutes.startAutostartServices?.();
 });
