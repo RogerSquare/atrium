@@ -1,6 +1,6 @@
 const express = require('express');
 const fs = require('fs');
-const { exec, spawn } = require('child_process');
+const { exec, execFile, spawn } = require('child_process');
 const { getServices, saveServices, checkPort } = require('../lib/services');
 const { getIO } = require('../lib/io');
 const { logger } = require('../lib/logger');
@@ -11,6 +11,7 @@ const {
 } = require('../lib/dockerServices');
 const { SETTINGS_FILE } = require('../lib/constants');
 const { SURFACES, HEALTHCHECKS, portRequired, resolveStatus } = require('../lib/serviceModel');
+const { stopStrategy } = require('../lib/serviceStop');
 
 const router = express.Router();
 
@@ -97,11 +98,41 @@ const validateCwd = (cwd) => {
   try { return fs.existsSync(cwd) && fs.statSync(cwd).isDirectory(); } catch (e) { return false; }
 };
 
-const stopByPort = (port, callback) => {
-  const safePort = validatePort(port);
-  if (!safePort) return callback(new Error('Invalid port'));
-  const cmd = `for /f "tokens=5" %a in ('netstat -aon ^| findstr :${safePort} ^| findstr LISTENING') do taskkill /F /PID %a`;
-  exec(cmd, callback);
+// Cross-platform stop (devops-service-stop-xplat-001). Prefers the tracked child
+// PID and kills the whole process TREE/group (so children die too); falls back
+// to a port-kill only for a legacy/web service with no tracked PID. Replaces the
+// old Windows-only stopByPort — native macOS/Linux can now stop services, and
+// non-listening apps (cli/desktop/job) stop by PID.
+const stopService = (service, callback) => {
+  const done = (err) => { try { callback(err); } catch (_) { /* caller detached */ } };
+  const tracked = runningServices.get(service.id);
+  const strategy = stopStrategy(service, tracked);
+
+  if (strategy.kind === 'none') return done(null); // already stopped
+
+  if (strategy.kind === 'pid') {
+    if (process.platform === 'win32') {
+      // /T kills the whole tree; /F forces it.
+      execFile('taskkill', ['/F', '/T', '/PID', String(strategy.pid)], () => done(null));
+    } else {
+      // startService spawns detached on posix, so the child leads its own
+      // process group — signal the group (negative pid) so children go too.
+      try { process.kill(-strategy.pid, 'SIGTERM'); }
+      catch (e) { try { process.kill(strategy.pid, 'SIGTERM'); } catch (_) { /* already gone */ } }
+      done(null);
+    }
+    // Flip status to stopped immediately rather than waiting for 'close'.
+    if (tracked) tracked.pid = null;
+    return;
+  }
+
+  // Port fallback (legacy/web with no tracked pid).
+  const safePort = validatePort(strategy.port);
+  if (!safePort) return done(new Error('Invalid port'));
+  const cmd = process.platform === 'win32'
+    ? `for /f "tokens=5" %a in ('netstat -aon ^| findstr :${safePort} ^| findstr LISTENING') do taskkill /F /PID %a`
+    : `lsof -ti tcp:${safePort} | xargs -r kill -TERM`;
+  exec(cmd, () => done(null));
 };
 
 const startService = (service) => {
@@ -186,11 +217,21 @@ const topoSort = (services) => {
   return sorted.map(id => services.find(s => s.id === id));
 };
 
+// Is a service currently running? Cross-surface (feat-service-surfaces-001):
+// probe the port ONLY when the surface needs one — a portless cli/desktop/job
+// would otherwise crash checkPort with an undefined port — else fall back to the
+// tracked process.
+const isServiceRunning = async (service) => {
+  const tracked = runningServices.get(service.id);
+  const reachable = portRequired(service) ? await checkPort(service.port) : false;
+  return resolveStatus(service, { reachable, tracked }) === 'running';
+};
+
 // Start services in dependency order with delays
 const startInOrder = async (services) => {
   const ordered = topoSort(services);
   for (const service of ordered) {
-    const isRunning = await checkPort(service.port);
+    const isRunning = await isServiceRunning(service);
     if (!isRunning) {
       try { startService(service); } catch (e) { logger.error({ err: e, serviceId: service.id }, `Failed to start service ${service.name}`); }
       // Brief delay between starts to let dependencies initialize
@@ -522,7 +563,7 @@ router.post('/:id/restart', requireServicesEnabled, async (req, res) => {
   if (dispatched) return res.status(dispatched.code).json(dispatched.payload);
 
 
-  stopByPort(service.port, () => {
+  stopService(service, () => {
     setTimeout(() => {
       try { startService(service); res.json({ success: true }); }
       catch (err) { res.status(500).json({ error: err.message }); }
@@ -584,7 +625,7 @@ router.post('/:id/stop', requireServicesEnabled, async (req, res) => {
   const dispatched = await dockerDispatch(service, 'stop');
   if (dispatched) return res.status(dispatched.code).json(dispatched.payload);
 
-  stopByPort(service.port, () => res.json({ success: true }));
+  stopService(service, () => res.json({ success: true }));
 });
 
 /**
@@ -613,7 +654,7 @@ router.post('/:id/start', requireServicesEnabled, async (req, res) => {
   const dispatched = await dockerDispatch(service, 'start');
   if (dispatched) return res.status(dispatched.code).json(dispatched.payload);
 
-  const isRunning = await checkPort(service.port);
+  const isRunning = await isServiceRunning(service);
   if (isRunning) return res.json({ success: true, message: 'Already running' });
 
   // Check dependencies are running
@@ -738,7 +779,7 @@ router.post('/groups/:name/start', requireServicesEnabled, async (req, res) => {
 router.post('/groups/:name/stop', requireServicesEnabled, async (req, res) => {
   try {
     const services = getServices().filter(s => s.group === req.params.name);
-    for (const service of services) { stopByPort(service.port, () => {}); }
+    for (const service of services) { stopService(service, () => {}); }
     res.json({ success: true });
   } catch (error) { logger.error({ err: error }, 'Request failed'); res.status(500).json({ error: 'Internal server error' }); }
 });
