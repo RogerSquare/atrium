@@ -41,6 +41,7 @@ backend/design-sessions/
 # Machine-specific config
 backend/settings.json
 backend/services.json
+backend/projects.json
 
 # GitHub-watcher loops (runtime data)
 backend/loops.json

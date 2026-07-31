@@ -4,7 +4,7 @@ Stdio MCP server that exposes Atrium task-board operations to Claude Code sessio
 
 ## Configuration (env vars)
 
-- `ATRIUM_API_TOKEN` (required) — a long-lived agent token minted via the Atrium admin UI or `POST /api/auth/agent-token`.
+- `ATRIUM_API_TOKEN` (required) — a long-lived agent token minted via the Atrium admin UI or `POST /api/agent-token`.
 - `ATRIUM_URL` (default: `http://localhost:3001`) — base URL of the Atrium backend.
 
 ## Development

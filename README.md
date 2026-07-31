@@ -88,79 +88,76 @@ The board also doubles as a lightweight DevOps dashboard: register your services
 
 ## Getting Started
 
-### Prerequisites
+Atrium runs two ways. **Docker is the recommended path** — one command, one port,
+and the whole toolchain (backend, built frontend, git/gh, a shell) baked into the
+image. The native path is for hacking on Atrium's own code.
 
-- **Node.js 18+**
-- **A C++ build toolchain** -- required by `node-pty` for native compilation
-  - Windows: `npm install -g windows-build-tools` or install Visual Studio Build Tools
-  - macOS: `xcode-select --install`
-  - Linux: `sudo apt install build-essential`
+### Quickstart (Docker)
 
-### Installation
+Prerequisites: Docker Desktop, or Docker Engine + Compose.
 
 ```bash
-# Clone the repository
 git clone https://github.com/RogerSquare/atrium.git
 cd atrium
-
-# Install backend dependencies
-cd backend
-npm install
-
-# Install frontend dependencies
-cd ../frontend
-npm install
+cp .env.example .env
+# Edit .env and set the two required values:
+#   JWT_SECRET       — node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"
+#   ATRIUM_WORKSPACE — absolute path to the folder that holds your repos
+docker compose up -d
 ```
 
-### Configuration
+Open **http://localhost:3001** (or whichever `ATRIUM_PORT` you set). The full
+walkthrough — optional compose overrides, ports, troubleshooting — is in
+[docs/install.md](docs/install.md).
+
+> **Claude Code note:** the default compose also mounts your `~/.claude` so a
+> terminal *inside* the container can run `claude`. If you don't use Claude Code,
+> those mounts are optional — see [docs/install.md](docs/install.md).
+
+### First run
+
+1. **Register the first account.** The first user created is automatically the
+   **admin**; everyone after is a regular member.
+2. **Point Atrium at your projects.** The first-run wizard (or Settings →
+   Project) sets the working directory; in the container it defaults to the
+   `/workspace` mount.
+3. **Connect an agent (optional).** Mint an agent token in Settings → Agent
+   Tokens (admin-only, shown once), then run the setup CLI on the machine where
+   your agent runs:
+   ```bash
+   node backend/cli/atrium-mcp-setup.js --token <agent-token> --url http://localhost:3001
+   ```
+   It probes the running instance, installs the Atrium skill, and registers the
+   MCP server. See [docs/agents.md](docs/agents.md) for the agent contract
+   (including non-Claude agents over plain REST) and [docs/mcp.md](docs/mcp.md).
+
+### Native (development)
+
+For working on Atrium itself. Requires **Node 18+** and a **C++ toolchain** for
+`node-pty` (Windows: VS Build Tools; macOS: `xcode-select --install`; Linux:
+`sudo apt install build-essential`).
 
 ```bash
-# Copy the example config files
-cp backend/settings.example.json backend/settings.json
-cp backend/services.example.json backend/services.json
+# Terminal 1 — backend (:3001)
+cd backend && npm install && npm start
+
+# Terminal 2 — frontend (:5173, proxies /api -> :3001)
+cd frontend && npm install && npm run dev
 ```
 
-Edit `backend/settings.json` to set your working directory. Populate `backend/services.json` with any dev servers you want to manage from the board.
+`settings.json`, `services.json`, and `projects.json` are **auto-created on first
+boot** — you do not need to copy the `.example.json` files (they are annotated
+templates for reference). On Windows, `./start.bat` launches both in one step.
+Then open **http://localhost:5173**.
 
-### Running
+### Passing the review gate
 
-Start the backend and frontend in separate terminals:
-
-```bash
-# Terminal 1 -- Backend (port 3001)
-cd backend
-npm start
-
-# Terminal 2 -- Frontend (port 5173)
-cd frontend
-npm run dev
-```
-
-On Windows, you can also use the provided start script:
-
-```bash
-./start.bat
-```
-
-Then open [http://localhost:5173](http://localhost:5173) in your browser.
-
-### Testing
-
-The backend ships a suite of `node:test` unit tests covering the core libraries and routes:
-
-```bash
-cd backend
-npm test          # runs node --test across lib/ and routes/
-```
-
-The frontend uses Vitest for unit tests and Playwright for end-to-end tests:
-
-```bash
-cd frontend
-npm run test:e2e  # Playwright end-to-end suite
-```
-
-All of the above — plus the task-file audit (`npm run audit:tasks`) and the frontend production build — run automatically in CI on every pull request (see `.github/workflows/ci.yml`).
+Moving a task to `review` is validated: it needs a linked git branch or PR, and a
+passing e2e run. For work that doesn't fit — docs, research, a backend change with
+no UI — opt out with a tag on the task: **`no-code`** (skips the branch/PR
+requirement) or **`no-e2e`** (skips the Playwright requirement). The shared
+vocabulary is in [UBIQUITOUS_LANGUAGE.md](UBIQUITOUS_LANGUAGE.md); the full agent
+protocol is in [CLAUDE.md](CLAUDE.md).
 
 ---
 
@@ -259,7 +256,7 @@ frontend/
 Full interactive API documentation is available via Swagger UI at:
 
 ```
-http://localhost:3001/api-docs
+http://localhost:3001/api/docs
 ```
 
 ### Key Endpoints
@@ -275,8 +272,9 @@ http://localhost:3001/api-docs
 | `POST` | `/api/services/:id/start` | Start a registered service |
 | `POST` | `/api/services/:id/stop` | Stop a running service |
 | `POST` | `/api/services/:id/restart` | Restart a service |
-| `POST` | `/api/auth/login` | Authenticate and receive a JWT |
+| `POST` | `/api/login` | Authenticate and receive a JWT |
 | `GET` | `/api/chat/messages` | Retrieve chat history |
+| `GET` | `/api/instance` | Instance name, version, port, and reachable URL |
 
 ---
 
