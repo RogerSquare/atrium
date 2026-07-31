@@ -83,6 +83,7 @@ function buildSetupSteps({
   claudeAccount = { logged_in: false },
   githubConnected = false,
   githubLogin = null,
+  agentConnected = false,
   dirExists = directoryExists,
 } = {}) {
   const workingDirectory = settings.workingDirectory || '';
@@ -106,6 +107,15 @@ function buildSetupSteps({
         : null,
     },
     {
+      id: 'agent',
+      title: 'Connect an agent',
+      description: 'Optional. Mint an agent token and run the setup command so an AI agent can work the board over MCP. Turns green once an agent authenticates.',
+      complete: !!agentConnected,
+      detail: agentConnected ? 'An agent has connected' : null,
+      problem: null,
+      optional: true,
+    },
+    {
       id: 'github',
       title: 'Connect GitHub',
       description: 'Needed for pull-request badges in the Changes view. Branch history works without it.',
@@ -117,12 +127,13 @@ function buildSetupSteps({
     {
       id: 'terminal',
       title: 'Sign in to Claude Code',
-      description: 'Run `claude` in the terminal and complete the login once. Without it every terminal re-prompts.',
+      description: 'Optional. Only needed if you use Claude Code in the terminal — run `claude` and complete the login once so it stops re-prompting.',
       complete: !!claudeAccount.logged_in,
       detail: claudeAccount.logged_in
         ? `Signed in as ${claudeAccount.email}`
         : null,
       problem: null,
+      optional: true,
     },
   ];
 }

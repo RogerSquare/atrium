@@ -76,10 +76,31 @@ test('corrupt JSON never throws and never reports signed in', () => {
 
 const byId = (steps, id) => steps.find((s) => s.id === id);
 
-test('all three steps incomplete on a fresh container', () => {
+test('all four steps incomplete on a fresh container', () => {
   const steps = buildSetupSteps({ settings: {}, dirExists: () => false });
-  assert.strictEqual(steps.length, 3);
+  assert.strictEqual(steps.length, 4);
+  assert.deepStrictEqual(steps.map((s) => s.id), ['workspace', 'agent', 'github', 'terminal']);
   assert.ok(steps.every((s) => !s.complete));
+});
+
+// --- agent step (feat-setup-wizard-v2-001) -------------------------------
+
+test('agent step is optional and completes only on verified connection', () => {
+  const off = byId(buildSetupSteps({ agentConnected: false, dirExists: () => true }), 'agent');
+  assert.strictEqual(off.optional, true);
+  assert.strictEqual(off.complete, false);
+  assert.strictEqual(off.detail, null);
+
+  const on = byId(buildSetupSteps({ agentConnected: true, dirExists: () => true }), 'agent');
+  assert.strictEqual(on.complete, true);
+  assert.match(on.detail, /connected/i);
+});
+
+// Claude Code sign-in is no longer mandatory — a user of any other agent (or no
+// agent) must be able to finish setup (feat-setup-wizard-v2-001, Q4).
+test('the Claude Code (terminal) step is now optional', () => {
+  const term = byId(buildSetupSteps({ dirExists: () => true }), 'terminal');
+  assert.strictEqual(term.optional, true);
 });
 
 test('workspace completes only when the directory actually exists', () => {
@@ -144,4 +165,19 @@ test('the optional GitHub step does not block completion', () => {
 test('an explicit dismissal is remembered even with steps outstanding', () => {
   const steps = buildSetupSteps({ settings: {}, dirExists: () => false });
   assert.strictEqual(isSetupComplete(steps, { setup_completed_at: '2026-07-29T00:00:00Z' }), true);
+});
+
+// The workspace is the only required step now: agent, github, and Claude sign-in
+// are all optional, so a user who only sets a working directory is "set up".
+test('workspace alone completes the wizard (agent/github/claude all optional)', () => {
+  const steps = buildSetupSteps({
+    settings: { workingDirectory: '/workspace' },
+    agentConnected: false,
+    githubConnected: false,
+    claudeAccount: { logged_in: false },
+    dirExists: () => true,
+  });
+  assert.strictEqual(byId(steps, 'workspace').complete, true);
+  assert.ok(['agent', 'github', 'terminal'].every((id) => !byId(steps, id).complete));
+  assert.strictEqual(isSetupComplete(steps, {}), true);
 });
