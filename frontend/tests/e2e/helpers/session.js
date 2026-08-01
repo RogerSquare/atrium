@@ -35,6 +35,7 @@ export async function mockCoreApi(page) {
   await page.route('**/api/projects**', (route) => route.fulfill({ json: [] }));
   await page.route('**/api/services', (route) => route.fulfill({ json: [] }));
   await page.route('**/api/loops**', (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/agents/active', (route) => route.fulfill({ json: [] }));
   // Without complete:true the first-run wizard overlays the whole app.
   await page.route('**/api/setup/status', (route) => route.fulfill({ json: { complete: true } }));
 }

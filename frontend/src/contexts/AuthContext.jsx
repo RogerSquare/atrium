@@ -11,7 +11,11 @@ export function AuthProvider({ children }) {
   // session ended" rather than as the app randomly forgetting you.
   const [sessionExpired, setSessionExpired] = useState(false)
   const [theme, setTheme] = useState(() => {
-    const validThemes = ['dark', 'light', 'oled', 'paper']
+    // 'auto' resolves against prefers-color-scheme in the effect below
+    // (ui-topbar-create-001 — the avatar menu offered Auto, but picking it
+    // wrote data-theme="auto", which no CSS defines, and this validator then
+    // discarded it as invalid on the next load).
+    const validThemes = ['auto', 'dark', 'light', 'oled', 'paper']
     // One-time hard-flip migration: every existing browser gets bumped to
     // OLED on next load. After the flag is set, future picks from the
     // AvatarPopover stick (the migration only runs once per browser).
@@ -39,10 +43,22 @@ export function AuthProvider({ children }) {
     if (expired) setSessionExpired(true)
   }, [])
 
-  // Theme
+  // Theme. localStorage keeps the RAW choice (so 'auto' survives reloads);
+  // data-theme gets the RESOLVED value ('auto' → light/dark from the OS,
+  // live-updating when the OS preference flips).
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme)
+    const apply = () => {
+      const effective = theme === 'auto'
+        ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+        : theme
+      document.documentElement.setAttribute('data-theme', effective)
+    }
+    apply()
     localStorage.setItem('taskBoardTheme', theme)
+    if (theme !== 'auto') return
+    const mq = window.matchMedia('(prefers-color-scheme: light)')
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
   }, [theme])
 
   // Socket connection

@@ -26,6 +26,16 @@ test.describe('Draft column collapse', () => {
   // start expanded.
   test('collapses to a rail, persists across reload, and re-expands', async ({ page }) => {
     await mockCoreApi(page);
+    // At least one task must exist — a zero-task board renders the empty-state
+    // CTA (ui-topbar-create-001) instead of columns, so there would be no
+    // Draft column to collapse.
+    await page.route('**/api/tasks', (route) => route.fulfill({
+      json: [{
+        id: 'feat-seed-001', title: 'Seed task', status: 'todo', priority: 'medium',
+        project: 'Alpha', type: 'fullstack', tags: [], files_affected: [],
+        depends_on: [], activity_log: [], content: '', assignee: null,
+      }],
+    }));
     await page.addInitScript(seedSession, { storage: { taskBoardView: 'board' } });
     await page.goto('/');
 

@@ -5,7 +5,7 @@
 // Cmd+P opens it from anywhere.
 
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, Folder, Archive, Plus, Search } from 'lucide-react'
+import { ChevronDown, Folder, Archive, Plus, Search, LayoutGrid } from 'lucide-react'
 import { IconButton, Avatar } from '../ui'
 
 export default function ProjectAnchor({
@@ -49,7 +49,12 @@ export default function ProjectAnchor({
     if (open && inputRef.current) inputRef.current.focus()
   }, [open])
 
-  const displayName = activeProject === 'Root' ? 'Unassigned' : activeProject || 'All projects'
+  // 'All' is the default activeProject sentinel — show it as "All projects"
+  // rather than a bare "All" (ui-topbar-create-001; the old `|| 'All projects'`
+  // fallback was dead code because 'All' is truthy).
+  const displayName = activeProject === 'Root'
+    ? 'Unassigned'
+    : (!activeProject || activeProject === 'All') ? 'All projects' : activeProject
 
   const filtered = projects.filter((p) => {
     const folder = p.folder || p
@@ -140,6 +145,34 @@ export default function ProjectAnchor({
             className="overflow-y-auto custom-scrollbar"
             style={{ listStyle: 'none', padding: 0, margin: 0, maxHeight: '320px' }}
           >
+            {/* Pinned "All projects" — the default scope used to be a one-way
+                trap: once a project was picked, nothing in this list led back
+                to 'All' (ui-topbar-create-001, usability P0-3). Pinned above
+                the searchable rows so it is always reachable. */}
+            <li>
+              <button
+                role="option"
+                aria-selected={!activeProject || activeProject === 'All'}
+                data-testid="project-anchor-all"
+                onClick={() => select('All')}
+                className="apple-press w-full flex items-center gap-2 text-left"
+                style={{
+                  padding: 'var(--space-2)',
+                  borderRadius: 'var(--radius-sm)',
+                  background: (!activeProject || activeProject === 'All') ? 'var(--fill-secondary)' : 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 'var(--text-caption1)',
+                  color: (!activeProject || activeProject === 'All') ? 'var(--text-app)' : 'var(--text-muted)',
+                }}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" style={{ color: (!activeProject || activeProject === 'All') ? 'var(--accent-app)' : 'var(--text-tertiary)' }} />
+                <span className="truncate flex-1">All projects</span>
+                <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                  {tasks?.length ?? 0}
+                </span>
+              </button>
+            </li>
             {filtered.map((proj) => {
               const folder = proj.folder || proj
               const name = proj.name || proj

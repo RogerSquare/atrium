@@ -350,6 +350,7 @@ export default function AppShell() {
         archivedCount={archivedProjects?.length || 0}
         onOpenSettings={() => setShowSettings(true)}
         onOpenHelp={() => setShowHelp(true)}
+        onCreateTask={() => setShowCreateTask(true)}
         onToggleGlobalShell={() => setShowGlobalShell(v => !v)}
         globalShellOpen={showGlobalShell}
       />
@@ -403,6 +404,7 @@ export default function AppShell() {
         recentlyUpdatedIds={recentlyUpdatedIds}
         githubLinks={githubLinks}
         socketRef={socketRef}
+        onCreateTask={() => setShowCreateTask(true)}
         topSlot={
           bulkSelectMode && selectedTaskIds.length > 0 ? (
             <BulkActionBar

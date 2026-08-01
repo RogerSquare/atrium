@@ -13,7 +13,9 @@ export default function useAgents(user, socketRef, fetchData) {
 
     apiFetch(`${API_BASE}/api/agents/active`)
       .then(res => res.json())
-      .then(data => setActiveAgents(data))
+      // Guard the shape: consumers .filter/.some over this, so a non-array
+      // response (error object, proxy page) must not white-screen the board.
+      .then(data => setActiveAgents(Array.isArray(data) ? data : []))
       .catch(console.error)
 
     apiFetch(`${API_BASE}/api/presence`)
