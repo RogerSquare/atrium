@@ -55,14 +55,18 @@ coverage/
 .vscode/
 .idea/
 
-# Docs and scratch — not needed at runtime (instructions.md IS copied
-# explicitly in the Dockerfile; it is read by lib/constants.js)
+# Docs and scratch — not needed at runtime. CLAUDE.md is the ONE exception:
+# it IS copied explicitly in the Dockerfile because lib/constants.js
+# INSTRUCTIONS_FILE reads it (it replaced instructions.md in
+# devops-agent-contract-001), so it must stay in the build context. The
+# per-operator CLAUDE.local.md overlay is personal and must NEVER enter an
+# image.
 docs/
 design-research/
 redesign-intake/
 source_backups/
 README.md
-CLAUDE.md
+CLAUDE.local.md
 UBIQUITOUS_LANGUAGE.md
 task_review.json
 start.bat
