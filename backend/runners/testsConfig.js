@@ -63,6 +63,9 @@ function normalizeSuite(raw, index) {
 
   const target = parseTarget(raw.target);
   if (!target) errors.push(`${at}: "target" must be "local", "container:<image>" or "ssh:<host>"`);
+  if (target && target.kind === 'container' && report === 'playwright-json') {
+    errors.push(`${at}: container targets support junit-xml / exit-code reports, not playwright-json`);
+  }
 
   const artifacts = raw.artifacts === undefined ? [] : raw.artifacts;
   if (!Array.isArray(artifacts) || artifacts.some((g) => typeof g !== 'string' || !g.trim())) {
