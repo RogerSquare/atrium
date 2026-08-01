@@ -18,6 +18,8 @@ import DetailDescription from '../detail/DetailDescription'
 import DetailComments from '../detail/DetailComments'
 import DetailActivity from '../detail/DetailActivity'
 import DetailChanges from '../detail/DetailChanges'
+import ApprovalPanel from '../ApprovalPanel'
+import ContinueButton from '../ContinueButton'
 import TestsTab from '../TestsTab'
 import ShellManager from '../web-shell/ShellManager'
 import CommandCard from '../web-shell/CommandCard'
@@ -57,6 +59,9 @@ export default function DetailPane({
   task,
   currentUser,
   onClose,
+  // Opens ANOTHER task in this pane — used by ContinueButton to jump to the
+  // freshly-spawned next-phase task (ui-approvals-inbox-001).
+  onSelectTask,
   onUpdateTask,
   socket,
   width,
@@ -309,6 +314,17 @@ export default function DetailPane({
             >
               {activeTab === 'description' && (
                 <>
+                  {/* Actionable approvals — previously TaskModal-only, so a
+                      waiting_input task showed a dead badge here while the
+                      question it was waiting on lived somewhere else
+                      (ui-approvals-inbox-001, usability P0-4). The panel
+                      renders nothing when the task has no approvals. */}
+                  <ApprovalPanel task={task} socket={socket} />
+                  {/* Phase pipeline, drivable from the default surface:
+                      "Create plan from findings" / "Implement this plan" on
+                      reviewed research/plan tasks (P0-5). Jumps this pane to
+                      the freshly-spawned task. */}
+                  <ContinueButton task={task} onSelectTask={onSelectTask} />
                   {/* Status row — segmented-pill control for changing
                       task.status. Lives at the top of the Description
                       tab. For tasks in waiting_input, render a non-
@@ -333,7 +349,7 @@ export default function DetailPane({
                           fontWeight: 'var(--font-semibold)',
                           fontFamily: 'var(--font-mono)',
                         }}
-                        title="Waiting for an approval response — see /api/approvals"
+                        title="Waiting for your response — answer in the approval card above"
                       >
                         WAITING_INPUT
                       </span>

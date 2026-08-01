@@ -14,6 +14,7 @@ import { Button, IconButton } from '../ui'
 import ViewSwitcher from '../ViewSwitcher'
 import ProjectAnchor from './ProjectAnchor'
 import AvatarPopover from './AvatarPopover'
+import ApprovalsBell from './ApprovalsBell'
 
 export default function TopBar({
   user,
@@ -36,6 +37,8 @@ export default function TopBar({
   onOpenHelp,
   // Primary create action — opens the shell-mounted CreateTaskModal.
   onCreateTask,
+  // Approvals inbox — opens a waiting_input task in the DetailPane.
+  onSelectTask,
   // Global shell dock — toggles, so the same button that opened it closes it.
   onToggleGlobalShell,
   globalShellOpen = false,
@@ -84,6 +87,7 @@ export default function TopBar({
             <Plus className="w-3.5 h-3.5" /> New Task
           </Button>
         )}
+        <ApprovalsBell tasks={tasks} onSelectTask={onSelectTask} />
         {onOpenHelp && (
           <IconButton
             size="sm"

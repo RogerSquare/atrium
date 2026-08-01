@@ -1,5 +1,5 @@
 import { memo, useState, useCallback } from 'react'
-import { AlertCircle, AlignLeft, CheckCircle2, Circle, Copy, Check, UserCircle2, Link, Loader2, CalendarClock, Clock, Terminal } from 'lucide-react'
+import { AlertCircle, AlignLeft, CheckCircle2, Circle, Copy, Check, UserCircle2, Link, Loader2, CalendarClock, Clock, Terminal, HelpCircle } from 'lucide-react'
 import { STATUS_OPTIONS, PRIORITY_COLOR, TYPE_STYLE, VIEWER_COLORS, MERGE_STATUS } from '../constants'
 import { Badge, Select, Checkbox, Avatar } from './ui'
 
@@ -85,6 +85,9 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
           />
         )}
         <span className="truncate flex-1" style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-medium)', color: 'var(--text-app)' }}>{task.title}</span>
+        {task.status === 'waiting_input' && (
+          <HelpCircle className="w-3.5 h-3.5 shrink-0 animate-gentle-pulse" style={{ color: 'var(--apple-yellow)' }} title="Waiting on your response" />
+        )}
         {agentRunning && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: 'var(--accent-app)' }} />}
         {shellSession && (
           <Terminal
@@ -163,6 +166,26 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
         <span style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', textTransform: 'uppercase', color: typeStyle.color, background: typeStyle.bg, padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-sm)' }}>
           {task.type || 'fullstack'}
         </span>
+        {/* Waiting-on-human chip (ui-approvals-inbox-001) — the agent is
+            paused until the user answers; make that loud at board level. */}
+        {task.status === 'waiting_input' && (
+          <span
+            data-testid="card-waiting-indicator"
+            className="flex items-center gap-1 animate-gentle-pulse"
+            title="An agent is waiting on your response"
+            style={{
+              fontSize: 'var(--text-caption2)',
+              fontWeight: 'var(--font-semibold)',
+              color: 'var(--apple-yellow)',
+              background: 'color-mix(in srgb, var(--apple-yellow) 14%, transparent)',
+              padding: 'var(--space-1) var(--space-2)',
+              borderRadius: 'var(--radius-sm)',
+            }}
+          >
+            <HelpCircle className="w-3 h-3" />
+            Needs you
+          </span>
+        )}
         {task.component && (
           <span className="truncate max-w-[100px]" style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)', fontWeight: 'var(--font-medium)' }}>
             {task.component}
