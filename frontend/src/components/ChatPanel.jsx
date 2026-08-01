@@ -5,7 +5,10 @@ import AIChatPanel from './AIChatPanel'
 import GifPicker from './GifPicker'
 import { Button, IconButton, ButtonGroup } from './ui'
 
-export default function ChatPanel({ user, socket, messages, onlineUsers, typingUsers, minimized, onMinimize, soundEnabled, onToggleSound, onClose, onUnreadChange, onUpdateMessage, aiChatEnabled }) {
+// `docked` (ui-shell-consolidation-001): render as a fill-parent dock occupant
+// (AppShell's side dock) instead of the floating bottom-right window. Docked
+// mode has no minimize — the dock itself is the open/closed state.
+export default function ChatPanel({ user, socket, messages, onlineUsers, typingUsers, minimized, onMinimize, soundEnabled, onToggleSound, onClose, onUnreadChange, onUpdateMessage, aiChatEnabled, docked = false }) {
   const [input, setInput] = useState('')
   const [showUsers, setShowUsers] = useState(false)
   const [showGifPicker, setShowGifPicker] = useState(false)
@@ -49,8 +52,8 @@ export default function ChatPanel({ user, socket, messages, onlineUsers, typingU
   const typingText = typingUsers.filter(u => u !== user.username)
   const typingDisplay = typingText.length > 0 ? `${typingText.join(', ')} ${typingText.length === 1 ? 'is' : 'are'} typing...` : null
 
-  // Minimized pill
-  if (minimized) {
+  // Minimized pill (floating mode only — a docked panel can't minimize)
+  if (minimized && !docked) {
     return (
       <div
         className="fixed bottom-4 right-4 z-50 cursor-pointer apple-press apple-hover hidden sm:block"
@@ -68,9 +71,14 @@ export default function ChatPanel({ user, socket, messages, onlineUsers, typingU
 
   return (
     <div
-      className="fixed inset-0 sm:inset-auto sm:bottom-4 sm:right-4 z-50 w-full h-full sm:w-[380px] sm:h-[540px] flex flex-col overflow-hidden"
-      style={{ background: 'var(--bg-card)', borderRadius: '0', boxShadow: 'var(--shadow-popover)' }}
-      ref={el => { if (el && window.innerWidth >= 640) el.style.borderRadius = 'var(--radius-md)' }}
+      data-testid="chat-panel"
+      className={docked
+        ? 'flex-1 min-h-0 w-full flex flex-col overflow-hidden'
+        : 'fixed inset-0 sm:inset-auto sm:bottom-4 sm:right-4 z-50 w-full h-full sm:w-[380px] sm:h-[540px] flex flex-col overflow-hidden'}
+      style={docked
+        ? { background: 'var(--bg-card)', borderLeft: 'var(--border-hairline)' }
+        : { background: 'var(--bg-card)', borderRadius: '0', boxShadow: 'var(--shadow-popover)' }}
+      ref={el => { if (el && !docked && window.innerWidth >= 640) el.style.borderRadius = 'var(--radius-md)' }}
     >
       {/* Header */}
       <div className="shrink-0 flex items-center justify-between" style={{ padding: 'var(--space-2) var(--space-3)', borderBottom: 'var(--border-hairline)', background: 'var(--bg-card)' }}>
@@ -119,14 +127,16 @@ export default function ChatPanel({ user, socket, messages, onlineUsers, typingU
               </IconButton>
             </>
           )}
-          <IconButton
-            onClick={() => onMinimize(true)}
-            className="hidden sm:flex"
-            title="Minimize"
-            aria-label="Minimize"
-          >
-            <Minus className="w-5 h-5" />
-          </IconButton>
+          {!docked && (
+            <IconButton
+              onClick={() => onMinimize(true)}
+              className="hidden sm:flex"
+              title="Minimize"
+              aria-label="Minimize"
+            >
+              <Minus className="w-5 h-5" />
+            </IconButton>
+          )}
           <IconButton onClick={onClose} title="Close" aria-label="Close">
             <X className="w-5 h-5" />
           </IconButton>

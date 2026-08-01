@@ -9,7 +9,7 @@
 // affordances were the `?` shortcut and a buried avatar-menu row — a first
 // session had no visible way to do the product's core action.
 
-import { Terminal, Plus, HelpCircle } from 'lucide-react'
+import { Terminal, Plus, HelpCircle, MessageCircle } from 'lucide-react'
 import { Button, IconButton } from '../ui'
 import ViewSwitcher from '../ViewSwitcher'
 import ProjectAnchor from './ProjectAnchor'
@@ -39,6 +39,10 @@ export default function TopBar({
   onCreateTask,
   // Approvals inbox — opens a waiting_input task in the DetailPane.
   onSelectTask,
+  // Team chat dock (ui-shell-consolidation-001) — toggles like the shell.
+  onToggleChat,
+  chatUnread = 0,
+  chatOpen = false,
   // Global shell dock — toggles, so the same button that opened it closes it.
   onToggleGlobalShell,
   globalShellOpen = false,
@@ -97,6 +101,37 @@ export default function TopBar({
             data-testid="topbar-help"
           >
             <HelpCircle className="w-3.5 h-3.5" />
+          </IconButton>
+        )}
+        {onToggleChat && (
+          <IconButton
+            size="sm"
+            onClick={onToggleChat}
+            aria-label={chatOpen ? 'Close chat' : 'Open chat'}
+            aria-pressed={chatOpen}
+            title={chatOpen ? 'Close chat' : 'Team chat'}
+            data-testid="topbar-chat"
+            color={chatOpen ? 'var(--accent-app)' : undefined}
+            style={chatOpen
+              ? { background: 'var(--fill-quaternary, rgba(127,127,127,0.14))', position: 'relative' }
+              : { position: 'relative' }}
+          >
+            <MessageCircle className="w-3.5 h-3.5" />
+            {chatUnread > 0 && (
+              <span
+                data-testid="topbar-chat-unread"
+                style={{
+                  position: 'absolute', top: 0, right: 0,
+                  minWidth: 14, height: 14, padding: '0 3px',
+                  borderRadius: 'var(--radius-full)',
+                  background: 'var(--apple-red)', color: '#fff',
+                  fontSize: '9px', fontWeight: 'var(--font-bold)',
+                  lineHeight: '14px', textAlign: 'center',
+                }}
+              >
+                {chatUnread}
+              </span>
+            )}
           </IconButton>
         )}
         {/* Toggle, not a one-way open. aria-pressed states that contract for
