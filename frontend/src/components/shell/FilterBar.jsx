@@ -31,7 +31,12 @@ export default function FilterBar({
 }) {
   return (
     <div
-      className="shrink-0 flex items-center flex-wrap"
+      // nowrap + horizontal scroll instead of flex-wrap: the bar lives in a
+      // fixed 40px grid row, so wrapped pills were CLIPPED below ~900px
+      // (ui-mobile-appshell-001). Scrolling keeps every filter reachable at
+      // any width; desktop is visually unchanged.
+      className="shrink-0 flex items-center flex-nowrap overflow-x-auto mobile-scroll-hidden"
+      data-testid="filter-bar"
       style={{
         gridArea: 'filterbar',
         gap: 'var(--space-2)',
@@ -42,7 +47,7 @@ export default function FilterBar({
       }}
     >
       {/* Search */}
-      <div className="relative" style={{ minWidth: '220px', flex: '1 1 240px', maxWidth: '360px' }}>
+      <div className="relative shrink-0" style={{ minWidth: '160px', flex: '1 1 240px', maxWidth: '360px' }}>
         <Search
           className="absolute w-3.5 h-3.5"
           style={{ left: 'var(--space-2)', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }}
@@ -52,7 +57,7 @@ export default function FilterBar({
           placeholder="Search tasks…"
           value={searchQuery || ''}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="facelift-pill"
+          className="facelift-pill shrink-0"
           style={{
             width: '100%',
             padding: '0 var(--space-2) 0 calc(var(--space-2) + 20px)',
@@ -88,7 +93,7 @@ export default function FilterBar({
       <select
         value={filterType}
         onChange={(e) => setFilterType(e.target.value)}
-        className="facelift-pill"
+        className="facelift-pill shrink-0"
         style={{
           padding: '0 var(--space-2)',
           borderRadius: 'var(--radius-sm)',
@@ -110,7 +115,7 @@ export default function FilterBar({
       <select
         value={filterPriority}
         onChange={(e) => setFilterPriority(e.target.value)}
-        className="facelift-pill"
+        className="facelift-pill shrink-0"
         style={{
           padding: '0 var(--space-2)',
           borderRadius: 'var(--radius-sm)',
@@ -132,7 +137,7 @@ export default function FilterBar({
         variant={filterAssignee === 'mine' ? 'secondary' : 'ghost'}
         pill={false}
         size="sm"
-        className="facelift-pill"
+        className="facelift-pill shrink-0"
         onClick={() => setFilterAssignee(filterAssignee === 'mine' ? 'all' : 'mine')}
       >
         <UserCircle2 className="w-3.5 h-3.5" />
@@ -144,7 +149,7 @@ export default function FilterBar({
         variant={filterToday ? 'secondary' : 'ghost'}
         pill={false}
         size="sm"
-        className="facelift-pill"
+        className="facelift-pill shrink-0"
         onClick={() => setFilterToday((v) => !v)}
       >
         <Clock className="w-3.5 h-3.5" />
@@ -156,7 +161,7 @@ export default function FilterBar({
         variant={filterStale ? 'secondary' : 'ghost'}
         pill={false}
         size="sm"
-        className="facelift-pill"
+        className="facelift-pill shrink-0"
         onClick={() => setFilterStale((v) => !v)}
         style={{
           color: filterStale ? 'var(--apple-orange)' : undefined,
@@ -172,7 +177,7 @@ export default function FilterBar({
         variant={filterShellActive ? 'secondary' : 'ghost'}
         pill={false}
         size="sm"
-        className="facelift-pill"
+        className="facelift-pill shrink-0"
         onClick={() => setFilterShellActive((v) => !v)}
         title="Show only tasks with an alive shell session"
         style={{
@@ -186,7 +191,7 @@ export default function FilterBar({
 
       {/* Reset */}
       {activeFilterCount > 0 && (
-        <Button variant="danger" pill={false} size="sm" className="facelift-pill" onClick={resetAllFilters}>
+        <Button variant="danger" pill={false} size="sm" className="facelift-pill shrink-0" onClick={resetAllFilters}>
           <X className="w-3 h-3" />
           Reset ({activeFilterCount})
         </Button>
@@ -195,7 +200,7 @@ export default function FilterBar({
       <div className="flex-1" />
 
       {/* Count */}
-      <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>
+      <span className="shrink-0" style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>
         {filteredCount} of {totalCount}
       </span>
     </div>
