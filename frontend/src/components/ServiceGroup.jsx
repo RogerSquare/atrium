@@ -11,6 +11,15 @@ import DemoCard from './DemoCard'
 // main-content surface — bigger padding, card chrome, status pills instead
 // of an uppercase label.
 
+// Job surfaces (feat-service-surfaces-001) report idle/succeeded/failed from
+// their last run rather than running/stopped — give those states honest colors
+// instead of collapsing everything that isn't "running" into red.
+const DOT_COLOR = {
+  running: E2E_STATUS_COLOR.passing,
+  succeeded: E2E_STATUS_COLOR.passing,
+  idle: E2E_STATUS_COLOR.pending,
+}
+
 function StatusDot({ status }) {
   const running = status === 'running'
   return (
@@ -21,7 +30,7 @@ function StatusDot({ status }) {
         width: '8px',
         height: '8px',
         borderRadius: '50%',
-        background: running ? E2E_STATUS_COLOR.passing : E2E_STATUS_COLOR.failing,
+        background: DOT_COLOR[status] || E2E_STATUS_COLOR.failing,
         boxShadow: running ? `0 0 6px ${E2E_STATUS_COLOR.passing}` : 'none',
         flexShrink: 0,
       }}
@@ -32,7 +41,10 @@ function StatusDot({ status }) {
 function ServicePill({ service, inFlight, onAction }) {
   const running = service.status === 'running'
   const isRunningAction = running ? 'stop' : 'start'
-  const label = running ? `Stop ${service.name}` : `Start ${service.name}`
+  // "Run" is the honest verb for a run-to-completion job; "Start" implies a
+  // long-lived process (feat-service-surfaces-001).
+  const startVerb = service.surface === 'job' ? 'Run' : 'Start'
+  const label = running ? `Stop ${service.name}` : `${startVerb} ${service.name}`
   const handleClick = (e) => {
     e.stopPropagation()
     onAction(service, isRunningAction)
@@ -48,7 +60,7 @@ function ServicePill({ service, inFlight, onAction }) {
     >
       <StatusDot status={service.status} />
       <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }} title={service.name}>
-        :{service.port}
+        {service.port ? `:${service.port}` : (service.surface || service.name)}
       </span>
       <button
         data-testid={running ? 'service-stop-btn' : 'service-start-btn'}

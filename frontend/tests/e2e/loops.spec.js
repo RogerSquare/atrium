@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { seedSession, mockCoreApi } from './helpers/session.js';
 
 // Loops view e2e (feat-loops-ui-global-001). The full create -> list -> toggle
 // -> run flow needs a backend that serves /api/loops (model+engine phases) plus
@@ -22,11 +23,8 @@ function decodeUsername(jwt) {
 // the view + create modal render.
 test.describe('Loops view (render)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      localStorage.setItem('taskBoardUser', JSON.stringify({ username: 'e2e' }));
-      localStorage.setItem('taskBoardView', 'loops');
-      localStorage.setItem('taskBoardThemeMigratedToOled', '1');
-    });
+    await mockCoreApi(page);
+    await page.addInitScript(seedSession, { storage: { taskBoardView: 'loops' } });
     await page.goto('/');
   });
 
@@ -41,12 +39,8 @@ test.describe('Loops view (render)', () => {
 // that project's loops tab. Render-level (no backend needed).
 test.describe('Loops view (project-scoped)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      localStorage.setItem('taskBoardUser', JSON.stringify({ username: 'e2e' }));
-      localStorage.setItem('taskBoardView', 'loops');
-      localStorage.setItem('opusBoardActiveProject', 'Atrium');
-      localStorage.setItem('taskBoardThemeMigratedToOled', '1');
-    });
+    await mockCoreApi(page);
+    await page.addInitScript(seedSession, { storage: { taskBoardView: 'loops', opusBoardActiveProject: 'Atrium' } });
     await page.goto('/');
   });
 
