@@ -351,6 +351,7 @@ export default function AppShell() {
         onOpenSettings={() => setShowSettings(true)}
         onOpenHelp={() => setShowHelp(true)}
         onCreateTask={() => setShowCreateTask(true)}
+        onSelectTask={selectTaskFromFocal}
         onToggleGlobalShell={() => setShowGlobalShell(v => !v)}
         globalShellOpen={showGlobalShell}
       />
@@ -447,6 +448,7 @@ export default function AppShell() {
               task={selectedTask}
               currentUser={user}
               onClose={() => selectTask(null)}
+              onSelectTask={selectTaskFromFocal}
               onUpdateTask={undoRedo.updateTaskWithUndo}
               activeAgents={activeAgents}
               onStartAgent={handleStartAgent}

@@ -63,8 +63,10 @@ async function mockApi(page, { onServicePost }) {
 
 async function openServicesTab(page) {
   await page.goto('/');
-  // Avatar popover (top bar) → Settings → Services tab.
-  const avatar = page.locator('button[aria-haspopup="menu"]').first();
+  // Avatar popover (top bar) → Settings → Services tab. Target the trigger by
+  // testid — the TopBar has other aria-haspopup="menu" buttons now (the
+  // approvals bell), so a positional .first() selector is ambiguous.
+  const avatar = page.getByTestId('avatar-trigger');
   await expect(avatar).toBeVisible({ timeout: 20_000 });
   await avatar.click();
   await page.getByText('Settings', { exact: true }).click();

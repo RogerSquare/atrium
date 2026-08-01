@@ -51,6 +51,7 @@ export default function AvatarPopover({
         aria-haspopup="menu"
         aria-expanded={open}
         title={user?.username}
+        data-testid="avatar-trigger"
       >
         <Avatar
           size="sm"
