@@ -1,8 +1,51 @@
 import { useState, useEffect } from 'react'
-import { X, Save, FolderOpen, Play, Square, RefreshCw, Plus, Trash2, Check, Shield, Bot, Server, Palette, User, Info, Database, Download, Key, Pencil, RotateCcw, ExternalLink, Terminal, Eye, ChevronLeft, Menu, Sparkles } from 'lucide-react'
+import { X, Save, FolderOpen, Play, Square, RefreshCw, Plus, Trash2, Check, Shield, Bot, Server, Palette, User, Info, Database, Download, Key, Pencil, RotateCcw, ExternalLink, Terminal, Eye, ChevronLeft, ChevronDown, ChevronRight, Menu, Sparkles } from 'lucide-react'
 import { API_URL, apiFetch } from '../config'
 import ModalOverlay from './ModalOverlay'
 import useIsMobile from '../hooks/useIsMobile'
+
+// Service model v2 (feat-service-surfaces-001). Mirrors backend/lib/serviceModel.js:
+// only web/server surfaces are probed over a port, so only they require one.
+const SURFACES = ['web', 'server', 'desktop', 'cli', 'job']
+const surfaceNeedsPort = (surface) => surface === 'web' || surface === 'server'
+
+// Job surfaces resolve to idle/succeeded/failed from the last run's exit code;
+// everything else stays running/stopped (+ unavailable for Docker-less containers).
+const STATUS_STYLE = {
+  running: 'bg-green-500/15 text-green-400',
+  succeeded: 'bg-sky-500/15 text-sky-400',
+  failed: 'bg-red-500/10 text-red-400',
+  idle: 'bg-app-border/60 text-app-text-muted',
+  unavailable: 'bg-amber-500/15 text-amber-400',
+}
+const statusStyle = (status) => STATUS_STYLE[status] || 'bg-red-500/10 text-red-400'
+
+const parseEnvText = (text) => {
+  const env = {}
+  for (const line of (text || '').split('\n')) {
+    const t = line.trim()
+    if (!t || t.startsWith('#')) continue
+    const i = t.indexOf('=')
+    if (i <= 0) continue
+    env[t.slice(0, i).trim()] = t.slice(i + 1)
+  }
+  return env
+}
+const envToText = (env) => env && typeof env === 'object'
+  ? Object.entries(env).map(([k, v]) => `${k}=${v}`).join('\n')
+  : ''
+
+const formatUptime = (startedAt) => {
+  if (!startedAt) return null
+  const ms = Date.now() - new Date(startedAt).getTime()
+  if (Number.isNaN(ms) || ms < 0) return null
+  const m = Math.floor(ms / 60000)
+  if (m < 1) return '<1m'
+  const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60
+  if (d > 0) return `${d}d ${h}h`
+  if (h > 0) return `${h}h ${mm}m`
+  return `${mm}m`
+}
 
 export default function Settings({ theme, onSetTheme, onClose, currentUser, onUserUpdate, onOpenPreview, onOpenSetup }) {
   const [activeTab, setActiveTab] = useState('appearance')
@@ -18,7 +61,9 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
   const [refreshing, setRefreshing] = useState(false)
   const [message, setMessage] = useState('')
   const [showAddService, setShowAddService] = useState(false)
-  const [newService, setNewService] = useState({ name: '', group: '', port: '', cwd: '', startCmd: '', type: 'process', container_name: '' })
+  const EMPTY_SERVICE = { name: '', group: '', port: '', cwd: '', startCmd: '', type: 'process', container_name: '', surface: 'web', autostart: false, envText: '' }
+  const [newService, setNewService] = useState(EMPTY_SERVICE)
+  const [collapsedGroups, setCollapsedGroups] = useState(() => new Set())
   const [users, setUsers] = useState([])
   const [agentsEnabled, setAgentsEnabled] = useState(true)
   const [savedAgentsEnabled, setSavedAgentsEnabled] = useState(true)
@@ -217,11 +262,24 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
     } catch (err) { setMessage(`Failed to ${action} group — network error`) }
   }
 
+  // Collapsible service groups (absorbs ui-services-009).
+  const toggleGroup = (groupName) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(groupName)) next.delete(groupName)
+      else next.add(groupName)
+      return next
+    })
+  }
+
   const handleAddService = async (e) => {
     e.preventDefault()
+    const { envText, ...payload } = newService
+    const env = parseEnvText(envText)
+    if (Object.keys(env).length > 0) payload.env = env
     try {
-      const res = await apiFetch(`${API_URL}/services`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newService) })
-      if (res.ok) { setNewService({ name: '', group: '', port: '', cwd: '', startCmd: '' }); setShowAddService(false); fetchServices() }
+      const res = await apiFetch(`${API_URL}/services`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      if (res.ok) { setNewService(EMPTY_SERVICE); setShowAddService(false); fetchServices() }
       else setMessage('Failed to add service')
     } catch (err) { setMessage('Failed to add service — network error') }
   }
@@ -233,12 +291,17 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
 
   const handleEditService = (service) => {
     setEditingService(service.id)
-    setEditServiceData({ name: service.name, group: service.group, port: service.port, cwd: service.cwd, startCmd: service.startCmd, depends_on: service.depends_on || [], preview: service.preview ?? false })
+    setEditServiceData({ name: service.name, group: service.group, port: service.port, cwd: service.cwd, startCmd: service.startCmd, depends_on: service.depends_on || [], preview: service.preview ?? false, surface: service.surface || '', autostart: !!service.autostart, envText: envToText(service.env) })
   }
 
   const handleSaveService = async (id) => {
+    const { envText, ...payload } = editServiceData
+    payload.env = parseEnvText(envText)
+    // '' means "legacy, no surface" — the backend rejects surface values
+    // outside the enum, so omit rather than send the empty string.
+    if (!payload.surface) delete payload.surface
     try {
-      const res = await apiFetch(`${API_URL}/services/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editServiceData) })
+      const res = await apiFetch(`${API_URL}/services/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       if (res.ok) { setEditingService(null); fetchServices() }
       else setMessage('Failed to save service')
     } catch (err) { setMessage('Failed to save service — network error') }
@@ -732,6 +795,38 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                           ))}
                         </div>
 
+                        {/* Surface picker (feat-service-surfaces-001) — what kind of thing
+                            this service is. Drives preview eligibility, whether a port is
+                            required, and how status is resolved. */}
+                        <div>
+                          <label className="block text-[9px] uppercase font-semibold text-app-text-muted mb-1">Surface</label>
+                          <div className="flex gap-1.5 flex-wrap" role="radiogroup" aria-label="Service surface">
+                            {SURFACES.map(val => (
+                              <button
+                                key={val}
+                                type="button"
+                                role="radio"
+                                aria-checked={newService.surface === val}
+                                onClick={() => setNewService({ ...newService, surface: val })}
+                                className={`px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase transition-all border ${
+                                  newService.surface === val
+                                    ? 'bg-app-accent text-white border-app-accent'
+                                    : 'bg-app-card text-app-text-muted border-app-border hover:text-app-text'
+                                }`}
+                              >{val}</button>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-app-text-muted mt-1.5 leading-relaxed">
+                            {{
+                              web: 'Browser UI listening on a port — shows up in the preview panel.',
+                              server: 'Backend or API listening on a port. Not previewable.',
+                              desktop: 'GUI app with no port — alive while its process runs.',
+                              cli: 'Terminal app with no port — alive while its process runs.',
+                              job: 'Runs to completion (build, test, script) — status comes from the exit code.',
+                            }[newService.surface]}
+                          </p>
+                        </div>
+
                         {newService.type === 'container' ? (
                           <>
                             <div className="grid grid-cols-2 gap-3">
@@ -746,7 +841,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                         ) : (
                           <>
                             <div className="grid grid-cols-2 gap-3">
-                              <input required type="number" placeholder="Port" value={newService.port} onChange={(e) => setNewService({...newService, port: e.target.value})} className="bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
+                              <input required={surfaceNeedsPort(newService.surface)} type="number" placeholder={surfaceNeedsPort(newService.surface) ? 'Port' : 'Port (optional)'} value={newService.port} onChange={(e) => setNewService({...newService, port: e.target.value})} className="bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
                               <input required placeholder="Start Cmd" value={newService.startCmd} onChange={(e) => setNewService({...newService, startCmd: e.target.value})} className="bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
                             </div>
                             <input required placeholder="Working Dir" value={newService.cwd} onChange={(e) => setNewService({...newService, cwd: e.target.value})} className="w-full bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
@@ -756,7 +851,31 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                           </>
                         )}
 
-                        <div className="flex justify-end">
+                        {/* Per-service environment (absorbs ui-services-010) — merged over the
+                            backend's env at spawn time. */}
+                        <div>
+                          <label className="block text-[9px] uppercase font-semibold text-app-text-muted mb-1" htmlFor="new-service-env">Environment Variables</label>
+                          <textarea
+                            id="new-service-env"
+                            rows={3}
+                            placeholder={'KEY=value — one per line (optional)'}
+                            value={newService.envText}
+                            onChange={(e) => setNewService({ ...newService, envText: e.target.value })}
+                            className="w-full bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs font-mono text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent resize-y"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                          {/* Autostart (absorbs ui-services-008) — started by the backend at boot. */}
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={newService.autostart}
+                              onChange={(e) => setNewService({ ...newService, autostart: e.target.checked })}
+                              className="rounded border-app-border text-app-accent focus:ring-app-accent w-3 h-3"
+                            />
+                            <span className="text-[10px] font-medium text-app-text-muted">Start automatically when Atrium boots</span>
+                          </label>
                           <button type="submit" className="bg-app-accent hover:bg-app-accent-hover text-white px-4 py-1.5 rounded-lg text-[10px] font-semibold uppercase transition-all shadow-md">Register</button>
                         </div>
                       </form>
@@ -765,14 +884,21 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                       {Object.entries(services.reduce((acc, s) => { const g = s.group || 'Uncategorized'; if (!acc[g]) acc[g] = []; acc[g].push(s); return acc }, {})).map(([groupName, groupServices]) => (
                         <div key={groupName}>
                           <div className="flex justify-between items-center mb-2 px-1">
-                            <span className="text-[10px] uppercase font-black text-app-text-muted tracking-[0.15em]">
+                            <button
+                              type="button"
+                              onClick={() => toggleGroup(groupName)}
+                              aria-expanded={!collapsedGroups.has(groupName)}
+                              className="flex items-center gap-1 text-[10px] uppercase font-black text-app-text-muted tracking-[0.15em] hover:text-app-text transition-colors"
+                            >
+                              {collapsedGroups.has(groupName) ? <ChevronRight className="w-3 h-3 shrink-0" /> : <ChevronDown className="w-3 h-3 shrink-0" />}
                               {groupName} <span className="text-app-text-muted/50 normal-case tracking-normal font-semibold">({groupServices.filter(s => s.status === 'running').length}/{groupServices.length})</span>
-                            </span>
+                            </button>
                             <div className="flex gap-1">
                               <button onClick={() => handleGroupAction(groupName, 'start')} className="p-1 text-app-text-muted hover:text-green-500 transition-colors" title="Start group"><Play className="w-3 h-3 fill-current" /></button>
                               <button onClick={() => handleGroupAction(groupName, 'stop')} className="p-1 text-app-text-muted hover:text-red-400 transition-colors" title="Stop group"><Square className="w-3 h-3 fill-current" /></button>
                             </div>
                           </div>
+                          {!collapsedGroups.has(groupName) && (
                           <div className="space-y-1.5">
                             {groupServices.map(s => (
                               <div key={s.id} className={`rounded-xl border transition-colors group ${s.status === 'running' ? 'bg-green-500/5 border-green-500/15' : 'bg-app-bg border-app-border'}`}>
@@ -788,6 +914,29 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                                       <input value={editServiceData.startCmd} onChange={(e) => setEditServiceData({...editServiceData, startCmd: e.target.value})} placeholder="Start Cmd" className="bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
                                     </div>
                                     <input value={editServiceData.cwd} onChange={(e) => setEditServiceData({...editServiceData, cwd: e.target.value})} placeholder="Working Dir" className="w-full bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent" />
+                                    <div>
+                                      <label className="block text-[9px] uppercase font-semibold text-app-text-muted mb-1" htmlFor={`edit-surface-${s.id}`}>Surface</label>
+                                      <select
+                                        id={`edit-surface-${s.id}`}
+                                        value={editServiceData.surface}
+                                        onChange={(e) => setEditServiceData({...editServiceData, surface: e.target.value})}
+                                        className="w-full bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent cursor-pointer"
+                                      >
+                                        <option value="">legacy (port-based)</option>
+                                        {SURFACES.map(v => <option key={v} value={v}>{v}</option>)}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="block text-[9px] uppercase font-semibold text-app-text-muted mb-1" htmlFor={`edit-env-${s.id}`}>Environment Variables</label>
+                                      <textarea
+                                        id={`edit-env-${s.id}`}
+                                        rows={3}
+                                        placeholder={'KEY=value — one per line'}
+                                        value={editServiceData.envText}
+                                        onChange={(e) => setEditServiceData({...editServiceData, envText: e.target.value})}
+                                        className="w-full bg-app-card border border-app-border rounded-lg px-3 py-1.5 text-xs font-mono text-app-text outline-none focus-visible:ring-1 focus-visible:ring-app-accent resize-y"
+                                      />
+                                    </div>
                                     <div>
                                       <label className="block text-[9px] uppercase font-semibold text-app-text-muted mb-1">Depends On</label>
                                       <div className="flex flex-wrap gap-1.5">
@@ -810,7 +959,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                                         {services.length <= 1 && <span className="text-[10px] text-app-text-muted/50 italic">No other services</span>}
                                       </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-4 flex-wrap">
                                       <label className="flex items-center gap-1.5 cursor-pointer">
                                         <input
                                           type="checkbox"
@@ -819,6 +968,15 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                                           className="rounded border-app-border text-app-accent focus:ring-app-accent w-3 h-3"
                                         />
                                         <span className="text-[10px] font-medium text-app-text-muted">Show in Browser Preview</span>
+                                      </label>
+                                      <label className="flex items-center gap-1.5 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={editServiceData.autostart ?? false}
+                                          onChange={(e) => setEditServiceData({...editServiceData, autostart: e.target.checked})}
+                                          className="rounded border-app-border text-app-accent focus:ring-app-accent w-3 h-3"
+                                        />
+                                        <span className="text-[10px] font-medium text-app-text-muted">Autostart at boot</span>
                                       </label>
                                     </div>
                                     <div className="flex gap-2 justify-end">
@@ -830,12 +988,20 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                                   /* View mode */
                                   <div>
                                     <div className="flex items-center justify-between p-2.5">
-                                      <div className="flex items-center gap-3">
-                                        <div className={`px-2 py-0.5 rounded text-[9px] font-semibold uppercase shrink-0 ${s.status === 'running' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/10 text-red-400'}`}>{s.status}</div>
-                                        <div>
+                                      <div className="flex items-center gap-3 min-w-0">
+                                        <div className={`px-2 py-0.5 rounded text-[9px] font-semibold uppercase shrink-0 ${statusStyle(s.status)}`}>{s.status}</div>
+                                        <div className="min-w-0">
                                           <span className="text-xs font-semibold text-app-text">{s.name}</span>
-                                          <span className="text-[10px] text-app-text-muted ml-2">:{s.port}</span>
+                                          {/* Kind/surface chip — container-vs-process (and which surface)
+                                              visible without opening the edit form. */}
+                                          <span className="text-[8px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-app-border/60 text-app-text-muted ml-2 align-middle" data-testid="service-surface-badge">
+                                            {s.type === 'container' ? 'container' : (s.surface || 'process')}
+                                          </span>
+                                          {s.port ? <span className="text-[10px] text-app-text-muted ml-2">:{s.port}</span> : null}
                                           {s.pid && <span className="text-[9px] text-app-text-muted/50 ml-2">PID {s.pid}</span>}
+                                          {s.status === 'running' && formatUptime(s.startedAt) && (
+                                            <span className="text-[9px] text-app-text-muted/50 ml-2" data-testid="service-uptime">up {formatUptime(s.startedAt)}</span>
+                                          )}
                                           {s.depends_on && s.depends_on.length > 0 && (
                                             <span className="text-[9px] text-app-text-muted/60 ml-2">
                                               depends on {s.depends_on.map(d => services.find(x => x.id === d)?.name || d).join(', ')}
@@ -848,12 +1014,12 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                                         <button onClick={() => handleToggleLogs(s.id)} className={`p-1 transition-all rounded ${expandedLogs === s.id ? 'text-app-accent' : 'text-app-text-muted hover:text-app-accent opacity-0 group-hover:opacity-100'}`} title="View logs">
                                           <Terminal className="w-3 h-3" />
                                         </button>
-                                        {s.status === 'running' && onOpenPreview && (
+                                        {s.status === 'running' && s.port && onOpenPreview && (
                                           <button onClick={() => { onOpenPreview(s); onClose() }} className="p-1 text-app-text-muted hover:text-app-accent opacity-0 group-hover:opacity-100 transition-all" title="Preview in panel">
                                             <Eye className="w-3 h-3" />
                                           </button>
                                         )}
-                                        {s.status === 'running' && (
+                                        {s.status === 'running' && s.port && (
                                           <a href={`http://localhost:${s.port}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1 text-app-text-muted hover:text-app-accent opacity-0 group-hover:opacity-100 transition-all" title="Open in browser">
                                             <ExternalLink className="w-3 h-3" />
                                           </a>
@@ -871,6 +1037,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                                         )}
                                         <button
                                           onClick={() => s.status === 'running' ? handleStopService(s.id, s.name) : handleServiceAction(s.id, 'start')}
+                                          title={s.status === 'running' ? 'Stop' : (s.surface === 'job' ? 'Run' : 'Start')}
                                           className={`p-1.5 rounded-lg transition-all border ${s.status === 'running' ? 'text-red-400 border-red-900/20 bg-red-900/5 hover:bg-red-900/10' : 'text-green-400 border-green-900/20 bg-green-900/5 hover:bg-green-900/10'}`}
                                         >
                                           {s.status === 'running' ? <Square className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
@@ -898,6 +1065,7 @@ export default function Settings({ theme, onSetTheme, onClose, currentUser, onUs
                               </div>
                             ))}
                           </div>
+                          )}
                         </div>
                       ))}
                       {services.length === 0 && <div className="text-center text-app-text-muted/40 text-xs italic py-8">No services registered</div>}

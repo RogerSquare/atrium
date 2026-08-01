@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { seedSession, mockCoreApi } from './helpers/session.js';
 
 // Dogfood for feat-e2e-validation-001. Confirms the atrium frontend
 // hydrates past its initial shell — a step deeper than smoke.spec.js.
@@ -16,20 +17,16 @@ test('atrium frontend hydrates past initial shell', async ({ page }) => {
 // rail to reclaim horizontal space, and the choice persists (localStorage,
 // so it survives reload AND a backend restart since it lives in the browser).
 test.describe('Draft column collapse', () => {
-  // Seed localStorage before any app code runs: bypass the login gate
-  // (AuthContext restores `user` from taskBoardUser), force the board view,
-  // and skip the one-time OLED theme migration. This runs on every navigation
-  // (including reload), so it MUST be idempotent — it must NOT touch
-  // taskBoardDraftCollapsed, or it would wipe the very state under test on
-  // reload. The fresh per-test context guarantees we start expanded.
-  const seed = () => {
-    window.localStorage.setItem('taskBoardUser', JSON.stringify({ username: 'e2e' }));
-    window.localStorage.setItem('taskBoardView', 'board');
-    window.localStorage.setItem('taskBoardThemeMigratedToOled', '1');
-  };
-
+  // Seed localStorage before any app code runs: bypass the login gate (the
+  // shared helper builds a decodable token — lib/session.js drops tokenless
+  // users), force the board view, and skip the one-time OLED theme migration.
+  // This runs on every navigation (including reload), so it MUST be idempotent
+  // — it must NOT touch taskBoardDraftCollapsed, or it would wipe the very
+  // state under test on reload. The fresh per-test context guarantees we
+  // start expanded.
   test('collapses to a rail, persists across reload, and re-expands', async ({ page }) => {
-    await page.addInitScript(seed);
+    await mockCoreApi(page);
+    await page.addInitScript(seedSession, { storage: { taskBoardView: 'board' } });
     await page.goto('/');
 
     const collapseBtn = page.getByRole('button', { name: 'Collapse Draft column' });

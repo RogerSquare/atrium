@@ -171,6 +171,10 @@ export default function PreviewPanel({ services, onClose, socket, activeProject 
   const frontendServices = services.filter(s => {
     if (s.preview === true) return true
     if (s.preview === false) return false
+    // Service model v2 (feat-service-surfaces-001): the surface says outright
+    // whether this is a browser UI — only `web` is previewable. The keyword
+    // heuristic below survives ONLY for legacy services with no surface set.
+    if (s.surface) return s.surface === 'web'
     const name = (s.name || '').toLowerCase()
     const group = (s.group || '').toLowerCase()
     const cmd = (s.startCmd || '').toLowerCase()
