@@ -73,6 +73,15 @@ services:
       # allow any container on this host; set it to shrink the blast radius to
       # the services you actually manage, e.g. "artifex,memos".
       ALLOWED_CONTAINERS: "${ATRIUM_ALLOWED_CONTAINERS:-}"
+      # Ephemeral test-job capability (devops-runner-proxy-jobs-001). EMPTY
+      # means OFF — no create/wait/remove shapes exist at all. Set to a
+      # comma-separated image allow-list (e.g. "swift:6") to let runners create
+      # unprivileged atrium-job-* containers from EXACTLY those images. Images
+      # must be pre-pulled; the proxy grants no pull.
+      ATRIUM_RUNNER_IMAGES: "${ATRIUM_RUNNER_IMAGES:-}"
+      # Host path that job containers may bind-mount READ-ONLY (the checkout
+      # the tests run against). Empty ⇒ binds refused entirely.
+      ATRIUM_RUNNER_WORKSPACE: "${ATRIUM_RUNNER_WORKSPACE:-}"
     # Never published to the host — only reachable on the compose network.
     expose:
       - "2375"

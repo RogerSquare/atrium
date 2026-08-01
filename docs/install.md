@@ -48,9 +48,33 @@ Layer these onto the base file with `-f`:
 |---|---|
 | `docker-compose.fresh.yml` | Throwaway empty-state sandbox on its own volume/project — try Atrium without touching your data. Set `ATRIUM_PORT` on the CLI. |
 | `docker-compose.shared-tasks.yml` | Point the container at a **native** install's live `backend/tasks` + `projects.json` instead of its own volume. Read the file's header first — the risk is lost updates if both instances edit the same task at once. |
-| `docker-compose.docker-services.yml` | Add the socket allow-list proxy so `type: container` services can be started/stopped from the board. Restrict names with `ATRIUM_ALLOWED_CONTAINERS`. |
+| `docker-compose.docker-services.yml` | Add the socket allow-list proxy so `type: container` services can be started/stopped from the board. Restrict names with `ATRIUM_ALLOWED_CONTAINERS`. Optionally enable ephemeral test-job containers with `ATRIUM_RUNNER_IMAGES` (see below). |
 
 Example: `docker compose -f docker-compose.yml -f docker-compose.docker-services.yml up -d`.
+
+#### Test-job containers and what enabling them grants
+
+The proxy is deny-by-default: out of the box it allows exactly six request
+shapes (ping, inspect, logs, start, stop, restart) and refuses everything else
+— including `create` and `exec`, which is what makes handing Atrium a Docker
+socket tolerable.
+
+Setting `ATRIUM_RUNNER_IMAGES` (comma-separated exact image refs, e.g.
+`swift:6`) turns on a second, narrow shape so test runners can execute suites
+in throwaway containers. **The exact residual capability granted is:** create
+and run **unprivileged** containers **from the listed images only**, named into
+the proxy-owned `atrium-job-*` namespace, on the default bridge network, with
+**no published ports**, **no added capabilities/devices/security options/host
+namespaces**, and **no writable mounts** — at most a **read-only** bind of the
+path you declare in `ATRIUM_RUNNER_WORKSPACE` (unset ⇒ no binds at all). The
+caller can also wait on, read logs of, and remove containers **in that
+namespace only**. It still cannot exec into any container, pull or build
+images (pre-pull runner images yourself: `docker pull swift:6`), or remove /
+create anything outside `atrium-job-*`.
+
+Leave `ATRIUM_RUNNER_IMAGES` empty and none of those shapes exist — empty
+means **off**, not "any image". Every refused request is logged by the proxy
+(`DENY …`), and every job create/remove is logged as the audit trail.
 
 ---
 
