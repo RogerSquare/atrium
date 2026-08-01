@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+	<testcase name="fails on purpose" time="0.000703" classname="test" failure="intentional failure — red-path demo">
+		<failure type="testCodeFailure" message="intentional failure — red-path demo">
+[Error [ERR_TEST_FAILURE]: intentional failure — red-path demo] {
+  code: 'ERR_TEST_FAILURE',
+  failureType: 'testCodeFailure',
+  cause: AssertionError [ERR_ASSERTION]: intentional failure — red-path demo
+      at TestContext.&lt;anonymous> (file:///C:/Users/RogerSquare/Documents/opencode/atrium/samples/junit-demo/node/fail-demo.test.mjs:7:41)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1047:25)
+      at Test.start (node:internal/test_runner/test:944:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+}
+		</failure>
+	</testcase>
+	<testcase name="adds" time="0.000837" classname="test"/>
+	<testcase name="multiplies" time="0.000123" classname="test"/>
+	<!-- tests 3 -->
+	<!-- suites 0 -->
+	<!-- pass 2 -->
+	<!-- fail 1 -->
+	<!-- cancelled 0 -->
+	<!-- skipped 0 -->
+	<!-- todo 0 -->
+	<!-- duration_ms 86.1814 -->
+</testsuites>
