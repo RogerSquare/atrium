@@ -3,14 +3,29 @@ import { X } from 'lucide-react'
 import ModalOverlay from './ModalOverlay'
 import { apiFetch } from '../config'
 import { Button, IconButton, Input, Select } from './ui'
+import { TASK_ID_REGEX, CATEGORIES, nextTaskId } from '../lib/taskId'
 
-// Must match backend/lib/taskIdValidator.js. See CLAUDE.md "Task ID (STRICT)".
-const TASK_ID_REGEX = /^(feat|bug|ui|opt|comp|devops|mobile)(-[a-z0-9]+)+-\d{3}$/
 const TASK_ID_HELPER = 'Format: category-descriptor-NNN (e.g. feat-auth-001). Category: feat, bug, ui, opt, comp, devops, mobile.'
 
-export default function CreateTaskModal({ projects, activeProject, onClose, onCreateTask }) {
+// The workflow controls below write these tags — previously they were magic
+// strings the user had to know to type (ui-create-dejargon-001).
+const PHASE_OPTIONS = [
+  { id: '', label: 'None — a regular single-phase task' },
+  { id: 'phase-research', label: 'Research — read the code, report findings (no code)' },
+  { id: 'phase-plan', label: 'Plan — produce a phased plan from research (no code)' },
+  { id: 'phase-implement', label: 'Implement — execute an approved plan' },
+]
+const FLAG_TOGGLES = [
+  { tag: 'tdd', label: 'Test-driven', hint: 'Agent must follow red-green-refactor while implementing' },
+  { tag: 'no-code', label: 'No code ships', hint: 'Docs / research / config only — skips the branch + PR requirement' },
+  { tag: 'no-e2e', label: 'No UI surface', hint: 'Backend or infra only — skips the Playwright e2e requirement' },
+]
+const PHASE_TAGS = ['phase-research', 'phase-plan', 'phase-implement']
+
+export default function CreateTaskModal({ projects, activeProject, onClose, onCreateTask, tasks = [] }) {
   const [title, setTitle] = useState('')
-  const [taskId, setTaskId] = useState('')
+  const [category, setCategory] = useState('feat')
+  const [idOverride, setIdOverride] = useState('')
   const [project, setProject] = useState(activeProject === 'All' ? 'Root' : activeProject)
   const [type, setType] = useState('fullstack')
   const [priority, setPriority] = useState('medium')
@@ -19,8 +34,23 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
   const [templates, setTemplates] = useState([])
   const [selectedTemplate, setSelectedTemplate] = useState('')
 
-  const idValid = TASK_ID_REGEX.test(taskId)
-  const canSubmit = title.trim() && idValid
+  // The id is derived (accepted default Q10) — hand-authoring survives as an
+  // advanced override, validated by the same regex the backend enforces.
+  const autoId = nextTaskId(category, title, tasks)
+  const overrideValid = TASK_ID_REGEX.test(idOverride)
+  const taskId = idOverride ? idOverride : autoId
+  const canSubmit = Boolean(title.trim()) && (idOverride === '' || overrideValid)
+
+  const phaseTag = tags.find(t => PHASE_TAGS.includes(t)) || ''
+  const setPhaseTag = (next) => {
+    setTags(prev => {
+      const rest = prev.filter(t => !PHASE_TAGS.includes(t))
+      return next ? [...rest, next] : rest
+    })
+  }
+  const toggleFlag = (tag) => {
+    setTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])
+  }
 
   useEffect(() => {
     apiFetch('/api/tasks/templates')
@@ -50,7 +80,7 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
   return (
     <ModalOverlay onClose={onClose} titleId="create-task-title">
       <div
-        className="w-full h-full sm:h-auto sm:max-w-2xl flex flex-col overflow-hidden"
+        className="w-full h-full sm:h-auto sm:max-h-[85vh] sm:max-w-2xl flex flex-col overflow-hidden"
         style={{ background: 'var(--bg-card)', borderRadius: '0', boxShadow: 'var(--shadow-popover)' }}
         ref={el => { if (el && window.innerWidth >= 640) el.style.borderRadius = 'var(--radius-md)' }}
       >
@@ -91,28 +121,57 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
             />
           </div>
 
-          {/* Task ID */}
+          {/* Category + derived id (ui-create-dejargon-001). The id used to be
+              a mandatory hand-authored regex-gated field — the biggest
+              first-session jargon wall. */}
           <div style={{ marginBottom: 'var(--space-5)' }}>
-            <label style={{ display: 'block', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>Task ID</label>
-            <Input
-              type="text"
-              required
-              placeholder="feat-auth-001"
-              value={taskId}
-              onChange={(e) => setTaskId(e.target.value.trim())}
-              variant={taskId && !idValid ? 'error' : 'default'}
-              className="w-full"
-              style={{ fontFamily: 'var(--font-mono, ui-monospace, monospace)' }}
-            />
-            <div
-              style={{
-                marginTop: 'var(--space-2)',
-                fontSize: 'var(--text-caption2)',
-                color: taskId && !idValid ? 'var(--apple-red)' : 'var(--text-tertiary)',
-              }}
-            >
-              {taskId && !idValid ? `"${taskId}" doesn't match the format. ` : ''}{TASK_ID_HELPER}
+            <label style={{ display: 'block', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>Kind of work</label>
+            <Select fullWidth value={category} onChange={(e) => setCategory(e.target.value)} data-testid="create-category">
+              {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </Select>
+            <div className="flex items-center gap-2" style={{ marginTop: 'var(--space-2)' }}>
+              <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>Task id</span>
+              <span
+                data-testid="create-id-preview"
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 'var(--text-caption2)',
+                  color: idOverride && !overrideValid ? 'var(--apple-red)' : 'var(--text-muted)',
+                  background: 'var(--fill-secondary)',
+                  padding: '2px 8px',
+                  borderRadius: 'var(--radius-sm)',
+                }}
+              >
+                {taskId}
+              </span>
+              <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>
+                {idOverride ? (overrideValid ? 'manual override' : 'override is invalid') : 'generated automatically'}
+              </span>
             </div>
+            <details style={{ marginTop: 'var(--space-2)' }}>
+              <summary style={{ cursor: 'pointer', fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>
+                Advanced: set the id manually
+              </summary>
+              <Input
+                type="text"
+                placeholder={autoId}
+                value={idOverride}
+                onChange={(e) => setIdOverride(e.target.value.trim())}
+                variant={idOverride && !overrideValid ? 'error' : 'default'}
+                className="w-full"
+                data-testid="create-id-override"
+                style={{ marginTop: 'var(--space-2)', fontFamily: 'var(--font-mono, ui-monospace, monospace)' }}
+              />
+              <div
+                style={{
+                  marginTop: 'var(--space-1)',
+                  fontSize: 'var(--text-caption2)',
+                  color: idOverride && !overrideValid ? 'var(--apple-red)' : 'var(--text-tertiary)',
+                }}
+              >
+                {idOverride && !overrideValid ? `"${idOverride}" doesn't match the format. ` : ''}{TASK_ID_HELPER} Leave empty to auto-generate.
+              </div>
+            </details>
           </div>
 
           {/* Fields — grouped */}
@@ -141,6 +200,34 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
                   <option value="high">High</option>
                 </Select>
               </div>
+            </div>
+          </div>
+
+          {/* Workflow — labeled controls that write the tags agents key off
+              (previously magic strings typed into a comma field). */}
+          <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--fill-secondary)', marginBottom: 'var(--space-5)' }}>
+            <div style={{ marginBottom: 'var(--space-3)' }}>
+              <label style={{ display: 'block', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-1)' }}>Workflow phase</label>
+              <Select fullWidth value={phaseTag} onChange={(e) => setPhaseTag(e.target.value)} data-testid="create-phase">
+                {PHASE_OPTIONS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </Select>
+            </div>
+            <div className="flex flex-col gap-2">
+              {FLAG_TOGGLES.map(f => (
+                <label key={f.tag} className="flex items-start gap-2 cursor-pointer" title={f.hint}>
+                  <input
+                    type="checkbox"
+                    checked={tags.includes(f.tag)}
+                    onChange={() => toggleFlag(f.tag)}
+                    data-testid={`create-flag-${f.tag}`}
+                    style={{ marginTop: '2px' }}
+                  />
+                  <span>
+                    <span style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-app)' }}>{f.label}</span>
+                    <span className="block" style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>{f.hint}</span>
+                  </span>
+                </label>
+              ))}
             </div>
           </div>
 

@@ -248,10 +248,12 @@ export default function TaskRow({
           </td>
         )
 
-        // Phase tags have their own column, so they are filtered out here
-        // rather than rendered twice.
+        // Phase tags render here too (ui-create-dejargon-001, P1-12): the
+        // Tags column claiming fewer tags than the task carries reads as data
+        // loss, and hides phases entirely for users who toggled the Phase
+        // column off.
         case 'tags': {
-          const tags = (task.tags || []).filter(x => typeof x === 'string' && !x.startsWith('phase-'))
+          const tags = (task.tags || []).filter(x => typeof x === 'string')
           return (
             <td key={key} style={{ padding: '8px 12px' }}>
               <div className="flex items-center gap-1 flex-nowrap overflow-hidden">

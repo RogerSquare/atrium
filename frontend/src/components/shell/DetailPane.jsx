@@ -20,6 +20,7 @@ import DetailActivity from '../detail/DetailActivity'
 import DetailChanges from '../detail/DetailChanges'
 import ApprovalPanel from '../ApprovalPanel'
 import ContinueButton from '../ContinueButton'
+import DependsOnEditor from '../detail/DependsOnEditor'
 import TestsTab from '../TestsTab'
 import ShellManager from '../web-shell/ShellManager'
 import CommandCard from '../web-shell/CommandCard'
@@ -62,6 +63,9 @@ export default function DetailPane({
   // Opens ANOTHER task in this pane — used by ContinueButton to jump to the
   // freshly-spawned next-phase task (ui-approvals-inbox-001).
   onSelectTask,
+  // Full task list — the depends_on typeahead searches it
+  // (ui-create-dejargon-001).
+  tasks = [],
   onUpdateTask,
   socket,
   width,
@@ -364,6 +368,7 @@ export default function DetailPane({
                       />
                     )}
                   </div>
+                  <DependsOnEditor task={task} tasks={tasks} onUpdateTask={onUpdateTask} />
                   <DetailDescription task={task} onUpdateTask={onUpdateTask} />
                 </>
               )}
