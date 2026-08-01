@@ -2,10 +2,15 @@
 //
 // Left: brand + ProjectAnchor (replaces left-sidebar project list)
 // Center: ViewSwitcher (Board / List / Changes)
-// Right: Terminal (global shell modal) | AvatarPopover (Theme / Settings / Help / Logout)
+// Right: New Task | Help | Terminal (global shell modal) | AvatarPopover
+//
+// "New Task" and "Help" are ui-topbar-create-001 (usability P0-1 / P1-14):
+// before them the ONLY create path was the command palette and the only help
+// affordances were the `?` shortcut and a buried avatar-menu row — a first
+// session had no visible way to do the product's core action.
 
-import { Terminal } from 'lucide-react'
-import { IconButton } from '../ui'
+import { Terminal, Plus, HelpCircle } from 'lucide-react'
+import { Button, IconButton } from '../ui'
 import ViewSwitcher from '../ViewSwitcher'
 import ProjectAnchor from './ProjectAnchor'
 import AvatarPopover from './AvatarPopover'
@@ -29,6 +34,8 @@ export default function TopBar({
   // Avatar popover
   onOpenSettings,
   onOpenHelp,
+  // Primary create action — opens the shell-mounted CreateTaskModal.
+  onCreateTask,
   // Global shell dock — toggles, so the same button that opened it closes it.
   onToggleGlobalShell,
   globalShellOpen = false,
@@ -64,8 +71,30 @@ export default function TopBar({
         <ViewSwitcher activeView={activeView} onChangeView={onChangeView} />
       </div>
 
-      {/* Right — global shell trigger + avatar popover */}
+      {/* Right — create + help + global shell trigger + avatar popover */}
       <div className="flex items-center gap-2">
+        {onCreateTask && (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={onCreateTask}
+            data-testid="topbar-new-task"
+            title="Create a task"
+          >
+            <Plus className="w-3.5 h-3.5" /> New Task
+          </Button>
+        )}
+        {onOpenHelp && (
+          <IconButton
+            size="sm"
+            onClick={onOpenHelp}
+            aria-label="Help"
+            title="Help (?)"
+            data-testid="topbar-help"
+          >
+            <HelpCircle className="w-3.5 h-3.5" />
+          </IconButton>
+        )}
         {/* Toggle, not a one-way open. aria-pressed states that contract for
             assistive tech, and the tint gives the same signal visually —
             without it nothing indicates the dock is already showing the

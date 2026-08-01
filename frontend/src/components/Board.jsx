@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
-import { Rows3, LayoutGrid, Layers, ChevronDown, ChevronRight, ChevronLeft, CheckSquare } from 'lucide-react'
+import { Rows3, LayoutGrid, Layers, ChevronDown, ChevronRight, ChevronLeft, CheckSquare, Plus } from 'lucide-react'
 import TaskCard from './TaskCard'
 import useIsMobile from '../hooks/useIsMobile'
 import { Select, Button, Checkbox } from './ui'
@@ -33,7 +33,7 @@ function isTaskStale(task) {
   return daysSince >= threshold
 }
 
-function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAgent, onStopAgent, taskViewers = {}, shellSessions = {}, currentUser, selectable, selectedIds = [], onToggleSelect, onShiftSelect, onToggleSelectColumn, recentlyUpdatedIds = [], onToggleBulkSelect, githubLinks = {} }) {
+function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAgent, onStopAgent, taskViewers = {}, shellSessions = {}, currentUser, selectable, selectedIds = [], onToggleSelect, onShiftSelect, onToggleSelectColumn, recentlyUpdatedIds = [], onToggleBulkSelect, githubLinks = {}, onCreateTask }) {
   const priorityOrder = { high: 0, medium: 1, low: 2 }
   const isMobile = useIsMobile()
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem('taskBoardCompact') === 'true')
@@ -203,6 +203,39 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
       )}
     </Droppable>
   )
+
+  // Empty board (ui-topbar-create-001, usability P0-2): a first session used
+  // to land on five bare "No tasks" columns with no explanation and no way
+  // forward. Modeled on the LoopsView empty state. Covers both the truly-empty
+  // workspace and an empty filter/project scope — the FilterBar above already
+  // shows counts + Reset for the latter.
+  if (tasks.length === 0) {
+    return (
+      <div
+        data-testid="board-empty-state"
+        style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-muted)' }}
+      >
+        <LayoutGrid className="w-8 h-8" style={{ margin: '0 auto var(--space-3)', color: 'var(--text-tertiary)' }} />
+        <div style={{ fontSize: 'var(--text-subhead)', color: 'var(--text-app)', marginBottom: '4px' }}>
+          No tasks here yet
+        </div>
+        <div style={{ fontSize: 'var(--text-caption1)', maxWidth: '420px', margin: '0 auto' }}>
+          Tasks move across the board as work happens: draft → todo → in progress → review → done.
+          Agents pick up <em>todo</em> tasks and stop at <em>review</em> for your approval.
+        </div>
+        {onCreateTask && (
+          <Button
+            variant="primary"
+            onClick={onCreateTask}
+            data-testid="board-empty-create"
+            style={{ margin: 'var(--space-4) auto 0' }}
+          >
+            <Plus className="w-4 h-4" /> Create your first task
+          </Button>
+        )}
+      </div>
+    )
+  }
 
   // Mobile: tabbed single-column view
   if (isMobile) {

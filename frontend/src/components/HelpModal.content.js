@@ -3,7 +3,7 @@
 // active tab's content via ReactMarkdown.
 // Bump VERSION_STAMP whenever you materially edit anything.
 
-export const VERSION_STAMP = 'Updated 2026-04-26 (v4)'
+export const VERSION_STAMP = 'Updated 2026-08-01 (v5)'
 export const SOURCE_URL = 'https://github.com/RogerSquare/atrium/blob/main/CLAUDE.md'
 
 // Tab definitions. Order matters — first tab is the default open state.
@@ -14,9 +14,9 @@ export const HELP_TABS = [
 
 export const HELP_CONTENT_WEB_UI = `Atrium is a task board for collaborating with AI agents. Tasks are stored as markdown files on disk; the web UI is a live view on top. Most everyday work falls into two flows: **managing tasks here in the web UI**, or **running an agent from the terminal** (see the Terminal prompts tab).
 
-> Press \`?\` anywhere to open this panel.
+> Press \`?\` anywhere — or click the **?** button in the top bar — to open this panel.
 
-### The 5-status lifecycle
+### The task lifecycle
 
 Every task moves through these statuses in order. The board has a column per status.
 
@@ -87,9 +87,11 @@ After a research or plan task lands in **review**, the next phase is spawned aut
 
 Tag any implement-phase task \`tdd\` to make the agent follow red-green-refactor: write one failing test, make it pass, refactor at green, repeat. Best for pure functions and clearly-specified behavior. Skip for docs, config, or visual UI tweaks — those have no meaningful test surface.
 
-### Filters
+### Navigation + filters
 
-The sidebar has filters for project, assignee, type (frontend/backend/fullstack/devops), priority, today-only, and stale. The active filter count is shown next to the filter icon — click **Reset** to clear everything.
+- **Project switcher** — the folder pill at the top-left (or \`Cmd/Ctrl+P\`). Pick a project to scope every view, **All projects** to see everything, or **Unassigned** for tasks without a project home.
+- **Filters** — the filter bar under the top bar: search, type (frontend/backend/fullstack/devops), priority, assignee, today-only, stale, and active-shell. The bar shows how many tasks match — click **Reset** to clear everything.
+- **Views** — Board / List / Changes / Graph / Loops / Demos switch in the top bar's center control.
 `
 
 export const HELP_CONTENT_TERMINAL = `Copy any of these into a fresh Claude Code chat. The Atrium skill auto-loads when a message mentions "atrium", "task", or "project". If you start your prompt with \`Use the atrium skill.\` it's guaranteed to load.

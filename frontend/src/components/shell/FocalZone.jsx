@@ -41,6 +41,7 @@ export default function FocalZone({
   recentlyUpdatedIds,
   githubLinks,
   socketRef,
+  onCreateTask,
   topSlot,
 }) {
   const transition = useMotionTransition({ duration: MOTION_DURATIONS.viewFade, ease: 'easeOut' })
@@ -131,6 +132,7 @@ export default function FocalZone({
               recentlyUpdatedIds={recentlyUpdatedIds}
               onToggleBulkSelect={onToggleBulkSelect}
               githubLinks={githubLinks}
+              onCreateTask={onCreateTask}
             />
           )}
         </motion.div>
