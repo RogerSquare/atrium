@@ -18,10 +18,12 @@
 // (which suite id ran), and the task gets `e2e_suite` alongside e2e_status.
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { parseTestsConfig, resolveProjectDir } = require('./testsConfig');
 const { runPlaywright } = require('./playwright');
 const { runCommand, parseJunitXml, exitCodeSummary } = require('./junitCmd');
+const { runContainerJob } = require('./containerJob');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const SETTINGS_FILE = path.join(__dirname, '..', 'settings.json');
@@ -213,20 +215,66 @@ async function runTests({ task, project, projectDir, suite: suiteId, filter, env
   const { suite, error: pickError } = pickSuite(suites, suiteId);
   if (pickError) throw new Error(pickError);
 
-  if (suite.target.kind !== 'local') {
+  if (suite.target.kind === 'ssh') {
     throw new Error(
-      `Suite "${suite.id}" targets "${suite.target.kind}:${suite.target.ref}" — only "local" is executable today. ` +
-      `Container targets arrive with devops-runner-proxy-jobs-001 / feat-runner-swift-spm-001; ssh targets with feat-runner-xcuitest-ssh-001.`
+      `Suite "${suite.id}" targets "ssh:${suite.target.ref}" — ssh targets arrive with feat-runner-xcuitest-ssh-001 (needs a reachable Mac).`
     );
   }
-  log(`[run-tests] task=${task} suite=${suite.id} (${configPath || 'built-in default'})`);
+  if (suite.target.kind === 'container' && suite.report === 'playwright-json') {
+    throw new Error(
+      `Suite "${suite.id}": container targets support junit-xml / exit-code reports, not playwright-json.`
+    );
+  }
+  log(`[run-tests] task=${task} suite=${suite.id} target=${suite.target.kind} (${configPath || 'built-in default'})`);
 
   const startedAt = new Date().toISOString();
   let summary;
   let files;
   let exitCode;
+  let scratchDir = null;
 
-  if (suite.report === 'playwright-json') {
+  if (suite.target.kind === 'container') {
+    // Ephemeral job container (feat-runner-swift-spm-001): source bound
+    // read-only, command runs in a writable copy, report travels back over
+    // the logs stream. Same path on the host (direct engine API) and inside
+    // the Atrium container (via the allow-list proxy).
+    const started = Date.now();
+    const job = await runContainerJob({
+      image: suite.target.ref,
+      command: suite.command,
+      cwd: suite.cwd,
+      reportPath: suite.reportPath,
+      taskId: task,
+    }, { log });
+    exitCode = job.exitCode;
+    const durationMs = Date.now() - started;
+
+    if (suite.report === 'junit-xml') {
+      if (!job.report) {
+        throw new Error(
+          `Suite "${suite.id}" exited ${job.exitCode} without emitting its JUnit report (${suite.reportPath}).\n${job.output.slice(-2000)}`
+        );
+      }
+      summary = { started_at: startedAt, flaky: 0, ...parseJunitXml(job.report) };
+    } else {
+      summary = { started_at: startedAt, flaky: 0, ...exitCodeSummary({ command: suite.command, exitCode: job.exitCode, durationMs, output: job.output }) };
+    }
+
+    // Container jobs have no files on disk — materialize the report + run
+    // log into a scratch dir so the artifact upload works like any suite.
+    scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atrium-job-'));
+    files = [];
+    if (job.report) {
+      const reportAbs = path.join(scratchDir, 'junit.xml');
+      fs.writeFileSync(reportAbs, job.report);
+      files.push({ abs: reportAbs, rel: 'junit.xml' });
+    }
+    if (job.output) {
+      const logAbs = path.join(scratchDir, 'job-output.log');
+      fs.writeFileSync(logAbs, job.output);
+      files.push({ abs: logAbs, rel: 'job-output.log' });
+    }
+  } else if (suite.report === 'playwright-json') {
     const result = runPlaywright({ cwd: suite.cwd, filter });
     if (result.error) {
       log(`[run-tests] ${result.error} Aborting upload.`);
@@ -254,6 +302,9 @@ async function runTests({ task, project, projectDir, suite: suiteId, filter, env
   }
 
   const upload = await uploadArtifacts({ api, taskId: task, files, log });
+  if (scratchDir) {
+    try { fs.rmSync(scratchDir, { recursive: true, force: true }); } catch { /* temp cleanup is best-effort */ }
+  }
   const runId = upload?.run_id || new Date().toISOString().replace(/[:.]/g, '-');
 
   const finalSummary = {

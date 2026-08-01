@@ -1,0 +1,22 @@
+{
+  "suites": [
+    {
+      "id": "swift-unit",
+      "label": "Swift unit tests (SPM, Linux container)",
+      "runner": "command",
+      "command": "swift test --parallel --xunit-output junit.xml",
+      "report": "junit-xml",
+      "reportPath": "junit.xml",
+      "target": "container:swift:6.0"
+    },
+    {
+      "id": "swift-unit-fail-demo",
+      "label": "Same suite with DEMO_FAIL=1 (proves the red path)",
+      "runner": "command",
+      "command": "DEMO_FAIL=1 swift test --parallel --xunit-output junit.xml",
+      "report": "junit-xml",
+      "reportPath": "junit.xml",
+      "target": "container:swift:6.0"
+    }
+  ]
+}
