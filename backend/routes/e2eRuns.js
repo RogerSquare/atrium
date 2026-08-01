@@ -113,6 +113,32 @@ router.delete('/:task_id/:run_id', requireAuth, (req, res) => {
   return res.json({ success: true });
 });
 
+// GET /api/e2e-runs/:task_id/:run_id/files  — list a run's artifact files
+// (ui-tests-tab-generic-001): the Tests tab renders a generic artifact list
+// for non-Playwright runs (junit.xml, job logs) instead of assuming
+// video/trace attachments exist inside the spec rows.
+router.get('/:task_id/:run_id/files', requireAuth, (req, res) => {
+  const taskDir = safeTaskDir(req.params.task_id);
+  if (!taskDir) return res.status(400).json({ error: 'Invalid task id' });
+  const safeRun = sanitizeFilename(req.params.run_id);
+  if (!safeRun) return res.status(400).json({ error: 'Invalid run id' });
+  const runDir = path.join(taskDir, safeRun);
+  if (!runDir.startsWith(taskDir + path.sep)) return res.status(400).json({ error: 'Invalid path' });
+  if (!fs.existsSync(runDir)) return res.status(404).json({ error: 'Not found' });
+
+  const files = [];
+  const walk = (dir, prefix) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const abs = path.join(dir, entry.name);
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(abs, rel);
+      else if (entry.isFile()) files.push({ path: rel, size: fs.statSync(abs).size });
+    }
+  };
+  walk(runDir, '');
+  return res.json({ files });
+});
+
 // GET /api/e2e-runs/:task_id/:run_id/files/*splat  — serve a run's artifact file.
 // tokenAuth allows ?token=<jwt> for <video src> / <img src> tags.
 // `*splat` is Express 5's named-wildcard syntax (path-to-regexp v8); bare `*`
