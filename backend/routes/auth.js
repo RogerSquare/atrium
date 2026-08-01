@@ -19,6 +19,11 @@ if (!fs.existsSync(AGENT_TOKENS_BLOCKLIST)) {
 
 const router = express.Router();
 
+// Minimum for register + change-password (devops-harden-remote-001). Login is
+// a bcrypt compare only, so accounts created under the old 4-char rule keep
+// working — the policy bites on the next password change.
+const MIN_PASSWORD_LENGTH = 12;
+
 // Helper to check if any users exist (first user becomes admin)
 const isFirstUser = () => {
   try {
@@ -49,7 +54,8 @@ const isFirstUser = () => {
  *                 example: RogerSquare
  *               password:
  *                 type: string
- *                 example: mypassword
+ *                 minLength: 12
+ *                 example: correct-horse-battery
  *     responses:
  *       200:
  *         description: Registration successful
@@ -66,6 +72,12 @@ router.post('/register', async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password required' });
+    }
+    // 12-char minimum (devops-harden-remote-001) — this box is reachable over
+    // LAN/tailnet, and register was previously the only door with NO length
+    // check at all. Existing accounts are untouched (login never re-checks).
+    if (String(password).length < MIN_PASSWORD_LENGTH) {
+      return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
     }
     const safeUser = sanitizeFilename(username);
     if (!safeUser || safeUser !== username) {
@@ -299,7 +311,7 @@ router.put('/users/:username', requireAuth, (req, res) => {
  *                 type: string
  *               newPassword:
  *                 type: string
- *                 minLength: 4
+ *                 minLength: 12
  *     responses:
  *       200:
  *         description: Password changed
@@ -314,8 +326,8 @@ router.post('/change-password', requireAuth, async (req, res) => {
     if (!username || !currentPassword || !newPassword) {
       return res.status(400).json({ error: 'All fields required' });
     }
-    if (newPassword.length < 4) {
-      return res.status(400).json({ error: 'Password must be at least 4 characters' });
+    if (String(newPassword).length < MIN_PASSWORD_LENGTH) {
+      return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
     }
     const safeUser = sanitizeFilename(username);
     const userFilePath = safeUser ? safePath(USERS_DIR, `${safeUser}.json`) : null;
@@ -374,7 +386,8 @@ router.delete('/users/:username', requireAuth, requireAdmin, (req, res) => {
 });
 
 // --- Agent Tokens ---
-// Long-lived, non-expiring JWTs distinguished from user tokens by { agent: true, jti, name }.
+// Long-lived JWTs distinguished from user tokens by { agent: true, jti, name }.
+// Non-expiring by default; optionally minted with expires_in_days.
 // Revocation is by JTI in backend/agent-tokens/.blocklist.json.
 
 const readBlocklist = () => {
@@ -398,6 +411,10 @@ const readAgentTokensMeta = () => {
 };
 
 // POST /api/auth/agent-token — mint an agent token (admin-only). Token is returned ONCE.
+// Optional body.expires_in_days (1–3650) mints an expiring token; jwt.verify in
+// authMiddleware already 401s expired tokens, so no extra check is needed there.
+// Omitted = non-expiring (unchanged default; revocation via blocklist). Rotation
+// runbook: docs/security-remote.md (devops-harden-remote-001).
 router.post('/agent-token', requireAuth, requireAdmin, (req, res) => {
   try {
     const rawName = (req.body?.name || '').trim();
@@ -405,20 +422,34 @@ router.post('/agent-token', requireAuth, requireAdmin, (req, res) => {
     const name = sanitizeFilename(rawName);
     if (!name || name !== rawName) return res.status(400).json({ error: 'name contains invalid characters' });
 
+    const rawDays = req.body?.expires_in_days;
+    let expiresInDays = null;
+    if (rawDays !== undefined && rawDays !== null && rawDays !== '') {
+      const n = Number(rawDays);
+      if (!Number.isInteger(n) || n < 1 || n > 3650) {
+        return res.status(400).json({ error: 'expires_in_days must be an integer between 1 and 3650' });
+      }
+      expiresInDays = n;
+    }
+
     const jti = crypto.randomUUID();
     const issued_at = new Date().toISOString();
     const issued_by = req.user.username;
 
-    // Mint the JWT. No expiry — revocable via blocklist.
-    const token = jwt.sign({ agent: true, jti, name, issued_by }, JWT_SECRET);
+    const token = expiresInDays
+      ? jwt.sign({ agent: true, jti, name, issued_by }, JWT_SECRET, { expiresIn: `${expiresInDays}d` })
+      : jwt.sign({ agent: true, jti, name, issued_by }, JWT_SECRET);
+    const expires_at = expiresInDays
+      ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString()
+      : null;
 
     // Store metadata (not the token itself — the token is returned once and never persisted).
     const metaPath = safePath(AGENT_TOKENS_DIR, `${jti}.json`);
     if (!metaPath) return res.status(500).json({ error: 'Failed to derive token metadata path' });
-    const meta = { jti, name, issued_at, issued_by };
+    const meta = { jti, name, issued_at, issued_by, expires_at };
     fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
 
-    res.status(201).json({ token, jti, name, issued_at, issued_by });
+    res.status(201).json({ token, jti, name, issued_at, issued_by, expires_at });
   } catch (err) {
     logger.error({ err }, 'agent-token mint failed');
     res.status(500).json({ error: 'Internal server error' });
