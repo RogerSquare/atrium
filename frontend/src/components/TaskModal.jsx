@@ -10,6 +10,7 @@ import AIChatPanel from './AIChatPanel'
 import ApprovalPanel from './ApprovalPanel'
 import ContinueButton from './ContinueButton'
 import ModalOverlay from './ModalOverlay'
+import StatusSegmentedControl from './StatusSegmentedControl'
 import { Button, IconButton, Select, Input, Avatar } from './ui'
 
 const VIEWER_COLORS = ['#06b6d4', '#a78bfa', '#f472b6', '#fb923c', '#34d399', '#fbbf24', '#60a5fa']
@@ -274,7 +275,6 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
     onUpdateTask(task.id, { project: newProject })
   }
 
-  const STATUS_COLOR = { todo: 'var(--gray-1)', in_progress: 'var(--apple-blue)', review: 'var(--apple-orange)', done: 'var(--apple-green)' }
   const PRIORITY_COLOR = { high: 'var(--apple-red)', medium: 'var(--apple-orange)', low: 'var(--apple-green)' }
 
   return (
@@ -551,12 +551,24 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
 
           <h2 style={{ fontSize: 'var(--text-title3)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)', lineHeight: 'var(--leading-tight)', marginBottom: 'var(--space-3)' }}>{task.title}</h2>
 
-          {/* Metadata — grouped list style */}
+          {/* Metadata — grouped list style. Status is a real control now, not
+              a read-only pill — the biggest task surface previously could not
+              change status at all (ui-create-dejargon-001). waiting_input
+              stays a badge: that status is set by atrium_create_approval and
+              answering the approval is what moves it. */}
           <div className="flex flex-wrap gap-2 items-center">
-            <div className="flex items-center gap-1.5" style={{ padding: 'var(--space-1) var(--space-3)', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)' }}>
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: STATUS_COLOR[task.status] || 'var(--gray-1)' }} />
-              {task.status.replace('_', ' ')}
-            </div>
+            {task.status === 'waiting_input' ? (
+              <div className="flex items-center gap-1.5" style={{ padding: 'var(--space-1) var(--space-3)', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: 'var(--apple-yellow)' }}
+                title="Waiting for your response — answer in the approval card below">
+                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--apple-yellow)' }} />
+                waiting input
+              </div>
+            ) : (
+              <StatusSegmentedControl
+                activeStatus={task.status}
+                onChange={(nextStatus) => onUpdateTask(task.id, { status: nextStatus })}
+              />
+            )}
             <div style={{ padding: 'var(--space-1) var(--space-3)', borderRadius: 'var(--radius-full)', background: `color-mix(in srgb, ${PRIORITY_COLOR[task.priority] || 'var(--apple-orange)'} 10%, transparent)`, fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: PRIORITY_COLOR[task.priority] || 'var(--apple-orange)', textTransform: 'capitalize' }}>
               {task.priority}
             </div>

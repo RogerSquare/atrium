@@ -449,6 +449,7 @@ export default function AppShell() {
               currentUser={user}
               onClose={() => selectTask(null)}
               onSelectTask={selectTaskFromFocal}
+              tasks={tasks}
               onUpdateTask={undoRedo.updateTaskWithUndo}
               activeAgents={activeAgents}
               onStartAgent={handleStartAgent}
@@ -529,6 +530,7 @@ export default function AppShell() {
           activeProject={activeProject}
           onClose={() => setShowCreateTask(false)}
           onCreateTask={handleCreateTask}
+          tasks={tasks}
         />
       )}
 
