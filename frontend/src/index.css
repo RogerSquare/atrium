@@ -576,7 +576,7 @@ select:focus-visible {
 }
 
 /* Chat input — nudge above bottom tab bar on mobile */
-@media (max-width: 639px) {
+@media (max-width: 768px) {
   .chat-input-safe {
     padding-bottom: 20px !important;
   }
@@ -660,7 +660,7 @@ select:focus-visible {
   scroll-snap-align: center;
 }
 
-@media (max-width: 639px) {
+@media (max-width: 768px) {
   .mobile-compact {
     padding: 0.75rem;
   }

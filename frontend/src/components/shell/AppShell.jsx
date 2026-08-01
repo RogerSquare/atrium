@@ -22,10 +22,12 @@ import { useTaskData, useTaskActions } from '../../contexts/TaskContext'
 import { API_BASE, apiFetch } from '../../config'
 import { designStudioEnabled } from '../../config/featureFlags'
 import useChat from '../../hooks/useChat'
+import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile'
 import TopBar from './TopBar'
 import FilterBar from './FilterBar'
 import FocalZone from './FocalZone'
 import DetailPane from './DetailPane'
+import MobileTabBar from './MobileTabBar'
 import CommandPalette from './CommandPalette'
 import { AnimatePresence } from '../../lib/motion'
 
@@ -153,14 +155,16 @@ export default function AppShell() {
   // there is no nav entry. Closing it parks it again until the next reload.
   const [showDesignStudio, setShowDesignStudio] = useState(() => designStudioEnabled())
   const [showKitchenSink, setShowKitchenSink] = useState(false)
-  // Narrow-viewport mode — master-detail doesn't fit below 768px, so DetailPane
-  // switches to a full-screen overlay instead of sitting in its own grid column.
+  // Narrow-viewport mode — master-detail doesn't fit below the shared
+  // MOBILE_BREAKPOINT, so DetailPane switches to a full-screen overlay and
+  // the bottom tab bar takes over view switching + primary actions
+  // (ui-mobile-appshell-001: one token, no more 639/768 mix).
   const [narrow, setNarrow] = useState(() =>
-    typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)').matches : false
+    typeof window !== 'undefined' ? window.matchMedia(MOBILE_MEDIA_QUERY).matches : false
   )
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const mql = window.matchMedia('(max-width: 768px)')
+    const mql = window.matchMedia(MOBILE_MEDIA_QUERY)
     const onChange = (e) => setNarrow(e.matches)
     mql.addEventListener?.('change', onChange)
     return () => mql.removeEventListener?.('change', onChange)
@@ -771,6 +775,21 @@ export default function AppShell() {
         onDismiss={undoRedo.clearToast}
       />
       <ErrorToast message={errorToast} onDismiss={() => setErrorToast(null)} />
+
+      {/* Mobile bottom tab bar — the .app-shell height carve-out in index.css
+          reserves its 56px below the breakpoint. */}
+      {narrow && (
+        <MobileTabBar
+          activeView={activeView}
+          onChangeView={handleChangeView}
+          onCreateTask={() => setShowCreateTask(true)}
+          onToggleChat={() => { setShowGlobalShell(false); chat.handleToggleChat() }}
+          chatUnread={chat.chatUnread}
+          chatOpen={chatOpen}
+          onToggleGlobalShell={() => setShowGlobalShell(v => !v)}
+          globalShellOpen={showGlobalShell}
+        />
+      )}
     </div>
   )
 }

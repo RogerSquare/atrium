@@ -73,12 +73,15 @@ export default function TopBar({
         />
       </div>
 
-      {/* Center — view switcher */}
-      <div className="flex items-center">
+      {/* Center — view switcher. Hidden on mobile: the bottom tab bar owns
+          view switching there (ui-mobile-appshell-001). */}
+      <div className="hidden md:flex items-center">
         <ViewSwitcher activeView={activeView} onChangeView={onChangeView} />
       </div>
 
-      {/* Right — create + help + global shell trigger + avatar popover */}
+      {/* Right — create + help + global shell trigger + avatar popover.
+          On mobile only the bell + avatar remain: New Task / Chat / Shell
+          move to the bottom tab bar, Help lives in the avatar menu. */}
       <div className="flex items-center gap-2">
         {onCreateTask && (
           <Button
@@ -87,6 +90,7 @@ export default function TopBar({
             onClick={onCreateTask}
             data-testid="topbar-new-task"
             title="Create a task"
+            className="hidden md:flex"
           >
             <Plus className="w-3.5 h-3.5" /> New Task
           </Button>
@@ -99,6 +103,7 @@ export default function TopBar({
             aria-label="Help"
             title="Help (?)"
             data-testid="topbar-help"
+            className="hidden md:flex"
           >
             <HelpCircle className="w-3.5 h-3.5" />
           </IconButton>
@@ -112,6 +117,7 @@ export default function TopBar({
             title={chatOpen ? 'Close chat' : 'Team chat'}
             data-testid="topbar-chat"
             color={chatOpen ? 'var(--accent-app)' : undefined}
+            className="hidden md:flex"
             style={chatOpen
               ? { background: 'var(--fill-quaternary, rgba(127,127,127,0.14))', position: 'relative' }
               : { position: 'relative' }}
@@ -145,6 +151,7 @@ export default function TopBar({
           aria-pressed={globalShellOpen}
           title={globalShellOpen ? 'Close shell' : 'Open shell'}
           color={globalShellOpen ? 'var(--accent-app)' : undefined}
+          className="hidden md:flex"
           style={globalShellOpen
             ? { background: 'var(--fill-quaternary, rgba(127,127,127,0.14))' }
             : undefined}
