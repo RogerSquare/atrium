@@ -97,9 +97,11 @@ COPY --from=native-deps /build/backend/mcp/node_modules ./backend/mcp/node_modul
 # to backend/, which this layout satisfies.
 COPY --from=frontend-build /build/frontend/dist ./frontend/dist
 
-# instructions.md is source, not state — constants.js reads it from the repo
-# root, one level above backend/.
-COPY instructions.md ./instructions.md
+# CLAUDE.md is source, not state — constants.js INSTRUCTIONS_FILE reads it from
+# the repo root, one level above backend/. (It replaced the deleted
+# instructions.md in devops-agent-contract-001; the optional per-operator
+# CLAUDE.local.md overlay is untracked and deliberately NOT baked in.)
+COPY CLAUDE.md ./CLAUDE.md
 
 # Agent skills, baked in so they travel with the IMAGE rather than depending on
 # whatever the host's ~/.claude happens to contain. A container started from
