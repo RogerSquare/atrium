@@ -645,6 +645,16 @@ router.get('/:id', (req, res) => {
       reviewed_at: data.reviewed_at || null,
       done_at: data.done_at || null,
       activity_log: data.activity_log || [],
+      // Mirror the list shape in lib/tasks.js — this single-task GET predated
+      // these fields and silently dropped them, so a runner could write
+      // e2e_status/e2e_suite that atrium_get_task then couldn't see
+      // (feat-runners-core-001).
+      github_branch: data.github_branch || null,
+      github_pr_url: data.github_pr_url || null,
+      e2e_status: data.e2e_status || null,
+      e2e_run: data.e2e_run || null,
+      e2e_suite: data.e2e_suite || null,
+      claude_session_id: data.claude_session_id || null,
       project,
       content: content.trim()
     };
@@ -725,7 +735,7 @@ router.put('/:id', async (req, res) => {
   const { id } = req.params;
   try {
     await withLock(`task:${id}`, async () => {
-    const { title, status, priority, content, project, assignee, type, component, tags, files_affected, parent_task, depends_on, due_date, updated_by, github_branch, github_pr_url, claude_session_id, e2e_status, e2e_run } = req.body;
+    const { title, status, priority, content, project, assignee, type, component, tags, files_affected, parent_task, depends_on, due_date, updated_by, github_branch, github_pr_url, claude_session_id, e2e_status, e2e_run, e2e_suite } = req.body;
 
     let filePath = findTaskFilePath(id);
     let originalProject = '';
@@ -784,9 +794,12 @@ router.put('/:id', async (req, res) => {
       // Playwright e2e gate — see feat-e2e-validation-001. Validator runs on
       // review transitions; `no-e2e` tag opts out (mirrors `no-code`).
       e2e_status: e2e_status !== undefined ? e2e_status : (currentData.e2e_status || null),
-      // Latest Playwright run summary (feat-e2e-tests-tab-001). JSON object —
-      // { run_id, started_at, duration_ms, total, passed, failed, skipped, specs[] }.
+      // Latest test-run summary (feat-e2e-tests-tab-001). JSON object —
+      // { run_id, started_at, duration_ms, total, passed, failed, skipped, specs[] }
+      // + provenance stamps { source, suite } since feat-runners-core-001.
       e2e_run: e2e_run !== undefined ? e2e_run : (currentData.e2e_run || null),
+      // Which atrium.tests.json suite produced e2e_status (feat-runners-core-001).
+      e2e_suite: e2e_suite !== undefined ? e2e_suite : (currentData.e2e_suite || null),
       // Per-task claude session UUID — minted on first Shell-tab spawn,
       // rotated on Start New Session. Round-trips through MCP for recovery
       // scripts that need to re-link a task to a known-good session id.

@@ -58,7 +58,32 @@ description, inputSchema, handler }`. Current set:
 `atrium_list_tasks`, `atrium_get_task`, `atrium_create_task`,
 `atrium_update_task`, `atrium_append_comment`, `atrium_create_approval`,
 `atrium_continue_task`, `atrium_from_template` / `atrium_list_templates`,
-`atrium_run_e2e`, `atrium_wait_for_next_todo`.
+`atrium_run_tests` (with `atrium_run_e2e` kept as a deprecated alias),
+`atrium_wait_for_next_todo`.
+
+`atrium_run_tests { task, project?, suite?, filter? }` runs a suite declared in
+the project's `atrium.tests.json` — Playwright, a JUnit-XML-emitting command
+(`swift test`, gradle, dotnet, pytest), or a bare exit-code command — uploads
+artifacts, and writes `e2e_run` + `e2e_status` + `e2e_suite` back to the task.
+With no config file it runs Atrium's built-in Playwright suite, exactly what
+`atrium_run_e2e` always did. Config shape:
+
+```json
+{
+  "suites": [
+    { "id": "unit", "label": "Swift unit tests",
+      "runner": "command", "cwd": ".", "command": "swift test",
+      "report": "junit-xml", "reportPath": "junit.xml",
+      "artifacts": ["junit.xml", ".build/**/*.log"],
+      "target": "local" }
+  ]
+}
+```
+
+`report` is one of `playwright-json` / `junit-xml` / `exit-code`. `target`
+accepts `local`, `container:<image>` and `ssh:<host>`, but only `local` is
+executable today — container targets arrive with the runner-proxy work, ssh
+targets with the Mac runner.
 
 `atrium_wait_for_next_todo` long-polls for the next task promoted to `todo` and
 atomically claims it — the basis of "worker loop" mode.
