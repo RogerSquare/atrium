@@ -3,7 +3,7 @@
 // active tab's content via ReactMarkdown.
 // Bump VERSION_STAMP whenever you materially edit anything.
 
-export const VERSION_STAMP = 'Updated 2026-08-01 (v5)'
+export const VERSION_STAMP = 'Updated 2026-08-01 (v6)'
 export const SOURCE_URL = 'https://github.com/RogerSquare/atrium/blob/main/CLAUDE.md'
 
 // Tab definitions. Order matters — first tab is the default open state.
@@ -15,6 +15,8 @@ export const HELP_TABS = [
 export const HELP_CONTENT_WEB_UI = `Atrium is a task board for collaborating with AI agents. Tasks are stored as markdown files on disk; the web UI is a live view on top. Most everyday work falls into two flows: **managing tasks here in the web UI**, or **running an agent from the terminal** (see the Terminal prompts tab).
 
 > Press \`?\` anywhere — or click the **?** button in the top bar — to open this panel.
+>
+> Term unclear ("approval"? "draft"? "phase"?) — the [glossary](https://github.com/RogerSquare/atrium/blob/main/UBIQUITOUS_LANGUAGE.md) defines every word Atrium uses.
 
 ### The task lifecycle
 
@@ -89,7 +91,7 @@ Tag any implement-phase task \`tdd\` to make the agent follow red-green-refactor
 
 ### Navigation + filters
 
-- **Project switcher** — the folder pill at the top-left (or \`Cmd/Ctrl+P\`). Pick a project to scope every view, **All projects** to see everything, or **Unassigned** for tasks without a project home.
+- **Project switcher** — the folder pill at the top-left (or \`Cmd/Ctrl+P\`). Pick a project to scope every view, **All projects** to see everything, or **No project** for tasks without a project home.
 - **Filters** — the filter bar under the top bar: search, type (frontend/backend/fullstack/devops), priority, assignee, today-only, stale, and active-shell. The bar shows how many tasks match — click **Reset** to clear everything.
 - **Views** — Board / List / Changes / Graph / Loops / Demos switch in the top bar's center control.
 `

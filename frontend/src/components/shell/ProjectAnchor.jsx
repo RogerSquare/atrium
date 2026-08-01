@@ -52,14 +52,16 @@ export default function ProjectAnchor({
   // 'All' is the default activeProject sentinel — show it as "All projects"
   // rather than a bare "All" (ui-topbar-create-001; the old `|| 'All projects'`
   // fallback was dead code because 'All' is truthy).
+  // "No project", not "Unassigned" — that word belongs to the assignee filter
+  // (ui-copy-glossary-001, UBIQUITOUS_LANGUAGE overload).
   const displayName = activeProject === 'Root'
-    ? 'Unassigned'
+    ? 'No project'
     : (!activeProject || activeProject === 'All') ? 'All projects' : activeProject
 
   const filtered = projects.filter((p) => {
     const folder = p.folder || p
     const name = p.name || p
-    const display = folder === 'Root' ? 'Unassigned' : name
+    const display = folder === 'Root' ? 'No project' : name
     return display.toLowerCase().includes(query.toLowerCase())
   })
 
@@ -176,7 +178,7 @@ export default function ProjectAnchor({
             {filtered.map((proj) => {
               const folder = proj.folder || proj
               const name = proj.name || proj
-              const display = folder === 'Root' ? 'Unassigned' : name
+              const display = folder === 'Root' ? 'No project' : name
               const isActive = activeProject === folder
               const count = tasks?.filter((t) => t.project === folder).length ?? 0
               // Root cannot be archived per backend rules; non-Root only.

@@ -355,7 +355,7 @@ export default function DetailPane({
                         }}
                         title="Waiting for your response — answer in the approval card above"
                       >
-                        WAITING_INPUT
+                        Needs your decision
                       </span>
                     ) : (
                       <StatusSegmentedControl

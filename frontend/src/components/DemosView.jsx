@@ -103,7 +103,7 @@ export default function DemosView({ tasks = [], onSelectTask }) {
         </span>
         {activeProject && activeProject !== 'All' && (
           <span style={{ fontSize: 'var(--text-caption1)', color: 'var(--text-tertiary)' }}>
-            filtered to <strong style={{ color: 'var(--text-app)' }}>{activeProject === 'Root' ? 'Unassigned' : activeProject}</strong>
+            filtered to <strong style={{ color: 'var(--text-app)' }}>{activeProject === 'Root' ? 'No project' : activeProject}</strong>
           </span>
         )}
         <button
@@ -161,7 +161,7 @@ export default function DemosView({ tasks = [], onSelectTask }) {
         <div className="flex flex-col items-center justify-center" style={{ padding: 'var(--space-8) var(--space-6)', gap: 'var(--space-3)' }}>
           <div style={{ fontSize: 'var(--text-body)', color: 'var(--text-muted)' }}>
             {activeProject && activeProject !== 'All'
-              ? `No demos in ${activeProject === 'Root' ? 'Unassigned' : activeProject}.`
+              ? `No demos in ${activeProject === 'Root' ? 'No project' : activeProject}.`
               : 'No demos found.'}
           </div>
           <div style={{ fontSize: 'var(--text-caption1)', color: 'var(--text-tertiary)', maxWidth: '480px', textAlign: 'center' }}>
