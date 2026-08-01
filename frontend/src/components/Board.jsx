@@ -33,7 +33,7 @@ function isTaskStale(task) {
   return daysSince >= threshold
 }
 
-function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAgent, onStopAgent, taskViewers = {}, shellSessions = {}, currentUser, selectable, selectedIds = [], onToggleSelect, onShiftSelect, onToggleSelectColumn, recentlyUpdatedIds = [], onToggleBulkSelect, githubLinks = {}, onCreateTask }) {
+function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAgent, onStopAgent, taskViewers = {}, shellSessions = {}, currentUser, selectable, selectedIds = [], onToggleSelect, onShiftSelect, onToggleSelectColumn, recentlyUpdatedIds = [], onToggleBulkSelect, githubLinks = {}, onCreateTask, testedProjects }) {
   const priorityOrder = { high: 0, medium: 1, low: 2 }
   const isMobile = useIsMobile()
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem('taskBoardCompact') === 'true')
@@ -167,6 +167,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
       compact={compactMode}
       isStale={staleIds.has(task.id)}
       githubLinks={githubLinks}
+      projectHasSuites={Boolean(testedProjects && testedProjects.has(task.project))}
     />
   )
 

@@ -9,7 +9,7 @@ const PRIORITY_ICONS = {
   high: <AlertCircle className="w-3 h-3" fill="currentColor" />
 }
 
-function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewers = [], shellSession, selectable, selected, onToggleSelect, onShiftSelect, orderedTaskIds, justUpdated, compact, isStale, githubLinks = {} }) {
+function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewers = [], shellSession, selectable, selected, onToggleSelect, onShiftSelect, orderedTaskIds, justUpdated, compact, isStale, githubLinks = {}, projectHasSuites = false }) {
   const [copied, setCopied] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
   const hasComments = task.content && task.content.includes('### Comments') && task.content.split('### Comments')[1].trim().length > 0
@@ -286,14 +286,20 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
             <Clock className="w-3 h-3" />Stale
           </Badge>
         )}
-        <Badge
-          preset="e2e"
-          value={task.e2e_status || 'pending'}
-          className="flex items-center gap-1"
-          aria-label={`e2e: ${task.e2e_status || 'pending'}`}
-        >
-          e2e: {task.e2e_status || 'pending'}
-        </Badge>
+        {/* Test badge (ui-tests-tab-generic-001, P1-13): rendered only when
+            the task HAS run data or its project declares suites — every card
+            used to show "e2e: pending" forever, even on projects that never
+            test. */}
+        {(task.e2e_status || projectHasSuites) && (
+          <Badge
+            preset="e2e"
+            value={task.e2e_status || 'pending'}
+            className="flex items-center gap-1"
+            aria-label={`tests: ${task.e2e_status || 'pending'}`}
+          >
+            tests: {task.e2e_status || 'pending'}
+          </Badge>
+        )}
         <div className="flex-1" />
         {hasComments && <AlignLeft className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--text-tertiary)' }} />}
         {task.status === 'done' && <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: 'var(--apple-green)' }} />}
@@ -330,11 +336,16 @@ function taskCardPropsAreEqual(prev, next) {
   if (prev.justUpdated !== next.justUpdated) return false
   if (prev.compact !== next.compact) return false
   if (prev.isStale !== next.isStale) return false
+  if (prev.projectHasSuites !== next.projectHasSuites) return false
   const pt = prev.task, nt = next.task
   if (pt.id !== nt.id || pt.title !== nt.title || pt.status !== nt.status ||
       pt.priority !== nt.priority || pt.type !== nt.type || pt.component !== nt.component ||
       pt.project !== nt.project || pt.assignee !== nt.assignee || pt.content !== nt.content ||
-      pt.parent_task !== nt.parent_task || pt.due_date !== nt.due_date) return false
+      pt.parent_task !== nt.parent_task || pt.due_date !== nt.due_date ||
+      // The tests badge reads e2e_status — without this a finished run
+      // wouldn't repaint the card (pre-existing gap, surfaced by making the
+      // badge conditional).
+      pt.e2e_status !== nt.e2e_status) return false
   const pv = prev.viewers, nv = next.viewers
   if (pv.length !== nv.length) return false
   for (let i = 0; i < pv.length; i++) { if (pv[i] !== nv[i]) return false }

@@ -167,6 +167,24 @@ export default function AppShell() {
   }, [])
   const syncingUrl = useRef(false)
 
+  // --- Which projects declare test suites (ui-tests-tab-generic-001) -------
+  // Fetched lazily per visited project and cached for the session. Drives the
+  // card-level tests badge: only projects that opted into atrium.tests.json
+  // (or tasks with actual run data) show it — no more permanent "pending".
+  const [testedProjects, setTestedProjects] = useState(() => new Set())
+  const checkedProjectsRef = useRef(new Set())
+  useEffect(() => {
+    const p = activeProject
+    if (!p || p === 'All' || p === 'Root' || checkedProjectsRef.current.has(p)) return
+    checkedProjectsRef.current.add(p)
+    apiFetch(`${API_BASE}/api/runners/suites?project=${encodeURIComponent(p)}`)
+      .then((r) => (r.ok ? r.json() : { declared: false }))
+      .then((d) => {
+        if (d && d.declared) setTestedProjects((prev) => new Set(prev).add(p))
+      })
+      .catch(() => { /* stays unlisted — badge falls back to run-data-only */ })
+  }, [activeProject])
+
   // --- Team chat (ported from the legacy shell, ui-shell-consolidation-001).
   // The hook owns messages/unread/toasts over the shared authed socket; the
   // panel renders as a dock occupant below. setShowChat is destructured so
@@ -465,6 +483,7 @@ export default function AppShell() {
         githubLinks={githubLinks}
         socketRef={socketRef}
         onCreateTask={() => setShowCreateTask(true)}
+        testedProjects={testedProjects}
         topSlot={
           bulkSelectMode && selectedTaskIds.length > 0 ? (
             <BulkActionBar
