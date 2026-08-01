@@ -82,10 +82,12 @@ export default function useChat(user, socketRef) {
     const socket = socketRef.current
     if (!socket) return
 
-    // Load message history
+    // Load message history. Shape-guarded: onMessage spreads prev, so a
+    // non-array response here (error object, proxy page) would crash the
+    // whole shell at the NEXT incoming message rather than at fetch time.
     apiFetch(`${API_BASE}/api/chat/messages`)
       .then(res => res.json())
-      .then(data => setChatMessages(data))
+      .then(data => setChatMessages(Array.isArray(data) ? data : []))
       .catch(console.error)
 
     if (!chatJoinedRef.current) {

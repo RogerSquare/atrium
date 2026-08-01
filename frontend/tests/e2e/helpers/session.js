@@ -30,12 +30,18 @@ export function seedSession({ username = 'e2e', role = null, storage = {} } = {}
 // real backend happens to be running on the dev box. Register the catch-all
 // first — Playwright matches routes in reverse registration order.
 export async function mockCoreApi(page) {
+  // Sockets are blocked outright: with a real backend running on the dev box,
+  // the forged-token socket can otherwise connect (or half-connect on older
+  // backends) and REAL broadcast traffic — chat join messages, presence —
+  // leaks into the test page. The socket.io client just retries quietly.
+  await page.route('**/socket.io/**', (route) => route.abort());
   await page.route('**/api/**', (route) => route.fulfill({ json: {} }));
   await page.route('**/api/tasks**', (route) => route.fulfill({ json: [] }));
   await page.route('**/api/projects**', (route) => route.fulfill({ json: [] }));
   await page.route('**/api/services', (route) => route.fulfill({ json: [] }));
   await page.route('**/api/loops**', (route) => route.fulfill({ json: [] }));
   await page.route('**/api/agents/active', (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/chat/messages', (route) => route.fulfill({ json: [] }));
   // Without complete:true the first-run wizard overlays the whole app.
   await page.route('**/api/setup/status', (route) => route.fulfill({ json: { complete: true } }));
 }

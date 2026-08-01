@@ -1,33 +1,19 @@
-// Facelift initiative feature flags (see tasks/Atrium/ui-facelift-*).
+// Feature flags (ui-shell-consolidation-001).
 //
-// Phase 10 (2026-04-24) flipped DEFAULT_ENABLED to true — the facelift shell
-// is now the default experience. Users who want the legacy sidebar+board
-// can opt out via `localStorage.atriumFacelift = 'false'`.
+// The facelift shell flag (`atriumFacelift`) is GONE: AppShell is the only
+// shell now — the legacy AppContent path it gated was deleted after the
+// 4a-4c parity work landed. Any stored atriumFacelift value is simply ignored.
 //
-// Dev toggles:
-//   localStorage.atriumFacelift = 'true'   → force facelift on (rarely needed)
-//   localStorage.atriumFacelift = 'false'  → force legacy shell
-//   localStorage.removeItem('atriumFacelift')  → use the default (true)
+// Design Studio is PARKED per accepted default Q9: not ported to a nav entry,
+// but still mountable for the occasional session that needs it:
+//   localStorage.atriumDesignStudio = 'true'   (then reload)
+//   localStorage.removeItem('atriumDesignStudio')  → parked again
 
-const DEFAULT_ENABLED = true
-
-function readLocalStorage() {
-  if (typeof window === 'undefined' || !window.localStorage) return null
+export function designStudioEnabled() {
+  if (typeof window === 'undefined' || !window.localStorage) return false
   try {
-    return window.localStorage.getItem('atriumFacelift')
+    return window.localStorage.getItem('atriumDesignStudio') === 'true'
   } catch {
-    return null
+    return false
   }
 }
-
-export function faceliftShellEnabled() {
-  const stored = readLocalStorage()
-  if (stored === 'true') return true
-  if (stored === 'false') return false
-  return DEFAULT_ENABLED
-}
-
-// Eager-read snapshot for modules that only need the initial value.
-// Consumers that want to react to localStorage changes should call
-// faceliftShellEnabled() on each render.
-export const FACELIFT_SHELL_ENABLED = faceliftShellEnabled()

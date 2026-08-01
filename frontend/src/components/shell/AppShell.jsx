@@ -1,21 +1,27 @@
-// Facelift AppShell — Phase 4.
+// AppShell — THE shell (ui-shell-consolidation-001).
 //
-// Top-level layout for the new shell. Renders only when FACELIFT_SHELL_ENABLED
-// is on; App.jsx falls back to the legacy sidebar+board when off.
+// Formerly "the facelift shell" behind the atriumFacelift flag, with a
+// complete legacy sidebar+board shell (App.jsx AppContent) beside it. The
+// legacy path and the flag are deleted; everything the product does mounts
+// here now.
 //
 // Grid:
-//   [topbar]     48px      brand + ProjectAnchor | ViewSwitcher | AvatarPopover
+//   [topbar]     48px      brand + ProjectAnchor | ViewSwitcher | New Task/Help/Bell/Shell/Avatar
 //   [filterbar]  40px      search + type/priority/mine/today/stale + reset
-//   [content]    1fr       [focal flex] [detail {width} or 0]
+//   [content]    1fr       [focal flex] [side dock {width} or 0]
 //
-// Settings + Help modals mount here so the avatar popover can open them.
-// TaskModal stays as opt-in focus mode via Cmd+Shift+Enter.
+// The side dock hosts ONE of: the task DetailPane, the global shell, or the
+// team chat. Settings/Help/Create/Archived modals mount at shell level.
+// TaskModal stays as opt-in focus mode via Cmd+Shift+Enter. Design Studio is
+// parked behind localStorage.atriumDesignStudio (no nav entry — Q9).
 
 import { useState, useEffect, useCallback, useRef, lazy, Suspense, startTransition } from 'react'
 import { Eye } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTaskData, useTaskActions } from '../../contexts/TaskContext'
 import { API_BASE, apiFetch } from '../../config'
+import { designStudioEnabled } from '../../config/featureFlags'
+import useChat from '../../hooks/useChat'
 import TopBar from './TopBar'
 import FilterBar from './FilterBar'
 import FocalZone from './FocalZone'
@@ -31,6 +37,12 @@ const TaskModal = lazy(() => import('../TaskModal'))
 const GlobalShellPanel = lazy(() => import('./GlobalShellPanel'))
 // Lazy — only ever rendered on a fresh install or an explicit reopen.
 const SetupWizard = lazy(() => import('../SetupWizard'))
+// Lazy — socket plumbing + GIF picker load on first chat open.
+const ChatPanel = lazy(() => import('../ChatPanel'))
+// Lazy + parked (Q9): only reachable via localStorage.atriumDesignStudio.
+const DesignStudio = lazy(() => import('../DesignStudio'))
+// Dev-only kitchen sink — tree-shaken in production (Ctrl+Shift+K).
+const KitchenSink = import.meta.env.DEV ? lazy(() => import('../KitchenSink')) : null
 import Settings from '../Settings'
 import HelpModal from '../HelpModal'
 import CreateProjectModal from '../CreateProjectModal'
@@ -38,6 +50,7 @@ import CreateTaskModal from '../CreateTaskModal'
 import ArchivedProjectsModal from '../ArchivedProjectsModal'
 import BulkActionBar from '../BulkActionBar'
 import PreviewPanel from '../PreviewPanel'
+import ChatNotification from '../ChatNotification'
 import ErrorToast from '../ErrorToast'
 import UndoToast from '../UndoToast'
 
@@ -136,6 +149,10 @@ export default function AppShell() {
   const [previewServices, setPreviewServices] = useState([])
   const [showGlobalShell, setShowGlobalShell] = useState(false)
   const [showSetupWizard, setShowSetupWizard] = useState(false)
+  // Design Studio is parked (Q9): mounts at boot ONLY when its flag is set —
+  // there is no nav entry. Closing it parks it again until the next reload.
+  const [showDesignStudio, setShowDesignStudio] = useState(() => designStudioEnabled())
+  const [showKitchenSink, setShowKitchenSink] = useState(false)
   // Narrow-viewport mode — master-detail doesn't fit below 768px, so DetailPane
   // switches to a full-screen overlay instead of sitting in its own grid column.
   const [narrow, setNarrow] = useState(() =>
@@ -149,6 +166,26 @@ export default function AppShell() {
     return () => mql.removeEventListener?.('change', onChange)
   }, [])
   const syncingUrl = useRef(false)
+
+  // --- Team chat (ported from the legacy shell, ui-shell-consolidation-001).
+  // The hook owns messages/unread/toasts over the shared authed socket; the
+  // panel renders as a dock occupant below. setShowChat is destructured so
+  // callbacks can depend on the stable setter, not the per-render hook object.
+  const chat = useChat(user, socketRef)
+  const { setShowChat } = chat
+
+  // Dev kitchen sink shortcut: Ctrl+Shift+K.
+  useEffect(() => {
+    if (!KitchenSink) return
+    const handler = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'K') {
+        e.preventDefault()
+        setShowKitchenSink(prev => !prev)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   // Preload TaskModal in the background once the shell mounts. After F2
   // made it lazy, the first focus-mode open of a session paid the chunk-load.
@@ -282,25 +319,28 @@ export default function AppShell() {
 
   // Picking a task from the board hands the dock back to it. Without this the
   // click would appear to do nothing — the task would be selected but stay
-  // hidden behind the shell, which is indistinguishable from a dead card.
+  // hidden behind the shell or chat, which is indistinguishable from a dead
+  // card.
   const selectTaskFromFocal = useCallback((task) => {
-    if (task) setShowGlobalShell(false)
+    if (task) {
+      setShowGlobalShell(false)
+      setShowChat(false)
+    }
     selectTask(task)
-  }, [selectTask])
+  }, [selectTask, setShowChat])
 
-  // The side region shows exactly ONE thing at a time — the task pane or the
-  // global shell, never both. A vertical split was tried and rejected: it left
-  // the terminal in a short strip and made the region feel crowded rather than
-  // like a place you work.
+  // The side region shows exactly ONE thing at a time — the task pane, the
+  // global shell, or the team chat, never two. A vertical split was tried and
+  // rejected: it left the terminal in a short strip and made the region feel
+  // crowded rather than like a place you work.
   //
-  // The selected task is NOT cleared when the shell takes over, only hidden.
-  // That is the difference between "the terminal closed my task" and "the
-  // terminal is in front of my task" — closing the shell brings it straight
-  // back, and the shell header carries the task as a back-chip so what you
-  // were working on stays visible the whole time.
-  const detailOpen = Boolean(selectedTask) && !focusModal && !showGlobalShell
+  // Precedence: shell > chat > task. The selected task is NOT cleared when the
+  // shell or chat takes over, only hidden — closing them brings it straight
+  // back (the shell header carries the task as a back-chip).
+  const chatOpen = chat.showChat && !focusModal && !showGlobalShell
+  const detailOpen = Boolean(selectedTask) && !focusModal && !showGlobalShell && !chatOpen
   const backgroundTask = showGlobalShell && !focusModal ? selectedTask : null
-  const sideOpen = detailOpen || showGlobalShell
+  const sideOpen = detailOpen || showGlobalShell || chatOpen
   // On narrow viewports both are fixed overlays — grid column stays 0.
   const detailGridCol = sideOpen && !narrow ? `minmax(0, ${detailWidth}px)` : '0'
 
@@ -315,6 +355,22 @@ export default function AppShell() {
       })
     } else {
       setErrorToast(result.error || 'Archive failed')
+    }
+  }, [archiveProject, unarchiveProject, undoRedo, setErrorToast])
+
+  // Restore with undo — parity with the legacy shell's handler (the modal
+  // previously called unarchiveProject bare, so restores weren't undoable).
+  const handleUnarchiveProject = useCallback(async (idOrName, displayName) => {
+    const result = await unarchiveProject(idOrName)
+    if (result.ok) {
+      undoRedo.pushCustomUndo(`Restored "${displayName || idOrName}"`, {
+        undoFn: () => { archiveProject(idOrName) },
+        undoneMessage: `Archived "${displayName || idOrName}"`,
+        redoFn: () => { unarchiveProject(idOrName) },
+        redoneMessage: `Restored "${displayName || idOrName}"`,
+      })
+    } else {
+      setErrorToast(result.error || 'Restore failed')
     }
   }, [archiveProject, unarchiveProject, undoRedo, setErrorToast])
 
@@ -354,6 +410,9 @@ export default function AppShell() {
         onSelectTask={selectTaskFromFocal}
         onToggleGlobalShell={() => setShowGlobalShell(v => !v)}
         globalShellOpen={showGlobalShell}
+        onToggleChat={() => { setShowGlobalShell(false); chat.handleToggleChat() }}
+        chatUnread={chat.chatUnread}
+        chatOpen={chatOpen}
       />
 
       <FilterBar
@@ -481,6 +540,27 @@ export default function AppShell() {
             />
           </Suspense>
         )}
+        {chatOpen && (
+          <Suspense fallback={null}>
+            {/* Docked on desktop; the panel's own fullscreen-overlay layout on
+                narrow viewports (matching DetailPane's split behavior). */}
+            <ChatPanel
+              docked={!narrow}
+              user={user}
+              socket={socketRef?.current}
+              messages={chat.chatMessages}
+              onlineUsers={chat.chatOnlineUsers}
+              typingUsers={chat.chatTypingUsers}
+              minimized={false}
+              onMinimize={() => {}}
+              soundEnabled={chat.chatSoundEnabled}
+              onToggleSound={() => chat.setChatSoundEnabled(prev => !prev)}
+              onClose={() => chat.setShowChat(false)}
+              onUnreadChange={chat.setChatUnread}
+              aiChatEnabled={aiChatEnabled}
+            />
+          </Suspense>
+        )}
       </div>
 
       {/* Focus modal — opt-in via Cmd+Shift+Enter */}
@@ -557,7 +637,7 @@ export default function AppShell() {
         <ArchivedProjectsModal
           archivedProjects={archivedProjects}
           onClose={() => setShowArchived(false)}
-          onUnarchiveProject={(idOrName, displayName) => unarchiveProject(idOrName, displayName)}
+          onUnarchiveProject={handleUnarchiveProject}
         />
       )}
       {/* First-run setup (feat-first-run-setup-001). Opens itself on a fresh
@@ -635,6 +715,34 @@ export default function AppShell() {
         )
       })()}
 
+      {/* Design Studio — parked (Q9): mounts only when its localStorage flag
+          was set at load time; closing parks it until the next reload. */}
+      {showDesignStudio && (
+        <Suspense fallback={null}>
+          <DesignStudio
+            services={previewServices}
+            onClose={() => setShowDesignStudio(false)}
+            activeProject={activeProject}
+            user={user}
+            socket={socketRef?.current}
+          />
+        </Suspense>
+      )}
+
+      {/* Dev kitchen sink (Ctrl+Shift+K) */}
+      {KitchenSink && showKitchenSink && (
+        <Suspense fallback={null}>
+          <KitchenSink onClose={() => setShowKitchenSink(false)} currentTheme={theme} onSetTheme={setTheme} />
+        </Suspense>
+      )}
+
+      {/* Chat toasts — new-message previews while the chat dock is closed;
+          clicking one opens the dock (and hands it over from the shell). */}
+      <ChatNotification
+        toasts={chat.toastQueue}
+        onDismiss={chat.dismissToast}
+        onOpenChat={() => { setShowGlobalShell(false); chat.openChat() }}
+      />
       <UndoToast
         message={undoRedo.undoToast}
         canUndo={undoRedo.canUndo}
