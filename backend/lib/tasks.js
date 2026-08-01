@@ -114,6 +114,8 @@ const scanAllTasks = (dirPath = TASKS_DIR, tasksArray = []) => {
         // here, so on-disk values were silently dropped on GET. The Tests tab depends on this.
         e2e_status: data.e2e_status || null,
         e2e_run: data.e2e_run || null,
+        // Which atrium.tests.json suite produced e2e_status (feat-runners-core-001).
+        e2e_suite: data.e2e_suite || null,
         // Per-task claude session UUID — bound on first Shell-tab spawn so
         // resume targets THIS task's conversation, not the cwd's most-recent.
         // Source of truth lives in YAML so the binding survives across

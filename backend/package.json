@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test \"lib/**/*.test.js\" \"routes/**/*.test.js\"",
+    "test": "node --test \"lib/**/*.test.js\" \"routes/**/*.test.js\" \"runners/**/*.test.js\"",
     "audit:tasks": "node scripts/audit-tasks.js",
     "sync:skills": "node ../scripts/sync-skills.js",
     "audit:linkage": "node scripts/audit-review-linkage.js",
