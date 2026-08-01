@@ -57,6 +57,27 @@ export default function Login({ onLogin, sessionExpired = false }) {
           </p>
         </div>
 
+        {/* Session-expired explanation (ui-copy-glossary-001): AuthContext has
+            passed this prop since bug-auth-expiry-detect-001, but it was never
+            rendered — an automatic logout looked like the app forgot you. */}
+        {sessionExpired && !isRegistering && (
+          <div
+            data-testid="session-expired-banner"
+            className="text-center"
+            style={{
+              marginBottom: 'var(--space-4)',
+              padding: 'var(--space-2) var(--space-3)',
+              borderRadius: 'var(--radius-md)',
+              background: 'color-mix(in srgb, var(--apple-orange) 10%, transparent)',
+              border: '0.5px solid color-mix(in srgb, var(--apple-orange) 30%, transparent)',
+              color: 'var(--apple-orange)',
+              fontSize: 'var(--text-caption1)',
+            }}
+          >
+            Your session ended — sign in again to continue. Nothing was lost.
+          </div>
+        )}
+
         {/* Card */}
         <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius-md)', border: 'var(--border-hairline)', padding: 'var(--space-8)' }}>
           <form onSubmit={handleSubmit}>

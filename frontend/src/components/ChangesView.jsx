@@ -458,7 +458,9 @@ function ChangesView({ tasks, projects, activeProject, onSelectTask, recentlyUpd
                   textTransform: 'uppercase',
                 }}
               >
-                Queued
+                {/* "Todo" — same word as the board column; "Queued" was a
+                    third name for the same status (ui-copy-glossary-001). */}
+                Todo
               </span>
               <span
                 style={{

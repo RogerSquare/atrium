@@ -180,7 +180,7 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
               <div>
                 <label style={{ display: 'block', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-1)' }}>Project</label>
                 <Select fullWidth value={project} onChange={(e) => setProject(e.target.value)}>
-                  {projects.map(p => { const f = p.folder || p; const n = p.name || p; const pid = p.id || null; return <option key={f} value={f}>{f === 'Root' ? 'Unassigned' : n}{pid && pid !== 'root' ? ` (${pid})` : ''}</option> })}
+                  {projects.map(p => { const f = p.folder || p; const n = p.name || p; const pid = p.id || null; return <option key={f} value={f}>{f === 'Root' ? 'No project' : n}{pid && pid !== 'root' ? ` (${pid})` : ''}</option> })}
                 </Select>
               </div>
               <div>

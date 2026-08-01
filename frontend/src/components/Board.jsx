@@ -548,6 +548,15 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                     {colTasks.length}
                   </span>
                 </div>
+                {/* The drop-disabled safety column used to sit there red and
+                    unexplained (ui-copy-glossary-001). waiting_input tasks are
+                    its most common residents — the board has no column for
+                    them — so the copy must cover both cases. */}
+                {col.isSafety && (
+                  <p data-testid="safety-column-hint" style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)', margin: '0 0 var(--space-2)', padding: '0 var(--space-2)', lineHeight: 'var(--leading-normal)' }}>
+                    Tasks waiting on your decision — or with a status the board doesn't recognize — land here. Open one to resolve it.
+                  </p>
+                )}
                 {renderDroppable(col, colTasks, col.id)}
               </div>
             )

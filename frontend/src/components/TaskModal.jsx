@@ -561,7 +561,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
               <div className="flex items-center gap-1.5" style={{ padding: 'var(--space-1) var(--space-3)', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: 'var(--apple-yellow)' }}
                 title="Waiting for your response — answer in the approval card below">
                 <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--apple-yellow)' }} />
-                waiting input
+                Needs your decision
               </div>
             ) : (
               <StatusSegmentedControl
@@ -575,7 +575,7 @@ export default function TaskModal({ task, projects, onClose, onUpdateTask, onDel
             <div className="flex items-center gap-1.5 overflow-hidden" style={{ padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)' }}>
               <Folder className="w-3.5 h-3.5 shrink-0" />
               <select value={task.project || 'Root'} onChange={handleProjectChange} disabled={showHistory} className="pill-input bg-transparent cursor-pointer outline-none border-none" style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)', padding: 0 }}>
-                {projects.map(p => { const f = p.folder || p; const n = p.name || p; const pid = p.id || null; return <option key={f} value={f}>{f === 'Root' ? 'Unassigned' : n}{pid && pid !== 'root' ? ` (${pid})` : ''}</option> })}
+                {projects.map(p => { const f = p.folder || p; const n = p.name || p; const pid = p.id || null; return <option key={f} value={f}>{f === 'Root' ? 'No project' : n}{pid && pid !== 'root' ? ` (${pid})` : ''}</option> })}
               </select>
             </div>
             <div className="flex items-center gap-1.5 overflow-hidden" style={{ padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-full)', background: 'var(--fill-secondary)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', color: 'var(--text-muted)' }}>
