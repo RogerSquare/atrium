@@ -161,7 +161,25 @@ protocol is in [CLAUDE.md](CLAUDE.md).
 
 ---
 
+## Documentation
+
+| Guide | What it covers |
+|---|---|
+| [docs/install.md](docs/install.md) | Docker + native install, required env, ports, troubleshooting |
+| [docs/deploy.md](docs/deploy.md) | Reaching Atrium beyond localhost — tailnet, LAN, reverse proxy, SSH tunnel |
+| [docs/security-remote.md](docs/security-remote.md) | The hardening contract: trust proxy, CORS, password policy, agent-token rotation |
+| [docs/architecture.md](docs/architecture.md) | Contributor map — data-dir model, auth, sockets, runners, feature flags |
+| [docs/agents.md](docs/agents.md) | The agent contract (Claude Code or any REST client) |
+| [docs/mcp.md](docs/mcp.md) | The bundled MCP server and its tools |
+| [docs/testing-junit.md](docs/testing-junit.md) / [docs/testing-swift.md](docs/testing-swift.md) | Wiring test suites into the Tests tab (local, container, SSH targets) |
+
+---
+
 ## Architecture
+
+> The deep-dive lives in [docs/architecture.md](docs/architecture.md) — data-dir
+> model, auth layers, socket surfaces, runner adapters, and where to start
+> reading. The short version:
 
 ### File-Based Task Storage
 
@@ -295,17 +313,29 @@ The script exits non-zero if any violations are found, so it can be wired into C
 
 ## Screenshots
 
-<!-- TODO: Add screenshot of the Kanban board view -->
+**The board** — five lifecycle columns, priority stripes, live agent-presence dots, and the e2e gate surfaced right on the card (`tests: passing`):
 
-<!-- TODO: Add screenshot of the task detail modal -->
+![Kanban board](docs/screenshots/board.png)
 
-<!-- TODO: Add screenshot of the service manager panel -->
+**Task detail** — the side pane with status control, dependency editor, checklist description, and tabs for comments, activity, git changes, test runs, and a shell:
 
-<!-- TODO: Add screenshot of the embedded terminal -->
+![Task detail pane](docs/screenshots/task-detail.png)
 
-<!-- TODO: Add screenshot of the preview panel with a running service -->
+**Service manager** — register your dev servers once, then start/stop/restart them from Settings → Services (process- and container-backed entries):
 
-<!-- TODO: Add screenshot of the list view -->
+![Service manager](docs/screenshots/services.png)
+
+**Embedded terminal** — every task's Shell tab boots a PTY in your working directory; with Claude Code installed, the task's bound agent session opens right in the pane:
+
+![Embedded terminal](docs/screenshots/terminal.png)
+
+**Preview panel** — running services iframe directly into the board, with device-width presets:
+
+![Preview panel](docs/screenshots/preview.png)
+
+**List view** — the same tasks as a sortable table with inline status/priority editing:
+
+![List view](docs/screenshots/list-view.png)
 
 ---
 
