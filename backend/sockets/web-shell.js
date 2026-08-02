@@ -7,12 +7,13 @@
 //      SETTINGS_FILE.workingDirectory, fall back to process.cwd().
 //      No per-project filesystem mapping today; tasks share atrium's
 //      single configured working directory.
-//   2. Event names are prefixed (`webshell:*`) so we coexist with the
-//      existing backend/sockets/terminal.js handler, which already
-//      binds the unprefixed `start_terminal` / `terminal_input` /
-//      `terminal_output` / `resize` events for its task-scoped
-//      opencode flow. Both handlers run per-socket; the prefixes
-//      keep their event streams from interfering.
+//   2. Event names are prefixed (`webshell:*`). Historical reason: they
+//      had to coexist with the older sockets/terminal.js handler's
+//      unprefixed `start_terminal` / `terminal_input` / `terminal_output`
+//      events. That stack was dead code and was deleted
+//      (opt-dead-terminal-stack-001); the prefix stays because every
+//      live client already speaks it and it namespaces the shell
+//      cleanly against chat/presence/preview events.
 //
 // Wire format (client ↔ server) — `feat-shell-background-sessions-001` Phase 1
 // migrated every event payload to a `{ taskId, ... }` discriminator shape so
