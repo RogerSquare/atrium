@@ -1,19 +1,18 @@
-// Platform-portable shell selection for the PTY surfaces (devops-docker-shell-portable-001).
+// Platform-portable shell selection for the web-shell PTY (devops-docker-shell-portable-001).
 //
-// Background: sockets/terminal.js hardcoded `cmd.exe` with no env escape and
-// fell back to `USERPROFILE || 'C:\'` for cwd. sockets/web-shell.js honoured
-// WEB_SHELL_DEFAULT_SHELL for the interactive case but still wrapped arbitrary
-// commands in `cmd.exe /c`. Neither survives a Linux container.
-//
-// Both surfaces now share these resolvers, so there is one place that knows
-// what a shell is on this platform. Everything is injectable (env, platform,
-// homedir) so the Linux behaviour is unit-tested from Windows — which matters,
-// because the container is the whole point and we cannot run it here.
+// Background: the PTY handlers used to hardcode `cmd.exe` / wrap commands in
+// `cmd.exe /c`, neither of which survives a Linux container. These resolvers
+// are the one place that knows what a shell is on this platform. Everything
+// is injectable (env, platform) so the Linux behaviour is unit-tested from
+// Windows — which matters, because the container is the whole point and we
+// cannot run it here.
 //
 // Windows behaviour is deliberately unchanged: on win32 with no env override
 // these return exactly what the old hardcoded values did.
-
-const os = require('os');
+//
+// Sole consumer is sockets/web-shell.js — the older sockets/terminal.js
+// stack (and its resolveShellCwd helper) was dead code, deleted in
+// opt-dead-terminal-stack-001.
 
 // POSIX fallback when nothing is configured. bash rather than sh because the
 // web-shell drives interactive CLIs (claude) that expect a real interactive
@@ -49,14 +48,6 @@ function buildShellCommandArgs(command, { env = process.env, platform = process.
   return { cmd: '/bin/sh', args: ['-c', command] };
 }
 
-// Working directory for a new PTY. An explicit cwd from the client wins;
-// otherwise the user's home. The old `USERPROFILE || 'C:\'` chain resolved to
-// a nonexistent path on Linux, which makes pty.spawn throw.
-function resolveShellCwd(configCwd, { homedir = os.homedir() } = {}) {
-  if (typeof configCwd === 'string' && configCwd.trim()) return configCwd;
-  return homedir;
-}
-
 function pickEnv(env, key) {
   const raw = env && env[key];
   return (typeof raw === 'string' && raw.trim()) ? raw : null;
@@ -65,7 +56,6 @@ function pickEnv(env, key) {
 module.exports = {
   resolveDefaultShell,
   buildShellCommandArgs,
-  resolveShellCwd,
   POSIX_DEFAULT_SHELL,
   WINDOWS_DEFAULT_SHELL,
 };

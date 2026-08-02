@@ -10,7 +10,6 @@ const assert = require('node:assert');
 const {
   resolveDefaultShell,
   buildShellCommandArgs,
-  resolveShellCwd,
 } = require('./shellDefaults');
 
 // --- resolveDefaultShell -------------------------------------------------
@@ -64,15 +63,6 @@ test('the command stays a single trailing argument, so quoting is not mangled', 
   }
 });
 
-// --- resolveShellCwd -----------------------------------------------------
-
-test('an explicit cwd from the client wins', () => {
-  assert.strictEqual(resolveShellCwd('/workspace/atrium', { homedir: '/home/node' }), '/workspace/atrium');
-});
-
-test('falls back to the home directory, not a Windows path', () => {
-  assert.strictEqual(resolveShellCwd(undefined, { homedir: '/home/node' }), '/home/node');
-  assert.strictEqual(resolveShellCwd(null, { homedir: '/home/node' }), '/home/node');
-  assert.strictEqual(resolveShellCwd('', { homedir: '/home/node' }), '/home/node');
-  assert.strictEqual(resolveShellCwd('   ', { homedir: '/home/node' }), '/home/node');
-});
+// resolveShellCwd was removed with its only consumer, sockets/terminal.js
+// (opt-dead-terminal-stack-001) — the web-shell resolves cwd from
+// SETTINGS_FILE.workingDirectory instead.
