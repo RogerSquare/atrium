@@ -48,9 +48,13 @@ function buildAllowedOrigins(env = process.env) {
   }
 
   // Dev convenience: the Vite dev server and the API are on different ports,
-  // which is cross-origin by definition. Skipped in production unless nothing
-  // was configured, matching the previous behaviour.
-  if (env.NODE_ENV !== 'production' || origins.size === 0) {
+  // which is cross-origin by definition. NEVER added in production
+  // (devops-harden-remote-001) — the old `|| origins.size === 0` fallback
+  // meant an unconfigured production deploy silently trusted ten localhost
+  // origins, which a local page on the operator's machine could abuse. The
+  // container SPA needs no allowlist entry at all: it is covered by the
+  // same-origin rule. Cross-origin production use requires ALLOWED_ORIGINS.
+  if (env.NODE_ENV !== 'production') {
     [3000, 3001, 5173, 5174, 8080].forEach((p) => {
       origins.add(`http://localhost:${p}`);
       origins.add(`http://127.0.0.1:${p}`);
@@ -65,12 +69,17 @@ function buildAllowedOrigins(env = process.env) {
 }
 
 // Build the predicate used by both the HTTP and socket.io CORS layers.
-// Returns (origin, hostHeader) => boolean.
+// Returns (origin, hostHeader) => true | false | 'no-origin'.
+//
+// 'no-origin' is truthy on purpose: callers that treat the verdict as a
+// boolean still let the request through. But it is NOT the same verdict as
+// true — a request without an Origin header is not a CORS request at all
+// (curl, MCP servers, agents), so the delegate must let it proceed WITHOUT
+// granting Access-Control-Allow-* headers, rather than "allowing" it as if
+// it were an approved origin (devops-harden-remote-001).
 function buildOriginChecker(allowedOrigins) {
   return (origin, hostHeader) => {
-    // No Origin at all: curl, server-to-server, same-origin GET. Not a
-    // browser cross-origin request, so nothing to guard against.
-    if (!origin) return true;
+    if (!origin) return 'no-origin';
 
     // The page this server served, talking back to it. Always allowed,
     // whatever port it happens to be published on.

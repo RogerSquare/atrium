@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
+const helmet = require('helmet');
 const fs = require('fs');
 const path = require('path');
 const { Server } = require('socket.io');
@@ -13,6 +14,7 @@ const { logger, requestLogger } = require('./lib/logger');
 const { resolveFrontendDist, isSpaFallbackRequest, hasBuild, cacheHeadersFor } = require('./lib/staticSite');
 const { featureSnapshot } = require('./lib/features');
 const { buildAllowedOrigins, buildOriginChecker } = require('./lib/corsPolicy');
+const { resolveTrustProxy } = require('./lib/trustProxy');
 const { buildInstanceInfo } = require('./lib/instanceInfo');
 const { version: APP_VERSION } = require('./package.json');
 
@@ -60,6 +62,22 @@ const { registerPreviewHandlers, handlePreviewDisconnect } = require('./sockets/
 const app = express();
 const server = http.createServer(app);
 
+// Topology declaration BEFORE the rate limiters are built: req.ip is their
+// key, and it only reflects X-Forwarded-For when the operator says a proxy
+// is in front (ATRIUM_TRUST_PROXY — see lib/trustProxy.js). Off by default.
+const trustProxy = resolveTrustProxy();
+if (trustProxy !== false) {
+  app.set('trust proxy', trustProxy);
+  logger.info({ trustProxy }, 'trust proxy enabled (ATRIUM_TRUST_PROXY)');
+}
+
+// Baseline hardening headers (devops-harden-remote-001). CSP is off: the
+// swagger-ui bundle at /api/docs and the Vite SPA both rely on inline
+// script/style, and a broken-by-default CSP teaches operators to disable
+// the whole middleware. The rest (nosniff, frameguard SAMEORIGIN, HSTS when
+// TLS-terminated upstream, no-referrer) applies as helmet defaults.
+app.use(helmet({ contentSecurityPolicy: false }));
+
 // --- CORS Origin Policy ---
 // Policy lives in lib/corsPolicy.js so the rules are unit-tested. In short:
 // same-origin is always allowed (the Origin's host matches the Host header the
@@ -77,7 +95,14 @@ const isOriginAllowed = buildOriginChecker(allowedOrigins);
 // which the origin-only signature does not expose.
 const corsDelegate = (req, callback) => {
   const origin = req.headers.origin;
-  if (isOriginAllowed(origin, req.headers.host)) {
+  const verdict = isOriginAllowed(origin, req.headers.host);
+  // No Origin header → not a CORS request (curl, MCP, agents). Let it
+  // proceed but emit NO Access-Control-Allow-* headers — passing through
+  // is not the same as granting (devops-harden-remote-001).
+  if (verdict === 'no-origin') {
+    return callback(null, { origin: false });
+  }
+  if (verdict) {
     return callback(null, {
       origin: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -89,6 +114,17 @@ const corsDelegate = (req, callback) => {
 };
 
 app.use(cors(corsDelegate));
+
+// A disallowed origin used to fall through to Express's default error
+// handler — a 500 with a stack trace outside production. It is a policy
+// denial, not a server fault: answer 403 and keep the body boring
+// (devops-harden-remote-001). Everything else propagates untouched.
+app.use((err, req, res, next) => {
+  if (err && typeof err.message === 'string' && err.message.startsWith('CORS:')) {
+    return res.status(403).json({ error: 'Origin not allowed' });
+  }
+  next(err);
+});
 
 // socket.io passes its `cors` option straight to the same package, so the
 // delegate works here too and the two layers cannot drift apart.

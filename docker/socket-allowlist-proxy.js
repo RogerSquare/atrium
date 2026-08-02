@@ -326,7 +326,13 @@ function startServer() {
     } else {
       console.log('[socket-proxy] job capability OFF (ATRIUM_RUNNER_IMAGES empty)');
     }
-    console.log(`[socket-proxy] container restriction: ${ALLOWED_CONTAINERS.length ? ALLOWED_CONTAINERS.join(', ') : '(any)'}`);
+    if (ALLOWED_CONTAINERS.length) {
+      console.log(`[socket-proxy] container restriction: ${ALLOWED_CONTAINERS.join(', ')}`);
+    } else {
+      // Loud on purpose (devops-harden-remote-001): empty means Atrium can
+      // start/stop/restart/read logs of EVERY container on this host.
+      console.warn('[socket-proxy] WARNING: ALLOWED_CONTAINERS is empty — Atrium may control ANY container on this host. Set ATRIUM_ALLOWED_CONTAINERS to the container names Atrium should manage.');
+    }
   });
   return server;
 }

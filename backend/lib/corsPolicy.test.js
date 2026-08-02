@@ -61,6 +61,17 @@ test('production with a configured allowlist does not silently add localhost', (
   assert.strictEqual(o.has('http://localhost:5173'), false);
 });
 
+test('HARDENING: production with EMPTY ALLOWED_ORIGINS does not re-open the dev list', () => {
+  // The old `|| origins.size === 0` fallback meant an unconfigured production
+  // deploy trusted ten localhost origins (devops-harden-remote-001). The
+  // container SPA never needed them — same-origin covers it.
+  const o = buildAllowedOrigins({ NODE_ENV: 'production' });
+  for (const p of [3000, 3001, 5173, 5174, 8080]) {
+    assert.strictEqual(o.has(`http://localhost:${p}`), false, `localhost:${p} must not be trusted`);
+    assert.strictEqual(o.has(`http://127.0.0.1:${p}`), false);
+  }
+});
+
 // --- buildOriginChecker --------------------------------------------------
 
 test('THE REGRESSION: a container on an unlisted port allows its own SPA', () => {
@@ -82,6 +93,16 @@ test('requests with no Origin pass through (curl, server-to-server)', () => {
   const allow = buildOriginChecker(buildAllowedOrigins({ NODE_ENV: 'production' }));
   assert.ok(allow(undefined, 'localhost:3100'));
   assert.ok(allow('', 'localhost:3100'));
+});
+
+test("HARDENING: missing Origin is 'no-origin', never a full CORS grant", () => {
+  // Truthy so the request proceeds (curl, MCP, agents are not CORS clients),
+  // but distinct from true so the HTTP delegate withholds the
+  // Access-Control-Allow-* headers instead of auto-allowing.
+  const allow = buildOriginChecker(buildAllowedOrigins({ NODE_ENV: 'production' }));
+  assert.strictEqual(allow(undefined, 'localhost:3100'), 'no-origin');
+  assert.strictEqual(allow('', 'localhost:3100'), 'no-origin');
+  assert.strictEqual(allow('http://localhost:3100', 'localhost:3100'), true, 'same-origin stays a real grant');
 });
 
 test('the dev split-port setup keeps working', () => {
