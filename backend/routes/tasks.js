@@ -10,6 +10,7 @@ const { getIO } = require('../lib/io');
 const taskWaiters = require('../lib/taskWaiters');
 const { validateReviewLinkage } = require('../lib/branchValidator');
 const { validateE2eStatus } = require('../lib/e2eValidator');
+const { filterTasks, paginateTasks } = require('../lib/taskQuery');
 const { sanitizeFilename, safePath } = require('../lib/sanitize');
 const { logger } = require('../lib/logger');
 
@@ -22,11 +23,32 @@ const withSummary = (task) => ({ ...task, summary: generateSummary(task) });
  * @swagger
  * /api/tasks:
  *   get:
- *     summary: Get all tasks
+ *     summary: Get tasks (filterable, optionally paginated)
  *     tags: [Tasks]
+ *     parameters:
+ *       - in: query
+ *         name: project
+ *         schema: { type: string }
+ *         description: Filter by project folder name.
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [draft, todo, in_progress, waiting_input, review, done] }
+ *         description: Filter by status (server-side, applied before pagination).
+ *       - in: query
+ *         name: assignee
+ *         schema: { type: string }
+ *         description: Filter by exact assignee (e.g. "agent:claude").
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, maximum: 500 }
+ *         description: Page size. Omit for the legacy plain-array response; presence switches to the paginated envelope.
+ *       - in: query
+ *         name: offset
+ *         schema: { type: integer, minimum: 0 }
+ *         description: Page start (only meaningful with limit).
  *     responses:
  *       200:
- *         description: Array of all tasks
+ *         description: Plain array (no limit param) or `{ total, offset, limit, tasks }` (with limit)
  *         content:
  *           application/json:
  *             schema:
@@ -208,6 +230,11 @@ router.get('/', (req, res) => {
       }
     }
 
+    // Status/assignee filters (opt-tasks-pagination-001) — server-side and
+    // BEFORE pagination, so `total` counts matches and the MCP list tool can
+    // stop fetching all 400+ tasks just to filter client-side.
+    safeTasks = filterTasks(safeTasks, req.query);
+
     // Sort support: ?sort=created_at&order=desc
     const sortField = req.query.sort;
     if (sortField) {
@@ -219,18 +246,13 @@ router.get('/', (req, res) => {
       });
     }
 
-    // Pagination: ?limit=100&offset=0
-    // If no limit specified, return plain array (backwards compatible)
-    const limit = req.query.limit ? Math.min(parseInt(req.query.limit) || 100, 500) : null;
-    let responseBody;
-    if (limit !== null) {
-      const offset = parseInt(req.query.offset) || 0;
-      const total = safeTasks.length;
-      const page = safeTasks.slice(offset, offset + limit);
-      responseBody = { total, offset, limit, tasks: page };
-    } else {
-      responseBody = safeTasks;
-    }
+    // Pagination: ?limit=100&offset=0. No limit param → plain array
+    // (backwards compatible; the web UI depends on that shape). Logic lives
+    // in lib/taskQuery.js where it is unit-tested.
+    const page = paginateTasks(safeTasks, req.query);
+    const responseBody = page.paged
+      ? { total: page.total, offset: page.offset, limit: page.limit, tasks: page.tasks }
+      : safeTasks;
 
     // ETag and Cache-Control
     const json = JSON.stringify(responseBody);

@@ -31,6 +31,11 @@ export default function useTasks(user, socketRef) {
   const fetchData = useCallback(async () => {
     if (!user) return
     try {
+      // Deliberately UNPAGINATED (opt-tasks-pagination-001): omitting `limit`
+      // is the explicit opt-in for the full plain-array response. The board
+      // needs every task at once (column counts, client-side filters, drag
+      // targets) and rendering is already virtualized; pagination exists for
+      // agents/MCP, where tool-result budgets are the constraint.
       const [tasksRes, projectsRes, archivedRes] = await Promise.all([
         apiFetch(`${API_URL}/tasks`),
         apiFetch(`${API_URL}/projects?include=active`),
