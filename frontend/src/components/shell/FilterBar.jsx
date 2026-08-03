@@ -54,6 +54,7 @@ export default function FilterBar({
         />
         <input
           type="text"
+          data-testid="filter-search"
           placeholder="Search tasks…"
           value={searchQuery || ''}
           onChange={(e) => setSearchQuery(e.target.value)}

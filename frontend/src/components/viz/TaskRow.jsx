@@ -64,6 +64,11 @@ export default function TaskRow({
   childCount = 0,
   isCollapsed = false,
   onToggleCollapse,
+  // Keyboard roving focus + shift-click range selection
+  // (ui-list-redesign-impl-001).
+  isFocused = false,
+  onShiftSelect,
+  orderedTaskIds,
 }) {
   const isAgentRunning = activeAgents.some(a => a.taskId === task.id)
   const viewers = taskViewers[task.id] || []
@@ -75,19 +80,35 @@ export default function TaskRow({
   return (
     <tr
       onClick={() => onSelectTask(task)}
+      data-row-id={task.id}
       className="cursor-pointer"
       style={{
         borderBottom: '0.5px solid var(--separator)',
         borderLeft: `3px solid ${pc}`,
-        background: isSelected ? 'color-mix(in srgb, var(--accent-app) 8%, transparent)' : justUpdated ? 'color-mix(in srgb, var(--accent-app) 6%, transparent)' : 'transparent',
+        background: isFocused ? 'color-mix(in srgb, var(--accent-app) 10%, transparent)' : isSelected ? 'color-mix(in srgb, var(--accent-app) 8%, transparent)' : justUpdated ? 'color-mix(in srgb, var(--accent-app) 6%, transparent)' : 'transparent',
+        // The keyboard's cursor: an inset accent line, visible on any theme
+        // without shifting row height.
+        boxShadow: isFocused ? 'inset 2px 0 0 var(--accent-app)' : undefined,
         transition: `background var(--duration-fast) var(--ease-default)`,
       }}
-      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'color-mix(in srgb, var(--accent-app) 4%, transparent)' }}
-      onMouseLeave={e => { if (!isSelected && !justUpdated) e.currentTarget.style.background = 'transparent' }}
+      onMouseEnter={e => { if (!isSelected && !isFocused) e.currentTarget.style.background = 'color-mix(in srgb, var(--accent-app) 4%, transparent)' }}
+      onMouseLeave={e => { if (!isSelected && !justUpdated && !isFocused) e.currentTarget.style.background = 'transparent' }}
     >
       {selectable && (
         <td style={{ padding: '8px' }} onClick={e => e.stopPropagation()}>
-          <input type="checkbox" checked={isSelected} onChange={() => onToggleSelect(task.id)} style={{ accentColor: 'var(--accent-app)', cursor: 'pointer' }} />
+          {/* Shift-click selects the whole range since the last click — the
+              same contract Board cards use: onShiftSelect(id, orderedIds). */}
+          <input
+            type="checkbox"
+            aria-label={`Select ${task.id}`}
+            checked={isSelected}
+            onChange={() => {}}
+            onClick={(e) => {
+              if (e.shiftKey && onShiftSelect && orderedTaskIds) onShiftSelect(task.id, orderedTaskIds)
+              else onToggleSelect(task.id)
+            }}
+            style={{ accentColor: 'var(--accent-app)', cursor: 'pointer' }}
+          />
         </td>
       )}
       {/* Cells render in the caller's column order, so the header and the

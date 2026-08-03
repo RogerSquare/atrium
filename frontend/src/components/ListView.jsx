@@ -1,4 +1,4 @@
-import { memo, useState, useCallback, useMemo, useRef, Fragment } from 'react'
+import { memo, useState, useCallback, useMemo, useRef, useEffect, Fragment } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ArrowUp, ArrowDown, ChevronRight, ChevronDown, Layers, Columns3, Check } from 'lucide-react'
 import TaskRow from './viz/TaskRow'
@@ -46,7 +46,7 @@ function getLastUpdated(task) {
   return task.created_at
 }
 
-function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskViewers = {}, currentUser, selectable, selectedIds = [], onToggleSelect, recentlyUpdatedIds = [], githubLinks = {} }) {
+function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskViewers = {}, currentUser, selectable, selectedIds = [], onToggleSelect, onShiftSelect, recentlyUpdatedIds = [], githubLinks = {} }) {
   const [sortKey, setSortKey] = useState(() => localStorage.getItem('taskBoardListSort') || 'priority')
   const [sortDir, setSortDir] = useState(() => localStorage.getItem('taskBoardListDir') || 'asc')
   // Status grouping is the DEFAULT for first-time users; a stored choice
@@ -198,6 +198,78 @@ function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
   const shouldVirtualize = groupBy === 'none' && sortedTasks.length > 50
   const rowVirtualizer = useVirtualizer({ count: shouldVirtualize ? sortedTasks.length : 0, getScrollElement: () => tableContainerRef.current, estimateSize: () => 44, overscan: 15 })
 
+  // The keyboard's view of the table: every task row currently rendered, in
+  // render order, collapse-aware. Shift-click range selection reuses the same
+  // order (ui-list-redesign-impl-001, keyboard + selection parity).
+  const visibleOrderedTasks = useMemo(() => {
+    if (threadData) {
+      const out = []
+      for (const th of threadData.threads) for (const row of th.rows) out.push(row.task)
+      if (!collapsedGroups[BUCKET_STANDALONE]) out.push(...threadData.standalone)
+      if (!collapsedGroups[BUCKET_ORPHAN]) out.push(...threadData.orphans)
+      return out
+    }
+    if (groupedTasks) {
+      const out = []
+      for (const [name, list] of groupedTasks.entries()) {
+        if (!collapsedGroups[name]) out.push(...list)
+      }
+      return out
+    }
+    return sortedTasks
+  }, [threadData, groupedTasks, collapsedGroups, sortedTasks])
+  const visibleOrderedIds = useMemo(() => visibleOrderedTasks.map(t => t.id), [visibleOrderedTasks])
+
+  // Roving keyboard focus. ↑/↓ move, Enter opens, Esc clears. Bound on the
+  // scroll container (tabIndex 0) so it never fights the inline editors —
+  // keys originating from an input/select are ignored.
+  const [focusedId, setFocusedId] = useState(null)
+
+  const scrollRowIntoView = useCallback((taskId, index) => {
+    if (shouldVirtualize) {
+      rowVirtualizer.scrollToIndex(index, { align: 'auto' })
+      return
+    }
+    tableContainerRef.current?.querySelector(`[data-row-id="${CSS.escape(taskId)}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [shouldVirtualize, rowVirtualizer])
+
+  const handleKeyDown = useCallback((e) => {
+    const tag = e.target.tagName
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Enter' && e.key !== 'Escape') return
+
+    if (e.key === 'Escape') { setFocusedId(null); return }
+
+    const idx = focusedId ? visibleOrderedIds.indexOf(focusedId) : -1
+    if (e.key === 'Enter') {
+      if (idx >= 0) { e.preventDefault(); onSelectTask(visibleOrderedTasks[idx]) }
+      return
+    }
+
+    e.preventDefault() // arrows must move focus, not scroll the container
+    const next = e.key === 'ArrowDown'
+      ? Math.min(idx + 1, visibleOrderedIds.length - 1)
+      : Math.max(idx <= 0 ? 0 : idx - 1, 0)
+    const nextId = visibleOrderedIds[next]
+    if (!nextId) return
+    setFocusedId(nextId)
+    scrollRowIntoView(nextId, next)
+  }, [focusedId, visibleOrderedIds, visibleOrderedTasks, onSelectTask, scrollRowIntoView])
+
+  // '/' anywhere (outside a typing context) jumps to the FilterBar search —
+  // the box exists two components up but nothing ever focused it from here.
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return
+      const t = e.target
+      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable) return
+      const search = document.querySelector('[data-testid="filter-search"]')
+      if (search) { e.preventDefault(); search.focus() }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   const renderRow = (task, treeMeta = null) => (
     <TaskRow
       key={task.id}
@@ -211,6 +283,9 @@ function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
       selectable={selectable}
       selectedIds={selectedIds}
       onToggleSelect={onToggleSelect}
+      onShiftSelect={onShiftSelect}
+      orderedTaskIds={visibleOrderedIds}
+      isFocused={focusedId === task.id}
       activeAgents={activeAgents}
       taskViewers={taskViewers}
       recentlyUpdatedIds={recentlyUpdatedIds}
@@ -319,17 +394,25 @@ function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
       </div>
 
       {/* Table */}
-      <div ref={tableContainerRef} className={`overflow-x-auto custom-scrollbar flex-1 ${shouldVirtualize ? 'overflow-y-auto' : ''}`} style={{ borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)', border: 'var(--border-hairline)', minHeight: 0 }}>
+      <div
+        ref={tableContainerRef}
+        tabIndex={0}
+        role="region"
+        aria-label="Task list — arrow keys move, Enter opens"
+        onKeyDown={handleKeyDown}
+        className={`overflow-x-auto custom-scrollbar flex-1 focus:outline-none ${shouldVirtualize ? 'overflow-y-auto' : ''}`}
+        style={{ borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)', border: 'var(--border-hairline)', minHeight: 0 }}
+      >
       <table className="w-full min-w-[640px] border-collapse">
         <thead>
           <tr style={{ borderBottom: '0.5px solid var(--separator)' }}>
             {selectable && (
               <th style={{ width: '40px', padding: '10px 8px' }}>
-                <input type="checkbox" checked={selectedIds.length === tasks.length && tasks.length > 0} onChange={() => { if (selectedIds.length === tasks.length) { tasks.forEach(t => onToggleSelect(t.id)) } else { tasks.filter(t => !selectedIds.includes(t.id)).forEach(t => onToggleSelect(t.id)) } }} style={{ accentColor: 'var(--accent-app)', cursor: 'pointer' }} />
+                <input type="checkbox" aria-label="Select all tasks" checked={selectedIds.length === tasks.length && tasks.length > 0} onChange={() => { if (selectedIds.length === tasks.length) { tasks.forEach(t => onToggleSelect(t.id)) } else { tasks.filter(t => !selectedIds.includes(t.id)).forEach(t => onToggleSelect(t.id)) } }} style={{ accentColor: 'var(--accent-app)', cursor: 'pointer' }} />
               </th>
             )}
             {columns.map(col => (
-              <th key={col.key} onClick={() => col.sortable && handleSort(col.key)} className={`${col.width} select-none ${col.sortable ? 'cursor-pointer' : ''}`} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', letterSpacing: 'var(--tracking-wide)', transition: `color var(--duration-fast)` }} onMouseEnter={e => e.currentTarget.style.color = 'var(--text-app)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}>
+              <th key={col.key} onClick={() => col.sortable && handleSort(col.key)} aria-sort={sortKey === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined} className={`${col.width} select-none ${col.sortable ? 'cursor-pointer' : ''}`} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-tertiary)', letterSpacing: 'var(--tracking-wide)', transition: `color var(--duration-fast)` }} onMouseEnter={e => e.currentTarget.style.color = 'var(--text-app)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}>
                 <div className="flex items-center gap-1">
                   {col.label}
                   {sortKey === col.key && (
