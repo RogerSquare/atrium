@@ -23,6 +23,11 @@ const SWIMLANE_OPTIONS = [
 
 const STALE_THRESHOLDS = { in_progress: 3, review: 7 } // days
 
+// Columns that can collapse to a thin rail, with their persistence keys
+// (ui-board-collapse-001). Dragging INTO a collapsed column isn't possible —
+// expand it first — matching the Draft rail's existing behavior.
+const COLLAPSIBLE_STORAGE = { draft: 'taskBoardDraftCollapsed', done: 'taskBoardDoneCollapsed' }
+
 function isTaskStale(task) {
   const threshold = STALE_THRESHOLDS[task.status]
   if (!threshold) return false
@@ -38,7 +43,14 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
   const isMobile = useIsMobile()
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem('taskBoardCompact') === 'true')
   const [swimlaneBy, setSwimlaneBy] = useState(() => localStorage.getItem('taskBoardSwimlane') || 'none')
-  const [draftCollapsed, setDraftCollapsed] = useState(() => localStorage.getItem('taskBoardDraftCollapsed') === 'true')
+  // Rail-collapsible columns (ui-board-collapse-001). Draft and Done start
+  // COLLAPSED for everyone — drafts are half-formed and done is history; the
+  // board should open on active work. Only an explicit stored 'false' (the
+  // user expanded and left it that way) overrides the default.
+  const [collapsedCols, setCollapsedCols] = useState(() => ({
+    draft: localStorage.getItem('taskBoardDraftCollapsed') !== 'false',
+    done: localStorage.getItem('taskBoardDoneCollapsed') !== 'false',
+  }))
   const [collapsedLanes, setCollapsedLanes] = useState({})
   const [activeColumn, setActiveColumn] = useState('todo')
   const scrollRef = useRef(null)
@@ -103,8 +115,12 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
     setCompactMode(prev => { localStorage.setItem('taskBoardCompact', String(!prev)); return !prev })
   }, [])
 
-  const toggleDraftCollapsed = useCallback(() => {
-    setDraftCollapsed(prev => { localStorage.setItem('taskBoardDraftCollapsed', String(!prev)); return !prev })
+  const toggleColCollapsed = useCallback((colId) => {
+    setCollapsedCols(prev => {
+      const next = { ...prev, [colId]: !prev[colId] }
+      localStorage.setItem(COLLAPSIBLE_STORAGE[colId], String(next[colId]))
+      return next
+    })
   }, [])
 
   const handleSwimlaneChange = useCallback((value) => {
@@ -457,16 +473,17 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
         <div className="flex gap-4 overflow-x-auto pb-4">
           {displayColumns.map(col => {
             const colTasks = columnTasks[col.id] || []
-            // Collapsed Draft column → thin clickable rail that reclaims horizontal space
-            if (col.id === 'draft' && draftCollapsed) {
+            // Collapsed column → thin clickable rail that reclaims horizontal space
+            if (COLLAPSIBLE_STORAGE[col.id] && collapsedCols[col.id]) {
               return (
                 <button
                   key={col.id}
                   type="button"
-                  onClick={toggleDraftCollapsed}
+                  onClick={() => toggleColCollapsed(col.id)}
                   className="apple-press flex flex-col items-center self-stretch"
-                  title={`Expand Draft column (${colTasks.length})`}
-                  aria-label={`Expand Draft column, ${colTasks.length} tasks`}
+                  data-testid={`board-rail-${col.id}`}
+                  title={`Expand ${col.title} column (${colTasks.length})`}
+                  aria-label={`Expand ${col.title} column, ${colTasks.length} tasks`}
                   aria-expanded={false}
                   style={{
                     flex: '0 0 auto',
@@ -492,7 +509,7 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                     {colTasks.length}
                   </span>
                   <span style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', letterSpacing: 'var(--tracking-wide)', color: 'var(--text-muted)' }}>
-                    Draft
+                    {col.title}
                   </span>
                 </button>
               )
@@ -520,13 +537,13 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                   style={selectable && !col.isSafety ? { borderRadius: 'var(--radius-sm)', padding: 'var(--space-1) var(--space-2)', margin: '0 0 var(--space-2) 0', transition: `all var(--duration-fast) var(--ease-default)`, background: colTasks.length > 0 && colTasks.every(t => selectedIds.includes(t.id)) ? 'color-mix(in srgb, var(--accent-app) 12%, transparent)' : undefined } : undefined}
                 >
                   <div className="flex items-center gap-2">
-                    {col.id === 'draft' && (
+                    {COLLAPSIBLE_STORAGE[col.id] && (
                       <button
                         type="button"
-                        onClick={(e) => { e.stopPropagation(); toggleDraftCollapsed() }}
+                        onClick={(e) => { e.stopPropagation(); toggleColCollapsed(col.id) }}
                         className="apple-press"
-                        title="Collapse Draft column"
-                        aria-label="Collapse Draft column"
+                        title={`Collapse ${col.title} column`}
+                        aria-label={`Collapse ${col.title} column`}
                         aria-expanded={true}
                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', borderRadius: 'var(--radius-sm)', color: 'var(--text-tertiary)', background: 'transparent', border: 'none', cursor: 'pointer' }}
                       >
