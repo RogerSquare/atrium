@@ -1,10 +1,11 @@
 ---
 source: linear.app
-fetched_at: 2026-04-25T00:00:00Z
+fetched_at: 2026-08-03T08:00:00Z
 ttl_days: 30
 fetched_via:
   - linear.app/brand (first-party brand guide)
   - linear.app/now/how-we-redesigned-the-linear-ui (first-party engineering blog)
+  - linear.app/docs/board-layout (first-party docs — grouping/display, 2026-08-03 refresh)
   - design.hagicode.com/previews/linear.app/light (third-party token extract)
   - mobbin.com/colors/brand/linear (third-party — fetch returned 403; not used)
 ---
@@ -111,3 +112,18 @@ The "35" looks like a typo of 36 in the source; treat as 32 → 36 → 48 ladder
 - Hairline borders + accent focus ring as the elevation language.
 - Restrained motion: 140-180ms ease-outs.
 - `kbd`-style chips for keyboard shortcuts inside the help text.
+
+## List grouping + display options (2026-08-03 refresh, for ui-list-redesign-001)
+
+- Group by: Status (default), Focus, Project, Priority, Cycle, Label, Label
+  group, SLA. `[token: linear.app/docs/board-layout]`
+- Sort is a view-level "Sort" control supporting **stacked layers** (e.g.
+  Priority, then Due Date within each priority). `[token: linear docs]`
+- "Show empty groups" toggle; list and board share one ordering.
+  `[token: linear docs]`
+- Row anatomy (product observation): single line, ~36-40px `[best-guess]`;
+  left→right = priority glyph · muted mono id · title (the ONLY high-contrast
+  element) · trailing metadata chips + assignee avatar. One focal element per
+  row. `[best-guess from screenshots]`
+- Group headers: icon + name + count, per-group collapse.
+  `[best-guess from screenshots]`

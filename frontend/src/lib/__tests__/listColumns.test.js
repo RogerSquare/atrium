@@ -33,8 +33,13 @@ describe('registry', () => {
     expect(DEFAULT_VISIBLE).not.toContain('due_date')
   })
 
-  it('locks id and title so a row can always be identified', () => {
-    expect(LOCKED).toEqual(['id', 'title'])
+  it('locks title so a row can always be identified (the id lives inside it)', () => {
+    expect(LOCKED).toEqual(['title'])
+  })
+
+  it('has no id or parent columns — id moved into the title cell, parent superseded by Thread grouping', () => {
+    expect(ALL_COLUMNS.find(c => c.key === 'id')).toBeUndefined()
+    expect(ALL_COLUMNS.find(c => c.key === 'parent')).toBeUndefined()
   })
 
   it('every default is a real column', () => {
@@ -61,17 +66,19 @@ describe('loadVisibleColumns', () => {
     expect(loadVisibleColumns(fakeStorage('"status"'))).toEqual(DEFAULT_VISIBLE)
   })
 
-  // The due_date case, concretely: a set persisted before the column was
-  // removed must not strand the view on a column that no longer renders.
+  // The recovery case, concretely: sets persisted before a column was
+  // removed (due_date in 2026-04; id and parent in this redesign) must not
+  // strand the view on a column that no longer renders.
   it('drops columns that no longer exist in the registry', () => {
-    const out = loadVisibleColumns(fakeStorage('["id","title","due_date","status"]'))
+    const out = loadVisibleColumns(fakeStorage('["id","title","due_date","parent","status"]'))
     expect(out).not.toContain('due_date')
+    expect(out).not.toContain('id')
+    expect(out).not.toContain('parent')
     expect(out).toContain('status')
   })
 
   it('forces locked columns back in if they were stripped out', () => {
     const out = loadVisibleColumns(fakeStorage('["status"]'))
-    expect(out).toContain('id')
     expect(out).toContain('title')
   })
 
@@ -81,33 +88,32 @@ describe('loadVisibleColumns', () => {
 
   it('round-trips through save', () => {
     const s = fakeStorage()
-    saveVisibleColumns(['id', 'title', 'phase'], s)
-    expect(loadVisibleColumns(s)).toEqual(['id', 'title', 'phase'])
+    saveVisibleColumns(['title', 'status', 'phase'], s)
+    expect(loadVisibleColumns(s)).toEqual(['title', 'status', 'phase'])
   })
 
   it('survives storage being unavailable', () => {
     const throwing = { getItem: () => { throw new Error('disabled') } }
     expect(loadVisibleColumns(throwing)).toEqual(DEFAULT_VISIBLE)
-    expect(() => saveVisibleColumns(['id'], throwing)).not.toThrow()
+    expect(() => saveVisibleColumns(['title'], throwing)).not.toThrow()
   })
 })
 
 describe('toggleColumn', () => {
   it('adds and removes', () => {
-    expect(toggleColumn(['id', 'title'], 'type')).toContain('type')
-    expect(toggleColumn(['id', 'title', 'type'], 'type')).not.toContain('type')
+    expect(toggleColumn(['title'], 'type')).toContain('type')
+    expect(toggleColumn(['title', 'type'], 'type')).not.toContain('type')
   })
 
   it('refuses to remove a locked column', () => {
-    expect(toggleColumn(['id', 'title'], 'id')).toEqual(['id', 'title'])
-    expect(toggleColumn(['id', 'title'], 'title')).toEqual(['id', 'title'])
+    expect(toggleColumn(['title'], 'title')).toEqual(['title'])
   })
 
   // Otherwise the header order would depend on the order you happened to
   // click things in, and two users would see different tables.
   it('keeps registry order regardless of click order', () => {
     const order = ALL_COLUMNS.map(c => c.key)
-    let visible = ['id', 'title']
+    let visible = ['title']
     visible = toggleColumn(visible, 'tags')
     visible = toggleColumn(visible, 'status')
     const positions = visible.map(k => order.indexOf(k))
@@ -117,8 +123,8 @@ describe('toggleColumn', () => {
 
 describe('resolveColumns', () => {
   it('returns definitions in registry order', () => {
-    const cols = resolveColumns(['tags', 'status', 'id'])
-    expect(cols.map(c => c.key)).toEqual(['id', 'status', 'tags'])
+    const cols = resolveColumns(['tags', 'status', 'title'])
+    expect(cols.map(c => c.key)).toEqual(['title', 'status', 'tags'])
   })
 })
 
