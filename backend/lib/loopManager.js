@@ -298,6 +298,17 @@ async function runWorkerTick(loop) {
   return { result: { claimed: 1, task: task.id, note: 'executor dispatched' }, snapshot: loop.snapshot };
 }
 
+// Playbook mode (feat-hub-rethink-impl-001): the tick IS an agent run — no
+// GitHub involved. Awaited so the loop shows 'running' for the run's duration
+// and the tick result carries the outcome.
+async function runPlaybookTick(loop) {
+  const run = await require('./loopAgent').runPlaybook(loop, { event: 'schedule' });
+  return {
+    result: { playbook_run_id: run.id, status: run.status, cost_usd: run.cost_usd ?? null, fetched_at: new Date().toISOString() },
+    snapshot: loop.snapshot,
+  };
+}
+
 function emitUpdated(loop) {
   if (!loop) return;
   try {
@@ -314,7 +325,9 @@ async function tick(loopId) {
   running.add(loopId);
   emitUpdated(loops.patchRuntime(loopId, { status: 'running', last_run_at: new Date().toISOString() }));
   try {
-    const { result, snapshot } = loop.mode === 'worker' ? await runWorkerTick(loop) : await runTick(loop);
+    const { result, snapshot } = loop.mode === 'worker' ? await runWorkerTick(loop)
+      : loop.mode === 'playbook' ? await runPlaybookTick(loop)
+      : await runTick(loop);
     const updated = loops.patchRuntime(loopId, {
       status: 'idle',
       last_result: result,

@@ -18,7 +18,7 @@ const { scheduleError, normalizeSchedule } = require('./loopSchedule');
 const WATCH_TYPES = ['prs', 'ci', 'commits', 'issues'];
 const ACTION_TYPES = ['update_fields', 'comment', 'ai_summary'];
 const SCOPES = ['project', 'global'];
-const MODES = ['watcher', 'worker'];
+const MODES = ['watcher', 'worker', 'playbook'];
 const STATUSES = ['idle', 'running', 'error'];
 const MIN_INTERVAL_MS = 60000;       // floor: 1 minute
 const DEFAULT_INTERVAL_MS = 300000;  // default: 5 minutes
@@ -183,10 +183,16 @@ function validate(input, { partial = false, merged = null } = {}) {
     if (typeof view.project !== 'string' || !view.project.trim()) {
       errors.project = 'project is required when scope is "project"';
     }
-  } else if (view.scope === 'global') {
+  } else if (view.scope === 'global' && view.mode !== 'playbook') {
+    // Playbooks don't poll a repo — a global playbook is a standalone
+    // scheduled prompt and needs neither project nor repo.
     if (typeof view.repo !== 'string' || !/^[^/\s]+\/[^/\s]+$/.test(view.repo)) {
       errors.repo = 'repo (owner/name) is required when scope is "global"';
     }
+  }
+  if (view.mode === 'playbook') {
+    const instr = typeof view.instructions === 'string' ? view.instructions.trim() : '';
+    if (!instr) errors.instructions = 'instructions are required for playbook loops — the playbook IS the prompt';
   }
 
   if (Object.keys(errors).length) throw new LoopValidationError(errors);

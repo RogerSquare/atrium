@@ -35,6 +35,17 @@ function generate(loop = {}) {
   const acts = (loop.actions || []).map((a) => `- ${ACTION_DESC[a] || a}`);
   if ((loop.watch || []).includes('issues')) acts.push('- create a `draft` Atrium task for each new issue');
 
+  if (loop.mode === 'playbook') {
+    // Playbooks REQUIRE an instructions override (validated in loops.js) —
+    // this generated text is the placeholder shown before one is written.
+    return [
+      `You are the agent behind the scheduled playbook "${loop.name || '(unnamed)'}"${loop.project ? ` for the "${loop.project}" project` : ''}.`,
+      '',
+      'Write the playbook here: what should this loop produce on every scheduled run?',
+      'You receive a small context block (project task counts) and have no tools.',
+      'The output is saved to the run history — nothing is written to the board.',
+    ].join('\n');
+  }
   if (loop.mode === 'worker') {
     return [
       `You are the autonomous worker behind the loop "${loop.name || '(unnamed)'}" for ${target}.`,
