@@ -94,6 +94,7 @@ export default function FocalZone({
               onShiftSelect={onShiftSelect}
               recentlyUpdatedIds={recentlyUpdatedIds}
               githubLinks={githubLinks}
+              onCreateTask={onCreateTask}
             />
           ) : activeView === 'changes' ? (
             <ChangesView

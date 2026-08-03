@@ -2,9 +2,10 @@ import { memo, useState, useCallback, useMemo, useRef, useEffect, Fragment } fro
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ArrowUp, ArrowDown, ChevronRight, ChevronDown, Layers, Columns3, Check } from 'lucide-react'
 import TaskRow from './viz/TaskRow'
-import { Select } from './ui'
+import { Select, Button } from './ui'
+import useIsMobile from '../hooks/useIsMobile'
 import { buildThreadRows, BUCKET_STANDALONE, BUCKET_ORPHAN } from '../lib/taskThreads'
-import { STATUS_OPTIONS } from '../constants'
+import { STATUS_OPTIONS, STATUS_COLOR, PRIORITY_COLOR } from '../constants'
 import {
   ALL_COLUMNS, LOCKED, loadVisibleColumns, saveVisibleColumns,
   toggleColumn, resolveColumns, phaseOf,
@@ -46,7 +47,18 @@ function getLastUpdated(task) {
   return task.created_at
 }
 
-function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskViewers = {}, currentUser, selectable, selectedIds = [], onToggleSelect, onShiftSelect, recentlyUpdatedIds = [], githubLinks = {} }) {
+function relativeShort(dateStr) {
+  if (!dateStr) return '—'
+  const mins = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000)
+  if (mins < 1) return 'now'
+  if (mins < 60) return `${mins}m`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h`
+  return `${Math.floor(hours / 24)}d`
+}
+
+function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskViewers = {}, currentUser, selectable, selectedIds = [], onToggleSelect, onShiftSelect, recentlyUpdatedIds = [], githubLinks = {}, onCreateTask }) {
+  const isMobile = useIsMobile()
   const [sortKey, setSortKey] = useState(() => localStorage.getItem('taskBoardListSort') || 'priority')
   const [sortDir, setSortDir] = useState(() => localStorage.getItem('taskBoardListDir') || 'asc')
   // Status grouping is the DEFAULT for first-time users; a stored choice
@@ -180,7 +192,10 @@ function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
     return groups
   }, [sortedTasks, groupBy])
 
-  const handleCopyId = useCallback((e, id) => { e.stopPropagation(); navigator.clipboard.writeText(id); setCopiedId(id); setTimeout(() => setCopiedId(null), 1500) }, [])
+  // Clipboard writes can reject (unfocused page, non-secure context) — the
+  // check feedback still shows, and an unhandled rejection would trip vite's
+  // dev error overlay over the whole app.
+  const handleCopyId = useCallback((e, id) => { e.stopPropagation(); navigator.clipboard?.writeText(id).catch(() => {}); setCopiedId(id); setTimeout(() => setCopiedId(null), 1500) }, [])
 
   const handleInlineUpdate = useCallback((taskId, field, value) => {
     const key = `${taskId}-${field}`
@@ -300,6 +315,101 @@ function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
   )
 
   const colCount = columns.length + (selectable ? 1 : 0)
+
+  // Shared zero-state: the filters explanation plus a way OUT of the empty
+  // screen, matching the Board's empty-state CTA (implicit-affordance 'add').
+  const emptyState = (
+    <div className="text-center flex flex-col items-center gap-3" style={{ padding: '48px 24px' }}>
+      <span style={{ fontSize: 'var(--text-subhead)', color: 'var(--text-tertiary)' }}>No tasks match the current filters</span>
+      {onCreateTask && (
+        <Button size="sm" onClick={onCreateTask} data-testid="list-empty-create">New Task</Button>
+      )}
+    </div>
+  )
+
+  // Below MOBILE_BREAKPOINT the 640px table would mean sideways scrolling —
+  // rows become compact cards instead (ui-list-redesign-impl-001, Q5).
+  // Grouping and collapse still work; column picker and checkboxes don't
+  // apply here (bulk mode stays a desktop tool).
+  if (isMobile) {
+    const cardMeta = (t) => [
+      statusLabel(t.status),
+      t.priority,
+      relativeShort(getLastUpdated(t)),
+    ]
+    const renderCard = (task, depth = 0) => {
+      const pc = PRIORITY_COLOR[task.priority] || PRIORITY_COLOR.medium
+      return (
+        <button
+          key={task.id}
+          data-testid="list-card"
+          onClick={() => onSelectTask(task)}
+          className="apple-press w-full text-left"
+          style={{
+            marginLeft: depth ? Math.min(depth, 4) * 12 + 'px' : 0,
+            width: depth ? `calc(100% - ${Math.min(depth, 4) * 12}px)` : '100%',
+            padding: '10px 12px',
+            borderRadius: 'var(--radius-md)',
+            border: 'none',
+            borderLeft: `3px solid ${pc}`,
+            background: 'var(--bg-card)',
+            cursor: 'pointer',
+          }}
+        >
+          <div className="truncate" style={{ fontSize: 'var(--text-subhead)', fontWeight: 'var(--font-medium)', color: 'var(--text-app)' }}>{task.title}</div>
+          <div className="flex items-center gap-2" style={{ marginTop: '2px', fontSize: 'var(--text-caption2)' }}>
+            <span style={{ color: STATUS_COLOR[task.status] || 'var(--text-muted)', fontWeight: 'var(--font-semibold)' }}>{cardMeta(task)[0]}</span>
+            <span style={{ color: pc, textTransform: 'capitalize' }}>{cardMeta(task)[1]}</span>
+            <span style={{ color: 'var(--text-tertiary)' }}>{cardMeta(task)[2]}</span>
+          </div>
+        </button>
+      )
+    }
+    const mobileHeader = (name, count) => (
+      <button
+        key={`__h_${name}`}
+        onClick={() => toggleGroup(name)}
+        className="apple-press w-full flex items-center gap-2 text-left"
+        style={{ padding: '8px 4px', background: 'transparent', border: 'none', cursor: 'pointer' }}
+      >
+        {collapsedGroups[name] ? <ChevronRight className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} /> : <ChevronDown className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />}
+        <span style={{ fontSize: 'var(--text-footnote)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>{name}</span>
+        <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>{count}</span>
+      </button>
+    )
+    return (
+      <div className="flex flex-col gap-2 h-full min-h-0" data-testid="list-mobile">
+        <div className="flex items-center gap-2 px-1">
+          <Layers className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--text-tertiary)' }} />
+          <Select pill active={groupBy !== 'none'} value={groupBy} onChange={(e) => handleGroupByChange(e.target.value)} aria-label="Group tasks by" data-testid="list-group-by">
+            {GROUP_BY_OPTIONS.map(opt => <option key={opt.key} value={opt.key}>{opt.label}</option>)}
+          </Select>
+          <div className="flex-1" />
+          <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>{tasks.length} tasks</span>
+        </div>
+        <div className="overflow-y-auto custom-scrollbar flex-1 flex flex-col gap-1.5" style={{ minHeight: 0, paddingBottom: 'var(--space-4)' }}>
+          {sortedTasks.length === 0 ? emptyState : threadData ? (
+            <>
+              {threadData.threads.map(th => th.rows.map(row => renderCard(row.task, row.depth)))}
+              {threadData.standalone.length > 0 && mobileHeader(BUCKET_STANDALONE, threadData.standalone.length)}
+              {!collapsedGroups[BUCKET_STANDALONE] && threadData.standalone.map(t => renderCard(t))}
+              {threadData.orphans.length > 0 && mobileHeader(BUCKET_ORPHAN, threadData.orphans.length)}
+              {!collapsedGroups[BUCKET_ORPHAN] && threadData.orphans.map(t => renderCard(t))}
+            </>
+          ) : groupedTasks ? (
+            Array.from(groupedTasks.entries()).map(([name, list]) => (
+              <Fragment key={name}>
+                {mobileHeader(name, list.length)}
+                {!collapsedGroups[name] && list.map(t => renderCard(t))}
+              </Fragment>
+            ))
+          ) : (
+            sortedTasks.map(t => renderCard(t))
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-3 h-full min-h-0">
@@ -428,7 +538,7 @@ function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
         <tbody>
           {sortedTasks.length === 0 ? (
             <tr>
-              <td colSpan={colCount} className="text-center" style={{ padding: '48px', fontSize: 'var(--text-subhead)', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No tasks match the current filters</td>
+              <td colSpan={colCount}>{emptyState}</td>
             </tr>
           ) : threadData ? (
             <>
