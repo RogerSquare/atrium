@@ -12,6 +12,7 @@ import Board from '../Board'
 import ListView from '../ListView'
 import ChangesView from '../ChangesView'
 import HubView from '../HubView'
+import FilesView from '../FilesView'
 import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
 
 // Lazy-loaded — vis-network is ~700KB and only matters when the graph view
@@ -114,6 +115,8 @@ export default function FocalZone({
             </Suspense>
           ) : activeView === 'hub' ? (
             <HubView projects={projects} activeProject={activeProject} socketRef={socketRef} tasks={tasks} onSelectTask={onSelectTask} />
+          ) : activeView === 'files' ? (
+            <FilesView />
           ) : (
             <Board
               tasks={tasks}
