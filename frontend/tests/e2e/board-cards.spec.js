@@ -20,6 +20,10 @@ const TASKS = [
   },
   { ...BASE, id: 'feat-epic-001', title: 'Epic root task', status: 'in_progress', assignee: 'roger', activity_log: [{ timestamp: DAYS(10), action: 'x' }] },
   { ...BASE, id: 'feat-plain-001', title: 'Plain todo card', status: 'todo' },
+  // The overflow regression case: a long id + done state + type dash must
+  // all fit a narrow column (the first cut spilled type labels and the
+  // done check outside the card).
+  { ...BASE, id: 'devops-very-long-identifier-overflow-check-001', title: 'Done card with a very long id', status: 'done', e2e_status: 'passing' },
 ];
 
 test.describe('Board card redesign', () => {
@@ -41,16 +45,28 @@ test.describe('Board card redesign', () => {
     await page.goto('/');
   });
 
-  test('signal cluster carries needs-you + agent + stale together without breaking', async ({ page }) => {
+  test('signal cluster carries needs-you + agent + type dashes together without breaking', async ({ page }) => {
     const busy = page.locator('[role="button"]', { hasText: 'Busy card with every signal' }).first();
     const cluster = busy.getByTestId('card-signal-cluster');
-    await expect(cluster.getByTestId('card-waiting-indicator')).toBeVisible();
-    await expect(cluster.locator('.animate-spin')).toBeVisible(); // agent
-    // Stale clock renders (in_progress/review > threshold — waiting task
-    // seeded with 10-day-old activity is stale only if Board counts it;
-    // in_progress sibling is the guaranteed stale case.
+    await expect(cluster.getByTestId('card-waiting-indicator')).toBeVisible(); // yellow dash, pulsing
+    await expect(cluster.getByTestId('card-type-dash')).toBeVisible();
+    await expect(cluster.locator('.animate-spin')).toBeVisible(); // agent keeps its spinner
     const epic = page.locator('[role="button"]', { hasText: 'Epic root task' }).first();
     await expect(epic.getByTestId('card-signal-cluster')).toBeVisible();
+  });
+
+  test('no element escapes the card — long id + done dash + type dash all contained', async ({ page }) => {
+    const long = page.getByLabel(/Done card with a very long id/);
+    await expect(long).toBeVisible();
+    const overflow = await long.evaluate((el) => ({
+      x: el.scrollWidth - el.clientWidth,
+      y: el.scrollHeight - el.clientHeight,
+    }));
+    expect(overflow.x).toBeLessThanOrEqual(0);
+    expect(overflow.y).toBeLessThanOrEqual(0);
+    // The id is truncated, not spilled; the full id stays reachable via the
+    // copy button's accessible name.
+    await expect(long.getByTestId('card-id-copy')).toBeVisible();
   });
 
   test('metadata footer keeps every fact: assignee, tests, component, parent, comments', async ({ page }) => {

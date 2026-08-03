@@ -1,12 +1,30 @@
 import { memo, useState, useCallback } from 'react'
 import { AlertCircle, AlignLeft, CheckCircle2, Circle, Copy, Check, Loader2, CalendarClock, Clock, Terminal, HelpCircle } from 'lucide-react'
-import { STATUS_OPTIONS, PRIORITY_COLOR, VIEWER_COLORS, MERGE_STATUS } from '../constants'
+import { STATUS_OPTIONS, PRIORITY_COLOR, TYPE_STYLE, VIEWER_COLORS, MERGE_STATUS } from '../constants'
 import { Badge, Select, Checkbox, Avatar } from './ui'
 
 const PRIORITY_ICONS = {
   low: <Circle className="w-3 h-3" />,
   medium: <AlertCircle className="w-3 h-3" />,
   high: <AlertCircle className="w-3 h-3" fill="currentColor" />
+}
+
+// Signal dash — the card's compact state indicator (user feedback on the
+// first cut of ui-card-redesign-impl-001: labeled chips + icons in the
+// identity row OVERFLOWED narrow board columns). Every state except the
+// agent spinner and the owner badge renders as a short color-coded dash;
+// the word lives in the tooltip and aria-label.
+function SignalDash({ color, label, pulse = false, testid }) {
+  return (
+    <span
+      data-testid={testid}
+      role="img"
+      aria-label={label}
+      title={label}
+      className={`shrink-0 inline-block ${pulse ? 'animate-gentle-pulse' : ''}`}
+      style={{ width: '12px', height: '4px', borderRadius: 'var(--radius-full)', background: color }}
+    />
+  )
 }
 
 function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewers = [], shellSession, selectable, selected, onToggleSelect, onShiftSelect, orderedTaskIds, justUpdated, compact, isStale, githubLinks = {}, projectHasSuites = false }) {
@@ -144,8 +162,11 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
         transition: `outline-color var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-spring)`,
       }}
     >
-      {/* Zone 1: identity + signal cluster */}
-      <div className="flex items-center gap-2 mb-2">
+      {/* Zone 1: identity + signal dashes. The id chip is the only element
+          allowed to shrink (min-w-0 + truncate); everything on the right is
+          a fixed handful of 12px dashes, so this row can NEVER overflow a
+          narrow board column — the failure the first cut shipped. */}
+      <div className="flex items-center gap-2 mb-2 min-w-0">
         {selectable && (
           <Checkbox
             checked={Boolean(selected)}
@@ -156,8 +177,8 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
         )}
         <button
           onClick={handleCopyId}
-          className="apple-press flex items-center gap-1.5 shrink-0"
-          title="Copy task id"
+          className="apple-press flex items-center gap-1.5 min-w-0"
+          title={`Copy task id ${task.id}`}
           aria-label={`Copy task id ${task.id}`}
           data-testid="card-id-copy"
           style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer' }}
@@ -167,50 +188,44 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
             const ms = link?.pr_state ? MERGE_STATUS[link.pr_state] : null
             return ms ? <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ms.dotColor, flexShrink: 0 }} title={`PR ${ms.label}`} /> : null
           })()}
-          {copied ? <Check className="w-2.5 h-2.5" style={{ color: 'var(--apple-green)' }} /> : <Copy className="w-2.5 h-2.5" />}
-          <span className="truncate max-w-[140px]">{task.id}</span>
+          {copied ? <Check className="w-2.5 h-2.5 shrink-0" style={{ color: 'var(--apple-green)' }} /> : <Copy className="w-2.5 h-2.5 shrink-0" />}
+          <span className="truncate">{task.id}</span>
         </button>
-        <Badge preset="type" value={task.type || 'fullstack'} />
-        <div className="flex-1" />
-        {/* Signal cluster — every "look here / something is live" state in
-            one place, icon-only except the approval chip. */}
-        <div className="flex items-center gap-1.5 shrink-0" data-testid="card-signal-cluster">
-          {/* Waiting-on-human chip (ui-approvals-inbox-001) — the ONLY
+        <div className="flex-1" style={{ minWidth: 'var(--space-2)' }} />
+        {/* Signal dashes — color-coded state strips (word in tooltip).
+            Only the agent keeps its spinner, per the user's exception. */}
+        <div className="flex items-center gap-1 shrink-0" data-testid="card-signal-cluster">
+          <SignalDash
+            color={(TYPE_STYLE[task.type || 'fullstack'] || TYPE_STYLE.fullstack).color}
+            label={`Type: ${task.type || 'fullstack'}`}
+            testid="card-type-dash"
+          />
+          {/* Waiting-on-human (ui-approvals-inbox-001) — still the ONLY
               pulsing element on the card. */}
           {task.status === 'waiting_input' && (
-            <Badge
-              data-testid="card-waiting-indicator"
-              className="flex items-center gap-1 animate-gentle-pulse"
-              title="An agent is waiting on your response"
+            <SignalDash
               color="var(--apple-yellow)"
-              bg="color-mix(in srgb, var(--apple-yellow) 14%, transparent)"
-            >
-              <HelpCircle className="w-3 h-3" />
-              Needs you
-            </Badge>
-          )}
-          {agentRunning && (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: 'var(--accent-app)' }} title="Agent running" />
-          )}
-          {shellSession && (
-            <Terminal
-              className="w-3.5 h-3.5"
-              data-testid="card-shell-indicator"
-              style={{
-                color: shellSession.processing
-                  ? 'var(--apple-green)'
-                  : (shellSession.attached ? 'var(--accent-app)' : 'var(--text-muted)'),
-                opacity: shellSession.attached || shellSession.processing ? 1 : 0.6,
-              }}
-              title={
-                shellSession.processing
-                  ? 'Shell processing'
-                  : (shellSession.attached ? 'Shell attached' : 'Shell detached — alive in background')
-              }
+              label="Needs you — an agent is waiting on your response"
+              pulse
+              testid="card-waiting-indicator"
             />
           )}
-          {isStale && <Clock className="w-3.5 h-3.5" style={{ color: 'var(--apple-orange)' }} title="Stale — no recent activity" />}
-          {task.status === 'done' && <CheckCircle2 className="w-4 h-4" style={{ color: 'var(--apple-green)' }} />}
+          {shellSession && (
+            <SignalDash
+              testid="card-shell-indicator"
+              color={shellSession.processing
+                ? 'var(--apple-green)'
+                : (shellSession.attached ? 'var(--accent-app)' : 'var(--text-muted)')}
+              label={shellSession.processing
+                ? 'Shell processing'
+                : (shellSession.attached ? 'Shell attached' : 'Shell detached — alive in background')}
+            />
+          )}
+          {isStale && <SignalDash color="var(--apple-orange)" label="Stale — no recent activity" />}
+          {task.status === 'done' && <SignalDash color="var(--apple-green)" label="Done" />}
+          {agentRunning && (
+            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: 'var(--accent-app)' }} title="Agent running" />
+          )}
         </div>
       </div>
 
