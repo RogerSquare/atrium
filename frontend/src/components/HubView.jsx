@@ -1,17 +1,21 @@
-// Hub — the merged home of Loops and Demos (feat-project-hub-impl-001).
+// Hub — the merged home of Loops and Demos (feat-project-hub-impl-001), now
+// led by an automation Overview (feat-hub-rethink-impl-001).
 //
-// The two views were separate top-bar entries; the user asked for one. Each
-// keeps ALL of its affordances (FR-065..084 in the intake contract) — this
+// Overview is the landing tab: per-loop health cards + a merged activity
+// feed. Loops/Demos keep ALL of their affordances (FR-065..084) — this
 // component only owns the shared title, the sub-tab switch, and which one
 // renders. The last-used sub-tab persists; AppShell migrates users whose
-// stored view was 'loops' or 'demos' straight to the right tab.
+// stored view was 'loops' or 'demos' straight to the right tab. A card click
+// on the Overview opens that loop's cockpit via the Loops tab (openLoopId).
 
 import { useState, useCallback } from 'react'
-import { Repeat, LayoutTemplate, Boxes } from 'lucide-react'
+import { Repeat, LayoutTemplate, Boxes, Gauge } from 'lucide-react'
 import LoopsView from './LoopsView'
 import DemosView from './DemosView'
+import HubOverview from './HubOverview'
 
 const TABS = [
+  { id: 'overview', label: 'Overview', icon: Gauge },
   { id: 'loops', label: 'Loops', icon: Repeat },
   { id: 'demos', label: 'Demos', icon: LayoutTemplate },
 ]
@@ -19,11 +23,19 @@ const TABS = [
 export default function HubView({ projects = [], activeProject, socketRef, tasks = [], onSelectTask }) {
   const [tab, setTab] = useState(() => {
     const stored = localStorage.getItem('taskBoardHubTab')
-    return TABS.some((t) => t.id === stored) ? stored : 'loops'
+    return TABS.some((t) => t.id === stored) ? stored : 'overview'
   })
+  const [openLoopId, setOpenLoopId] = useState(null)
   const switchTab = useCallback((id) => {
+    setOpenLoopId(null) // a plain tab click never re-opens a cockpit
     setTab(id)
     localStorage.setItem('taskBoardHubTab', id)
+  }, [])
+  // Overview card → the existing cockpit: land on Loops with the loop open.
+  const openLoop = useCallback((loopId) => {
+    setOpenLoopId(loopId)
+    setTab('loops')
+    localStorage.setItem('taskBoardHubTab', 'loops')
   }, [])
 
   const scoped = !!activeProject && activeProject !== 'All'
@@ -65,8 +77,10 @@ export default function HubView({ projects = [], activeProject, socketRef, tasks
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-        {tab === 'loops' ? (
-          <LoopsView projects={projects} activeProject={activeProject} socketRef={socketRef} embedded />
+        {tab === 'overview' ? (
+          <HubOverview socketRef={socketRef} activeProject={activeProject} onOpenLoop={openLoop} onGoToLoops={() => switchTab('loops')} />
+        ) : tab === 'loops' ? (
+          <LoopsView projects={projects} activeProject={activeProject} socketRef={socketRef} openLoopId={openLoopId} embedded />
         ) : (
           <DemosView tasks={tasks} onSelectTask={onSelectTask} embedded />
         )}
