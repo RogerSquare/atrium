@@ -45,7 +45,7 @@ function listRuns(loopId) {
   const dir = loopDir(loopId);
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir)
-    .filter((f) => f.endsWith('.json'))
+    .filter((f) => f.endsWith('.json') && !f.endsWith('.termrun.json')) // PTY metas live in loopPty.listRuns
     .map((f) => { try { return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf-8')); } catch { return null; } })
     .filter(Boolean)
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
@@ -60,7 +60,7 @@ function getRun(loopId, runId) {
 function pruneRuns(loopId) {
   const dir = loopDir(loopId);
   if (!fs.existsSync(dir)) return;
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'))
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json') && !f.endsWith('.termrun.json'))
     .map((f) => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs }))
     .sort((a, b) => b.t - a.t);
   for (const { f } of files.slice(MAX_LOOP_RUNS_PER_LOOP)) {

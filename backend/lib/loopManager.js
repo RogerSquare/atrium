@@ -286,6 +286,13 @@ async function runWorkerTick(loop) {
   if (executor.isExecuting(loop.id)) {
     return { result: { note: 'executor busy (one task at a time)' }, snapshot: loop.snapshot };
   }
+  const w = loops.normalizeWorker(loop.worker);
+  if (w.max_runs_per_day > 0) {
+    const runsToday = executor.execRunsToday(require('./loopPty').listRuns(loop.id));
+    if (runsToday >= w.max_runs_per_day) {
+      return { result: { note: `daily executor cap reached (${runsToday}/${w.max_runs_per_day})` }, snapshot: loop.snapshot };
+    }
+  }
   const proj = registry.resolve(loop.project);
   if (!proj) return { result: { note: `project not found: ${loop.project}` }, snapshot: loop.snapshot };
 
@@ -401,8 +408,38 @@ function schedule(loop) {
   }
 }
 
+// Startup recovery (feat-hub-rethink-impl-001): mark PTY runs orphaned by the
+// previous process as 'interrupted' and requeue any task a dead executor left
+// claimed-but-PR-less. Runs before any new executor can start, so nothing
+// live is touched. Fire-and-forget from init().
+async function recoverInterrupted() {
+  const activity = require('./loopActivity');
+  const swept = require('./loopPty').sweepInterrupted();
+  for (const m of swept) {
+    activity.append(m.loop_id, { type: 'executor', message: `Marked run ${m.run_id} interrupted (backend restart)`, refs: { run_id: m.run_id } });
+  }
+  try {
+    const { getAllTasks, updateTaskField, appendComment } = require('./tasks');
+    const stranded = getAllTasks(TASKS_DIR).filter((t) => t.status === 'in_progress'
+      && typeof t.assignee === 'string' && t.assignee.startsWith('loop:') && !t.github_pr_url);
+    for (const t of stranded) {
+      const loopId = t.assignee.slice('loop:'.length);
+      await appendComment(t.id, `- **[loop]**: Executor was interrupted by a backend restart before opening a PR — returned to \`todo\`.`, t.assignee);
+      await updateTaskField(t.id, 'assignee', null, t.assignee, null);
+      await updateTaskField(t.id, 'status', 'todo', t.assignee, 'Requeued after backend restart (executor interrupted)');
+      activity.append(loopId, { type: 'executor_failed', message: `Requeued ${t.id} after restart (executor interrupted)`, refs: { task_id: t.id } });
+    }
+    if (swept.length || stranded.length) {
+      logger.info({ swept: swept.length, requeued: stranded.length }, 'loop engine: interrupted-run recovery done');
+    }
+  } catch (err) {
+    logger.warn({ err: err.message }, 'loop engine: interrupted-run recovery failed');
+  }
+}
+
 // Called once after server.listen (server.js).
 function init() {
+  recoverInterrupted().catch(() => {});
   const all = loops.list();
   for (const loop of all) schedule(loop);
   const enabled = all.filter((l) => l.enabled).length;

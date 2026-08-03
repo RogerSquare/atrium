@@ -36,6 +36,7 @@ const WORKER_DEFAULTS = {
   require_checks_pass: true,
   open_pr: true,
   draft_pr: false,
+  max_runs_per_day: 10, // 0 = unlimited; counts executor PTY runs, resets at local midnight
 };
 
 function normalizeWorker(w) {
@@ -52,6 +53,8 @@ function normalizeWorker(w) {
     require_checks_pass: bool(x.require_checks_pass, true),
     open_pr: bool(x.open_pr, true),
     draft_pr: bool(x.draft_pr, false),
+    max_runs_per_day: (Number.isFinite(x.max_runs_per_day) && x.max_runs_per_day >= 0)
+      ? Math.floor(x.max_runs_per_day) : WORKER_DEFAULTS.max_runs_per_day,
   };
 }
 
