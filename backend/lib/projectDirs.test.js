@@ -32,8 +32,11 @@ test('an explicit directory field always wins, relative or absolute', () => {
   const rel = resolveProjectDir({ name: 'X', directory: 'atrium' }, WD, DIRS, fakeFs([path.join(WD, 'atrium')]));
   assert.deepStrictEqual(rel, { root: path.join(WD, 'atrium'), source: 'directory-field' });
 
-  const abs = resolveProjectDir({ name: 'X', directory: 'D:\\elsewhere\\proj' }, WD, DIRS, fakeFs(['D:\\elsewhere\\proj']));
-  assert.deepStrictEqual(abs, { root: 'D:\\elsewhere\\proj', source: 'directory-field' });
+  // Platform-native absolute path — a hardcoded D:\ literal is not absolute
+  // under Linux's path.isAbsolute and fails in CI.
+  const ABS = path.resolve(path.sep, 'elsewhere', 'proj');
+  const abs = resolveProjectDir({ name: 'X', directory: ABS }, WD, DIRS, fakeFs([ABS]));
+  assert.deepStrictEqual(abs, { root: ABS, source: 'directory-field' });
 });
 
 test('a directory field pointing nowhere resolves to unlinked, not a guess', () => {
