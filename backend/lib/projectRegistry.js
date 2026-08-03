@@ -149,6 +149,19 @@ function remove(id) {
   return true;
 }
 
+// Optional source-directory link for the Files view
+// (feat-project-hub-impl-001). Empty/null clears the field so the
+// normalized-name heuristic takes over again.
+function setDirectory(id, directory) {
+  if (id === 'root') return false;
+  const registry = load();
+  if (!registry[id]) return false;
+  if (directory) registry[id].directory = directory;
+  else delete registry[id].directory;
+  save(registry);
+  return true;
+}
+
 /**
  * Sync registry with actual project directories on disk.
  * Registers any unregistered folders and removes entries for deleted folders.
@@ -234,6 +247,6 @@ function getArchived() {
 
 module.exports = {
   getAll, getById, getByFolder, getByName, resolve,
-  register, updateId, setName, remove, syncWithDisk, generateId,
+  register, updateId, setName, setDirectory, remove, syncWithDisk, generateId,
   archive, unarchive, getArchived
 };
