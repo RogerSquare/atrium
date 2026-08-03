@@ -52,6 +52,60 @@ test.describe('Loops view (project-scoped)', () => {
   });
 });
 
+// feat-hub-rethink-impl-001 — the modal's new trigger/mode surfaces. Pure
+// client-side rendering, no backend.
+test.describe('Loop modal: triggers, playbook, worker', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockCoreApi(page);
+    await page.addInitScript(seedSession, { storage: { taskBoardView: 'hub', taskBoardHubTab: 'loops' } });
+    await page.goto('/');
+    await expect(page.getByTestId('loops-view')).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId('new-loop-button').click();
+    await expect(page.getByTestId('loop-modal')).toBeVisible();
+  });
+
+  test('trigger picker: interval by default, schedule reveals time + day chips', async ({ page }) => {
+    const modal = page.getByTestId('loop-modal');
+    await expect(modal.getByLabel('Poll interval (minutes)')).toBeVisible();
+
+    await modal.getByTestId('loop-trigger-schedule').click();
+    await expect(modal.getByTestId('loop-schedule-time')).toBeVisible();
+    await expect(modal.getByTestId('loop-day-mon')).toHaveAttribute('aria-pressed', 'true'); // all days default on
+
+    // Toggling a day off works; toggling all off blocks submit with a hint.
+    await modal.getByTestId('loop-day-sun').click();
+    await expect(modal.getByTestId('loop-day-sun')).toHaveAttribute('aria-pressed', 'false');
+    for (const d of ['mon', 'tue', 'wed', 'thu', 'fri', 'sat']) await modal.getByTestId(`loop-day-${d}`).click();
+    await expect(modal.getByText('Pick at least one day.')).toBeVisible();
+  });
+
+  test('playbook mode hides watch/actions, requires instructions', async ({ page }) => {
+    const modal = page.getByTestId('loop-modal');
+    await modal.getByLabel('Name').fill('Morning digest');
+    await modal.getByLabel('Mode').selectOption('playbook');
+
+    await expect(modal.getByText('Watch', { exact: true })).toHaveCount(0);
+    await expect(modal.getByText('On change', { exact: true })).toHaveCount(0);
+    const playbook = modal.getByTestId('loop-playbook-instructions');
+    await expect(playbook).toBeVisible();
+
+    // Create stays disabled until the playbook text exists.
+    await expect(modal.getByRole('button', { name: 'Create' })).toBeDisabled();
+    await playbook.fill('Summarize the board.');
+    await expect(modal.getByRole('button', { name: 'Create' })).toBeEnabled();
+  });
+
+  test('worker mode reveals the execution section with the daily cap', async ({ page }) => {
+    const modal = page.getByTestId('loop-modal');
+    await modal.getByLabel('Mode').selectOption('worker');
+    const section = modal.getByTestId('loop-worker-section');
+    await expect(section).toBeVisible();
+    await expect(section.getByLabel('Base branch')).toHaveValue('main');
+    await expect(section.getByTestId('loop-worker-cap')).toHaveValue('10');
+    await expect(section.getByLabel('Checks must pass before the PR')).toBeChecked();
+  });
+});
+
 // The full create -> list -> toggle -> run flow needs a backend serving
 // /api/loops (model+engine phases) + a token, so it's gated on ATRIUM_API_TOKEN.
 test.describe('Loops view (backend flow)', () => {
