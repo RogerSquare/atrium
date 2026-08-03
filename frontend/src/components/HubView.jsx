@@ -36,13 +36,13 @@ export default function HubView({ projects = [], activeProject, socketRef, tasks
           Hub{scoped ? ` · ${activeProject === 'Root' ? 'No project' : activeProject}` : ''}
         </h1>
         <div className="flex items-center gap-1" role="tablist" aria-label="Hub sections" style={{ background: 'var(--fill-secondary)', padding: '2px', borderRadius: 'var(--radius-full)' }}>
-          {TABS.map(({ id, label, icon: Icon }) => (
+          {TABS.map((t) => (
             <button
-              key={id}
+              key={t.id}
               role="tab"
-              aria-selected={tab === id}
-              data-testid={`hub-tab-${id}`}
-              onClick={() => switchTab(id)}
+              aria-selected={tab === t.id}
+              data-testid={`hub-tab-${t.id}`}
+              onClick={() => switchTab(t.id)}
               className="apple-press flex items-center gap-1.5"
               style={{
                 padding: 'var(--space-1) var(--space-3)',
@@ -51,14 +51,14 @@ export default function HubView({ projects = [], activeProject, socketRef, tasks
                 fontWeight: 'var(--font-medium)',
                 border: 'none',
                 cursor: 'pointer',
-                background: tab === id ? 'var(--bg-card)' : 'transparent',
-                color: tab === id ? 'var(--text-app)' : 'var(--text-muted)',
-                boxShadow: tab === id ? 'var(--shadow-card, 0 1px 2px rgba(0,0,0,0.2))' : 'none',
+                background: tab === t.id ? 'var(--bg-card)' : 'transparent',
+                color: tab === t.id ? 'var(--text-app)' : 'var(--text-muted)',
+                boxShadow: tab === t.id ? 'var(--shadow-card, 0 1px 2px rgba(0,0,0,0.2))' : 'none',
                 transition: `all var(--duration-fast) var(--ease-default)`,
               }}
             >
-              <Icon className="w-3.5 h-3.5" />
-              {label}
+              <t.icon className="w-3.5 h-3.5" />
+              {t.label}
             </button>
           ))}
         </div>
