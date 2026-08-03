@@ -2,23 +2,42 @@ import { memo, useState, useCallback, useMemo, useRef, Fragment } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ArrowUp, ArrowDown, ChevronRight, ChevronDown, Layers, Columns3, Check } from 'lucide-react'
 import TaskRow from './viz/TaskRow'
-import { buildTreeRows, BUCKET_STANDALONE, BUCKET_ORPHAN } from '../lib/taskTree'
+import { Select } from './ui'
+import { buildThreadRows, BUCKET_STANDALONE, BUCKET_ORPHAN } from '../lib/taskThreads'
+import { STATUS_OPTIONS } from '../constants'
 import {
   ALL_COLUMNS, LOCKED, loadVisibleColumns, saveVisibleColumns,
   toggleColumn, resolveColumns, phaseOf,
 } from '../lib/listColumns'
 
 const GROUP_BY_OPTIONS = [
-  { key: 'none', label: 'No grouping' },
   { key: 'status', label: 'Status' },
+  // Thread = parent/subtask families ∪ research→plan→implement chains
+  // stitched via depends_on (lib/taskThreads.js). Replaced the old
+  // parent-only tree (ui-list-redesign-impl-001).
+  { key: 'thread', label: 'Thread' },
   { key: 'assignee', label: 'Assignee' },
   { key: 'priority', label: 'Priority' },
   { key: 'type', label: 'Type' },
   { key: 'component', label: 'Component' },
-  // Hierarchy grouping. Measured on the real board: 220 of 769 tasks carry
-  // a parent_task, forming 72 families up to 3 deep.
-  { key: 'parent', label: 'Parent / subtasks' },
+  { key: 'none', label: 'No grouping' },
 ]
+
+// Status groups render in lifecycle order with their display labels, not in
+// whatever order the sort happened to surface them — "Review" above "Done",
+// always. Done starts collapsed: measured 2026-08, 84% of this board's rows
+// were done tasks, and an ungrouped wall of finished work was the single
+// biggest new-user complaint about this view.
+const STATUS_GROUP_ORDER = ['draft', 'todo', 'in_progress', 'waiting_input', 'review', 'done']
+const statusLabel = (id) => STATUS_OPTIONS.find(s => s.id === id)?.label || id
+const DONE_GROUP_LABEL = statusLabel('done')
+
+// Group-key fallbacks respect the glossary: "Unassigned" belongs to the
+// assignee dimension only (ui-copy-glossary-001).
+const GROUP_FALLBACK = { assignee: 'Unassigned', component: 'No component', type: 'No type', priority: 'No priority' }
+
+// Pre-redesign persisted value; the old key maps onto its successor.
+const migrateGroupBy = (stored) => (stored === 'parent' ? 'thread' : stored)
 
 function getLastUpdated(task) {
   if (task.activity_log && task.activity_log.length > 0) {
@@ -30,8 +49,16 @@ function getLastUpdated(task) {
 function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskViewers = {}, currentUser, selectable, selectedIds = [], onToggleSelect, recentlyUpdatedIds = [], githubLinks = {} }) {
   const [sortKey, setSortKey] = useState(() => localStorage.getItem('taskBoardListSort') || 'priority')
   const [sortDir, setSortDir] = useState(() => localStorage.getItem('taskBoardListDir') || 'asc')
-  const [groupBy, setGroupBy] = useState(() => localStorage.getItem('taskBoardListGroup') || 'none')
-  const [collapsedGroups, setCollapsedGroups] = useState({})
+  // Status grouping is the DEFAULT for first-time users; a stored choice
+  // (including an explicit 'none') always wins (ui-list-redesign-impl-001).
+  const [groupBy, setGroupBy] = useState(() => migrateGroupBy(localStorage.getItem('taskBoardListGroup')) || 'status')
+  // Done starts collapsed on the default status view. Session state only —
+  // toggling is cheap, persisting a collapse map is not worth the staleness.
+  const [collapsedGroups, setCollapsedGroups] = useState(() =>
+    (migrateGroupBy(localStorage.getItem('taskBoardListGroup')) || 'status') === 'status'
+      ? { [DONE_GROUP_LABEL]: true }
+      : {}
+  )
   const [visibleColumns, setVisibleColumns] = useState(() => loadVisibleColumns())
   const [pickerOpen, setPickerOpen] = useState(false)
   // Tree collapse is keyed by TASK id, separate from collapsedGroups which
@@ -75,20 +102,37 @@ function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
     })
   }, [tasks, sortKey, sortDir])
 
-  const handleGroupByChange = useCallback((value) => { setGroupBy(value); localStorage.setItem('taskBoardListGroup', value); setCollapsedGroups({}); setCollapsedNodes({}) }, [])
+  const handleGroupByChange = useCallback((value) => {
+    setGroupBy(value)
+    localStorage.setItem('taskBoardListGroup', value)
+    // Fresh grouping, fresh collapse state — except the status view keeps
+    // its Done-starts-collapsed default.
+    setCollapsedGroups(value === 'status' ? { [DONE_GROUP_LABEL]: true } : {})
+    setCollapsedNodes({})
+  }, [])
   const toggleGroup = useCallback((groupName) => { setCollapsedGroups(prev => ({ ...prev, [groupName]: !prev[groupName] })) }, [])
   const expandAllGroups = useCallback(() => { setCollapsedGroups({}); setCollapsedNodes({}) }, [])
   const collapseAllGroups = useCallback(() => {
     if (groupBy === 'none') return
-    if (groupBy === 'parent') {
-      // Collapse every task that HAS children, so only roots remain.
+    if (groupBy === 'thread') {
+      // Collapse every display-parent, so only thread roots remain. The
+      // display tree (not raw parent_task) is the truth here — a chain's
+      // middle task is a display parent even with no parent_task field.
+      const { threads } = buildThreadRows(sortedTasks)
       const parents = {}
-      sortedTasks.forEach(t => { if (t.parent_task) parents[t.parent_task] = true })
+      for (const th of threads) {
+        for (const row of th.rows) { if (row.childCount > 0) parents[row.task.id] = true }
+      }
       setCollapsedNodes(parents)
       return
     }
     const all = {}
-    sortedTasks.forEach(t => { all[t[groupBy] || 'Unassigned'] = true })
+    sortedTasks.forEach(t => {
+      const key = groupBy === 'status'
+        ? statusLabel(t.status)
+        : (t[groupBy] || GROUP_FALLBACK[groupBy] || '—')
+      all[key] = true
+    })
     setCollapsedGroups(all)
   }, [groupBy, sortedTasks])
 
@@ -106,18 +150,30 @@ function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
     setCollapsedNodes(prev => ({ ...prev, [taskId]: !prev[taskId] }))
   }, [])
 
-  // Tree mode is its own shape, so it is built separately from the flat
+  // Thread mode is its own shape, so it is built separately from the flat
   // key-based grouping below.
-  const treeData = useMemo(
-    () => (groupBy === 'parent' ? buildTreeRows(sortedTasks, collapsedNodes) : null),
+  const threadData = useMemo(
+    () => (groupBy === 'thread' ? buildThreadRows(sortedTasks, collapsedNodes) : null),
     [groupBy, sortedTasks, collapsedNodes]
   )
 
   const groupedTasks = useMemo(() => {
-    if (groupBy === 'none' || groupBy === 'parent') return null
+    if (groupBy === 'none' || groupBy === 'thread') return null
     const groups = new Map()
+    if (groupBy === 'status') {
+      // Lifecycle order, seeded up front so Map insertion order is the
+      // render order; empty statuses are pruned after.
+      for (const id of STATUS_GROUP_ORDER) groups.set(statusLabel(id), [])
+      for (const task of sortedTasks) {
+        const key = statusLabel(task.status)
+        if (!groups.has(key)) groups.set(key, []) // unknown status → its own group at the end
+        groups.get(key).push(task)
+      }
+      for (const [key, list] of groups) { if (list.length === 0) groups.delete(key) }
+      return groups
+    }
     for (const task of sortedTasks) {
-      const key = task[groupBy] || 'Unassigned'
+      const key = task[groupBy] || GROUP_FALLBACK[groupBy] || '—'
       if (!groups.has(key)) groups.set(key, [])
       groups.get(key).push(task)
     }
@@ -176,9 +232,18 @@ function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
       <div className="flex items-center gap-3 px-1">
         <div className="flex items-center gap-2">
           <Layers className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
-          <select value={groupBy} onChange={(e) => handleGroupByChange(e.target.value)} className="cursor-pointer focus:outline-none" style={{ padding: '5px 10px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-medium)', border: 'none', color: groupBy !== 'none' ? 'var(--accent-app)' : 'var(--text-muted)', background: groupBy !== 'none' ? 'color-mix(in srgb, var(--accent-app) 10%, transparent)' : 'var(--fill-secondary)' }}>
+          {/* Shared Select, same control the Board toolbar uses — the last
+              native <select> in this toolbar (ui-list-redesign-impl-001). */}
+          <Select
+            pill
+            active={groupBy !== 'none'}
+            value={groupBy}
+            onChange={(e) => handleGroupByChange(e.target.value)}
+            aria-label="Group tasks by"
+            data-testid="list-group-by"
+          >
             {GROUP_BY_OPTIONS.map(opt => <option key={opt.key} value={opt.key}>{opt.label}</option>)}
-          </select>
+          </Select>
         </div>
         {groupBy !== 'none' && (
           <div className="flex items-center gap-1">
@@ -282,49 +347,49 @@ function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
             <tr>
               <td colSpan={colCount} className="text-center" style={{ padding: '48px', fontSize: 'var(--text-subhead)', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No tasks match the current filters</td>
             </tr>
-          ) : treeData ? (
+          ) : threadData ? (
             <>
-              {/* Families first — a root with descendants, rendered as an
-                  indented subtree. */}
-              {treeData.families.map(family => (
-                <Fragment key={family.root.id}>
-                  {family.rows.map(row => renderRow(row.task, row))}
+              {/* Threads first — a root with descendants (family, chain, or
+                  both), rendered as an indented subtree. */}
+              {threadData.threads.map(thread => (
+                <Fragment key={thread.root.id}>
+                  {thread.rows.map(row => renderRow(row.task, row))}
                 </Fragment>
               ))}
 
               {/* Then the flat majority. Collapsed by default would hide most
                   of the board, so this bucket starts open. */}
-              {treeData.standalone.length > 0 && (
+              {threadData.standalone.length > 0 && (
                 <Fragment key="__standalone__">
                   <tr onClick={() => toggleGroup(BUCKET_STANDALONE)} className="cursor-pointer apple-press" style={{ borderBottom: '0.5px solid var(--separator)', background: 'var(--fill-secondary)' }}>
                     <td colSpan={colCount} style={{ padding: '10px 12px' }}>
                       <div className="flex items-center gap-2">
                         {collapsedGroups[BUCKET_STANDALONE] ? <ChevronRight className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} /> : <ChevronDown className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />}
                         <span style={{ fontSize: 'var(--text-footnote)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>{BUCKET_STANDALONE}</span>
-                        <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>{treeData.standalone.length} tasks</span>
+                        <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>{threadData.standalone.length} tasks</span>
                       </div>
                     </td>
                   </tr>
-                  {!collapsedGroups[BUCKET_STANDALONE] && treeData.standalone.map(t => renderRow(t))}
+                  {!collapsedGroups[BUCKET_STANDALONE] && threadData.standalone.map(t => renderRow(t))}
                 </Fragment>
               )}
 
               {/* Children whose parent isn't in the current view — usually
                   because a filter hid it. Surfaced rather than dropped, since
                   silently vanishing rows read as data loss. */}
-              {treeData.orphans.length > 0 && (
+              {threadData.orphans.length > 0 && (
                 <Fragment key="__orphans__">
                   <tr onClick={() => toggleGroup(BUCKET_ORPHAN)} className="cursor-pointer apple-press" style={{ borderBottom: '0.5px solid var(--separator)', background: 'var(--fill-secondary)' }}>
                     <td colSpan={colCount} style={{ padding: '10px 12px' }}>
                       <div className="flex items-center gap-2">
                         {collapsedGroups[BUCKET_ORPHAN] ? <ChevronRight className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} /> : <ChevronDown className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />}
                         <span style={{ fontSize: 'var(--text-footnote)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>{BUCKET_ORPHAN}</span>
-                        <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>{treeData.orphans.length} tasks</span>
+                        <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>{threadData.orphans.length} tasks</span>
                         <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)', opacity: 0.7 }}>parent hidden by a filter, or missing</span>
                       </div>
                     </td>
                   </tr>
-                  {!collapsedGroups[BUCKET_ORPHAN] && treeData.orphans.map(t => renderRow(t))}
+                  {!collapsedGroups[BUCKET_ORPHAN] && threadData.orphans.map(t => renderRow(t))}
                 </Fragment>
               )}
             </>
