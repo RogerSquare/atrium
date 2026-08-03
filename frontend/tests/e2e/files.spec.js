@@ -40,8 +40,12 @@ test.describe('Files view', () => {
     });
     await page.route('**/api/files/content**', (route) => {
       const url = new URL(route.request().url());
-      if ((url.searchParams.get('path') || '').endsWith('.bin')) {
+      const p = url.searchParams.get('path') || '';
+      if (p.endsWith('.bin')) {
         return route.fulfill({ status: 415, json: { error: 'Binary file — download it instead' } });
+      }
+      if (p.endsWith('.md')) {
+        return route.fulfill({ contentType: 'text/plain', body: '# Readme heading\n\nhello from preview' });
       }
       return route.fulfill({ contentType: 'text/plain', body: 'hello from preview' });
     });
@@ -68,6 +72,25 @@ test.describe('Files view', () => {
     await page.getByText('README.md').click();
     await expect(page.getByTestId('files-preview')).toContainText('hello from preview');
     await expect(page.getByTestId('files-download')).toBeVisible();
+  });
+
+  test('markdown files render formatted, with a raw-source toggle', async ({ page }) => {
+    await page.getByText('Alpha', { exact: true }).click();
+    await page.getByText('README.md').click();
+
+    // Rendered by default: the # heading becomes a real heading element.
+    const rendered = page.getByTestId('files-md-rendered');
+    await expect(rendered.getByRole('heading', { name: 'Readme heading' })).toBeVisible();
+
+    // Toggle to raw: literal markdown source, no rendered container.
+    await page.getByTestId('files-md-raw-toggle').click();
+    await expect(page.getByTestId('files-md-rendered')).toHaveCount(0);
+    await expect(page.getByTestId('files-preview')).toContainText('# Readme heading');
+
+    // Non-markdown files never get the toggle.
+    await page.getByText('src', { exact: true }).click();
+    await page.getByText('index.js').click();
+    await expect(page.getByTestId('files-md-raw-toggle')).toHaveCount(0);
   });
 
   test('show-ignored toggle refetches and reveals dimmed dirs', async ({ page }) => {

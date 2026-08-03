@@ -10,7 +10,9 @@
 // a bare <a href> would either leak a token in the URL or arrive anonymous.
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
-import { FolderOpen, Folder, ChevronRight, ChevronDown, FileText, Download, Archive, Copy, Check, Eye, EyeOff, Unlink, RefreshCw } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { FolderOpen, Folder, ChevronRight, ChevronDown, FileText, Download, Archive, Copy, Check, Eye, EyeOff, Unlink, RefreshCw, Code } from 'lucide-react'
 import { apiFetch } from '../config'
 import { useTaskData } from '../contexts/TaskContext'
 import { Button } from './ui'
@@ -21,6 +23,12 @@ function fmtSize(n) {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
+
+const isMarkdownPath = (p) => /\.(md|markdown|mdx)$/i.test(p || '')
+
+// Same prose treatment the task-description tab uses — READMEs read like docs,
+// not like source dumps.
+const PROSE_CLASSES = 'prose prose-app max-w-none prose-p:text-app-text prose-li:text-app-text prose-headings:text-app-text prose-strong:text-app-text prose-a:text-app-accent hover:prose-a:text-app-accent-hover prose-code:text-app-accent prose-code:bg-app-bg prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-pre:bg-app-bg prose-pre:border prose-pre:border-app-border prose-blockquote:border-app-accent prose-blockquote:bg-app-bg/50 prose-blockquote:py-1 prose-blockquote:px-4 prose-blockquote:text-app-text-muted prose-hr:border-app-border'
 
 async function blobDownload(url, filename) {
   const res = await apiFetch(url)
@@ -46,6 +54,7 @@ export default function FilesView() {
   const [preview, setPreview] = useState(null)    // { project, path, state, text?, error? }
   const [copied, setCopied] = useState(false)
   const [zipBusy, setZipBusy] = useState(null)
+  const [rawMd, setRawMd] = useState(false)       // markdown files: raw source instead of rendered
 
   const loadProjects = useCallback(async () => {
     setError(null)
@@ -101,6 +110,7 @@ export default function FilesView() {
   }, [expanded, listings, fetchDir])
 
   const openFile = useCallback(async (project, relPath) => {
+    setRawMd(false)
     setPreview({ project, path: relPath, state: 'loading' })
     try {
       const res = await apiFetch(`/api/files/content?${new URLSearchParams({ project, path: relPath })}`)
@@ -267,6 +277,19 @@ export default function FilesView() {
                   {preview.path}
                 </span>
                 <span className="flex-1" />
+                {isMarkdownPath(preview.path) && preview.state === 'ok' && (
+                  <button
+                    data-testid="files-md-raw-toggle"
+                    onClick={() => setRawMd((v) => !v)}
+                    className="apple-press shrink-0"
+                    title={rawMd ? 'Rendered markdown' : 'Raw source'}
+                    aria-label={rawMd ? 'Show rendered markdown' : 'Show raw source'}
+                    aria-pressed={rawMd}
+                    style={{ color: rawMd ? 'var(--accent-app)' : 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                  >
+                    <Code className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 <button onClick={() => copyPath(`${preview.project}/${preview.path}`)} className="apple-press shrink-0" title="Copy path" aria-label="Copy path" style={{ color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer' }}>
                   {copied ? <Check className="w-3.5 h-3.5" style={{ color: 'var(--apple-green)' }} /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
@@ -288,7 +311,13 @@ export default function FilesView() {
                   </div>
                 )}
                 {preview.state === 'ok' && (
-                  <pre style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption1)', lineHeight: 1.6, color: 'var(--text-app)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{preview.text}</pre>
+                  isMarkdownPath(preview.path) && !rawMd ? (
+                    <div data-testid="files-md-rendered" className={PROSE_CLASSES} style={{ fontSize: 'var(--text-subhead)' }}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview.text}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <pre style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption1)', lineHeight: 1.6, color: 'var(--text-app)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{preview.text}</pre>
+                  )
                 )}
               </div>
             </>
