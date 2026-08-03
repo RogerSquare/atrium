@@ -74,7 +74,9 @@ test.describe('Board card redesign', () => {
     await expect(busy.getByText('agent:claude')).toBeVisible();
     await expect(busy.getByText('tests: passing')).toBeVisible();
     await expect(busy.getByText('Auth', { exact: true })).toBeVisible();
-    await expect(busy.getByText('↑ feat-epic-001')).toBeVisible();
+    const subtask = busy.getByTestId('card-subtask-chip');
+    await expect(subtask).toBeVisible();
+    await expect(subtask).toHaveAttribute('title', /feat-epic-001/); // parent id one hover away
     await expect(busy.getByText('Awaiting input', { exact: false })).toBeVisible(); // summary line
   });
 

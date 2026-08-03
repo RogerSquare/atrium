@@ -1,5 +1,5 @@
 import { memo, useState, useCallback } from 'react'
-import { AlertCircle, AlignLeft, CheckCircle2, Circle, Copy, Check, Loader2, CalendarClock, Clock, Terminal, HelpCircle } from 'lucide-react'
+import { AlertCircle, AlignLeft, CheckCircle2, Circle, Copy, Check, CornerDownRight, Loader2, CalendarClock, Clock, Terminal, HelpCircle } from 'lucide-react'
 import { STATUS_OPTIONS, PRIORITY_COLOR, TYPE_STYLE, VIEWER_COLORS, MERGE_STATUS } from '../constants'
 import { Badge, Select, Checkbox, Avatar } from './ui'
 
@@ -11,19 +11,26 @@ const PRIORITY_ICONS = {
 
 // Signal dash — the card's compact state indicator (user feedback on the
 // first cut of ui-card-redesign-impl-001: labeled chips + icons in the
-// identity row OVERFLOWED narrow board columns). Every state except the
-// agent spinner and the owner badge renders as a short color-coded dash;
-// the word lives in the tooltip and aria-label.
-function SignalDash({ color, label, pulse = false, testid }) {
+// identity row OVERFLOWED narrow board columns). Resting state is a
+// color-coded 12x4 bar; HOVER morphs it into its icon + word (styles in
+// index.css .signal-dash) so meaning is one hover away, not tooltip-only.
+// The agent spinner and the owner badge stay as-is, per the user's call.
+function SignalDash({ color, label, short, icon: Icon, pulse = false, testid }) {
   return (
     <span
       data-testid={testid}
       role="img"
       aria-label={label}
       title={label}
-      className={`shrink-0 inline-block ${pulse ? 'animate-gentle-pulse' : ''}`}
-      style={{ width: '12px', height: '4px', borderRadius: 'var(--radius-full)', background: color }}
-    />
+      className={`signal-dash shrink-0 ${pulse ? 'animate-gentle-pulse' : ''}`}
+      style={{ color }}
+    >
+      <span className="dash-bar" style={{ background: color }} />
+      <span className="dash-reveal">
+        {Icon && <Icon className="w-3 h-3 shrink-0" />}
+        {short}
+      </span>
+    </span>
   )
 }
 
@@ -198,6 +205,7 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
           <SignalDash
             color={(TYPE_STYLE[task.type || 'fullstack'] || TYPE_STYLE.fullstack).color}
             label={`Type: ${task.type || 'fullstack'}`}
+            short={task.type || 'fullstack'}
             testid="card-type-dash"
           />
           {/* Waiting-on-human (ui-approvals-inbox-001) — still the ONLY
@@ -206,6 +214,8 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
             <SignalDash
               color="var(--apple-yellow)"
               label="Needs you — an agent is waiting on your response"
+              short="Needs you"
+              icon={HelpCircle}
               pulse
               testid="card-waiting-indicator"
             />
@@ -213,16 +223,18 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
           {shellSession && (
             <SignalDash
               testid="card-shell-indicator"
+              icon={Terminal}
               color={shellSession.processing
                 ? 'var(--apple-green)'
                 : (shellSession.attached ? 'var(--accent-app)' : 'var(--text-muted)')}
+              short={shellSession.processing ? 'shell busy' : (shellSession.attached ? 'shell' : 'shell (bg)')}
               label={shellSession.processing
                 ? 'Shell processing'
                 : (shellSession.attached ? 'Shell attached' : 'Shell detached — alive in background')}
             />
           )}
-          {isStale && <SignalDash color="var(--apple-orange)" label="Stale — no recent activity" />}
-          {task.status === 'done' && <SignalDash color="var(--apple-green)" label="Done" />}
+          {isStale && <SignalDash color="var(--apple-orange)" label="Stale — no recent activity" short="stale" icon={Clock} />}
+          {task.status === 'done' && <SignalDash color="var(--apple-green)" label="Done" short="done" icon={CheckCircle2} />}
           {agentRunning && (
             <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: 'var(--accent-app)' }} title="Agent running" />
           )}
@@ -239,31 +251,49 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
         </div>
       )}
 
-      {/* Zone 3: one metadata footer */}
+      {/* Zone 3: one metadata footer — reworked per live feedback: the
+          glyph-only priority read as a mystery red circle, so it carries its
+          word again; "subtask" says what the mono parent id only implied. */}
       <div className="flex items-center flex-wrap mt-auto pt-2 gap-2" style={{ borderTop: '0.5px solid var(--separator)' }}>
-        {/* Glyph-only cycle control — the left stripe is THE priority
-            encoding; the word lives in the tooltip and aria-label. */}
-        <button
+        <Badge
+          preset="priority" value={task.priority || 'medium'}
           onClick={togglePriority}
-          className="apple-press flex items-center shrink-0"
           role="button"
           aria-label={`Priority: ${task.priority || 'medium'}. Click to cycle.`}
-          title={`Priority: ${task.priority || 'medium'} — click to cycle`}
+          title="Click to cycle priority"
           data-testid="card-priority-cycle"
-          style={{ color: priorityColor, background: `color-mix(in srgb, ${priorityColor} 10%, transparent)`, padding: 'var(--space-1)', borderRadius: 'var(--radius-full)', border: 'none', cursor: 'pointer' }}
+          className="apple-press cursor-pointer flex items-center gap-1"
         >
           {PRIORITY_ICONS[task.priority || 'medium']}
-        </button>
+          {task.priority || 'medium'}
+        </Badge>
         {task.assignee && (
           <Badge
             preset="muted"
             className="flex items-center gap-1"
             style={{ color: 'var(--text-app)' }}
+            title={`Assigned to ${task.assignee}`}
           >
             <span className="truncate max-w-[100px]">{task.assignee}</span>
             {task.status === 'in_progress' && (
               <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--apple-green)' }} title="In progress" />
             )}
+          </Badge>
+        )}
+        {task.parent_task && (
+          <Badge
+            preset="muted"
+            className="flex items-center gap-1"
+            title={`Subtask of ${task.parent_task}`}
+            data-testid="card-subtask-chip"
+          >
+            <CornerDownRight className="w-3 h-3" />
+            subtask
+          </Badge>
+        )}
+        {hasComments && (
+          <Badge preset="muted" className="flex items-center" title="Has comments" aria-label="Has comments">
+            <AlignLeft className="w-3 h-3" />
           </Badge>
         )}
         {task.due_date && (() => {
@@ -293,12 +323,6 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
             {task.component}
           </Badge>
         )}
-        {task.parent_task && (
-          <Badge preset="muted" title={`Subtask of ${task.parent_task}`} style={{ fontFamily: 'var(--font-mono)', color: 'color-mix(in srgb, var(--accent-app) 70%, var(--text-tertiary))' }}>
-            <span className="truncate max-w-[110px]">↑ {task.parent_task}</span>
-          </Badge>
-        )}
-        {hasComments && <AlignLeft className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--text-tertiary)' }} title="Has comments" />}
         {viewers.length > 0 && (
           <div className="flex -space-x-1.5 shrink-0" title={`${viewers.join(', ')} viewing`}>
             {viewers.slice(0, 3).map((name, i) => (
