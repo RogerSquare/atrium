@@ -4,6 +4,7 @@ const registry = require('./projectRegistry');
 const { getIO } = require('./io');
 const { logger } = require('./logger');
 const { TASKS_DIR } = require('./constants');
+const loopSchedule = require('./loopSchedule');
 
 /**
  * Loop engine (feat-loops-engine-001)
@@ -319,7 +320,7 @@ async function tick(loopId) {
       last_result: result,
       last_error: null,
       snapshot,
-      next_run_at: new Date(Date.now() + loop.interval_ms).toISOString(),
+      next_run_at: nextRunAtISO(loop),
     });
     emitUpdated(updated);
     return updated;
@@ -329,7 +330,7 @@ async function tick(loopId) {
     const updated = loops.patchRuntime(loopId, {
       status: 'error',
       last_error: String((err && err.message) || err),
-      next_run_at: new Date(Date.now() + loop.interval_ms).toISOString(),
+      next_run_at: nextRunAtISO(loop),
     });
     emitUpdated(updated);
     return updated;
@@ -345,16 +346,46 @@ function clearTimer(id) {
   if (t) { clearTimeout(t); timers.delete(id); }
 }
 
+// A schedule ({time, days}) replaces the interval; long waits are chunked so
+// a desktop host that sleeps, wakes, or changes clock re-computes on the way
+// instead of trusting one huge setTimeout.
+function nextDelay(loop) {
+  if (loop.schedule) {
+    const delay = loopSchedule.delayUntilNext(loop.schedule);
+    if (delay != null) {
+      return delay > loopSchedule.MAX_CHUNK_MS
+        ? { delay: loopSchedule.MAX_CHUNK_MS, fire: false }
+        : { delay, fire: true };
+    }
+    logger.warn({ loopId: loop.id }, 'invalid loop schedule; falling back to interval');
+  }
+  return { delay: loop.interval_ms, fire: true };
+}
+
+function nextRunAtISO(loop) {
+  if (loop.schedule) {
+    const next = loopSchedule.nextOccurrence(loop.schedule);
+    if (next) return next.toISOString();
+  }
+  return new Date(Date.now() + loop.interval_ms).toISOString();
+}
+
 function schedule(loop) {
   clearTimer(loop.id);
   if (!loop || !loop.enabled) return;
+  const { delay, fire } = nextDelay(loop);
   const t = setTimeout(async () => {
-    await tick(loop.id);
-    const fresh = loops.get(loop.id);   // interval/enabled may have changed mid-tick
+    if (fire) await tick(loop.id);
+    const fresh = loops.get(loop.id);   // schedule/interval/enabled may have changed mid-tick
     if (fresh && fresh.enabled) schedule(fresh);
-  }, loop.interval_ms);
+  }, delay);
   if (t.unref) t.unref(); // don't keep the process alive on its own
   timers.set(loop.id, t);
+  // Keep next_run_at truthful from the moment of scheduling, not only post-tick
+  // (a daily loop shows its next fire time before it has ever run).
+  if (loop.schedule && loop.next_run_at !== nextRunAtISO(loop)) {
+    emitUpdated(loops.patchRuntime(loop.id, { next_run_at: nextRunAtISO(loop) }));
+  }
 }
 
 // Called once after server.listen (server.js).
@@ -389,4 +420,5 @@ module.exports = {
   init, onLoopChanged, onLoopRemoved, runLoopNow, shutdown,
   // exported for tests:
   detectChanges, normalizeEntry, describeEvents, detectNewIssues, issueTaskId, HIGH_SIGNAL,
+  nextDelay, nextRunAtISO,
 };
