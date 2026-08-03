@@ -255,7 +255,7 @@ function ListView({ tasks, onSelectTask, onUpdateTask, activeAgents = [], taskVi
 
       {/* Table */}
       <div ref={tableContainerRef} className={`overflow-x-auto custom-scrollbar flex-1 ${shouldVirtualize ? 'overflow-y-auto' : ''}`} style={{ borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)', border: 'var(--border-hairline)', minHeight: 0 }}>
-      <table className="w-full min-w-[900px] border-collapse">
+      <table className="w-full min-w-[640px] border-collapse">
         <thead>
           <tr style={{ borderBottom: '0.5px solid var(--separator)' }}>
             {selectable && (

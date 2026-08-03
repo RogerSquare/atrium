@@ -7,6 +7,7 @@
 
 import { Copy, Check, Loader2, Clock, ChevronRight, ChevronDown, GitPullRequest } from 'lucide-react'
 import { STATUS_OPTIONS, PRIORITY_COLOR, STATUS_COLOR, TYPE_STYLE, VIEWER_COLORS, MERGE_STATUS } from '../../constants'
+import { Select } from '../ui'
 import { DEFAULT_VISIBLE, phaseOf } from '../../lib/listColumns'
 
 // Phase tags drive the research -> plan -> implement pipeline, so they get a
@@ -94,26 +95,16 @@ export default function TaskRow({
       {columns.map(key => {
         switch (key) {
 
-        case 'id': return (
-          <td key={key} style={{ padding: '8px 12px' }}>
-            <div className="flex items-center gap-1.5">
-              {(() => {
-                const link = githubLinks[task.id]
-                const ms = link?.pr_state ? MERGE_STATUS[link.pr_state] : null
-                return ms ? <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ms.dotColor, flexShrink: 0 }} title={PR_TITLE(ms)} /> : null
-              })()}
-              <button onClick={(e) => handleCopyId(e, task.id)} className="apple-press flex items-center gap-1" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }} title="Copy ID">
-                {copiedId === task.id ? <Check className="w-2.5 h-2.5" style={{ color: 'var(--apple-green)' }} /> : <Copy className="w-2.5 h-2.5" />}
-                {task.id}
-              </button>
-              {isAgentRunning && <Loader2 className="w-3 h-3 animate-spin" style={{ color: 'var(--accent-app)' }} />}
-            </div>
-          </td>
-        )
-
-        // Title carries the tree: indentation by depth, and a disclosure
-        // triangle only when there is actually something to disclose.
-        case 'title': return (
+        // Title is the row's ONE focal element (ui-list-redesign-impl-001,
+        // Linear anatomy): high-contrast title, then muted metadata — the id
+        // chip (still copyable, carries the PR-state dot), presence avatars,
+        // and the agent spinner all live here now instead of separate
+        // columns. It also carries the tree: indentation by depth, and a
+        // disclosure triangle only when there is something to disclose.
+        case 'title': {
+          const link = githubLinks[task.id]
+          const ms = link?.pr_state ? MERGE_STATUS[link.pr_state] : null
+          return (
           <td key={key} style={{ padding: '8px 12px' }}>
             <div className="flex items-center gap-2" style={{ paddingLeft: depth ? (depth * 18) + 'px' : 0 }}>
               {childCount > 0 ? (
@@ -136,6 +127,18 @@ export default function TaskRow({
               {childCount > 0 && (
                 <span className="shrink-0" style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '1px 6px', borderRadius: 'var(--radius-full)' }}>{childCount}</span>
               )}
+              <button
+                onClick={(e) => handleCopyId(e, task.id)}
+                className="apple-press shrink-0 flex items-center gap-1"
+                style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)', background: 'var(--fill-secondary)', padding: '1px 6px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer' }}
+                title={ms ? `Copy ID · ${PR_TITLE(ms)}` : 'Copy ID'}
+                aria-label={`Copy task id ${task.id}`}
+              >
+                {ms && <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: ms.dotColor, flexShrink: 0 }} />}
+                {copiedId === task.id ? <Check className="w-2.5 h-2.5" style={{ color: 'var(--apple-green)' }} /> : <Copy className="w-2.5 h-2.5" />}
+                {task.id}
+              </button>
+              {isAgentRunning && <Loader2 className="w-3 h-3 animate-spin shrink-0" style={{ color: 'var(--accent-app)' }} />}
               {viewers.length > 0 && (
                 <div className="flex -space-x-1.5 shrink-0">
                   {viewers.slice(0, 3).map((v, i) => (
@@ -145,21 +148,35 @@ export default function TaskRow({
               )}
             </div>
           </td>
-        )
+          )
+        }
 
+        // Status/priority use the shared Select (ui-list-redesign-impl-001,
+        // 'unified to siblings') — same control the Board toolbar uses,
+        // keyboard-accessible for free. Color still signals state.
         case 'status': return (
           <td key={key} style={{ padding: '8px 12px' }} onClick={e => e.stopPropagation()}>
-            <select value={task.status} onChange={(e) => handleImmediateUpdate(task.id, 'status', e.target.value)} className="cursor-pointer focus:outline-none bg-transparent" style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: STATUS_COLOR[task.status] || 'var(--text-muted)', border: 'none', padding: '2px' }}>
+            <Select
+              value={task.status}
+              onChange={(e) => handleImmediateUpdate(task.id, 'status', e.target.value)}
+              aria-label={`Status of ${task.id}`}
+              style={{ fontWeight: 'var(--font-semibold)', color: STATUS_COLOR[task.status] || 'var(--text-muted)', background: 'transparent', padding: '2px' }}
+            >
               {STATUS_OPTIONS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-            </select>
+            </Select>
           </td>
         )
 
         case 'priority': return (
           <td key={key} style={{ padding: '8px 12px' }} onClick={e => e.stopPropagation()}>
-            <select value={task.priority} onChange={(e) => handleImmediateUpdate(task.id, 'priority', e.target.value)} className="cursor-pointer focus:outline-none bg-transparent" style={{ fontSize: 'var(--text-caption1)', fontWeight: 'var(--font-semibold)', color: pc, border: 'none', padding: '2px', textTransform: 'capitalize' }}>
+            <Select
+              value={task.priority}
+              onChange={(e) => handleImmediateUpdate(task.id, 'priority', e.target.value)}
+              aria-label={`Priority of ${task.id}`}
+              style={{ fontWeight: 'var(--font-semibold)', color: pc, background: 'transparent', padding: '2px', textTransform: 'capitalize' }}
+            >
               {PRIORITY_CYCLE.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
+            </Select>
           </td>
         )
 
@@ -240,13 +257,8 @@ export default function TaskRow({
           </td>
         )
 
-        case 'parent': return (
-          <td key={key} style={{ padding: '8px 12px' }}>
-            {task.parent_task
-              ? <span className="truncate max-w-[130px] block" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }} title={task.parent_task}>{task.parent_task}</span>
-              : <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)', opacity: 0.4 }}>&mdash;</span>}
-          </td>
-        )
+        // 'parent' column dropped (FR-036) — lineage is shown structurally
+        // by the Thread grouping instead of as a raw id cell.
 
         // Phase tags render here too (ui-create-dejargon-001, P1-12): the
         // Tags column claiming fewer tags than the task carries reads as data

@@ -1,23 +1,24 @@
-// List view column registry + visibility (ui-list-usability-001).
+// List view column registry + visibility (ui-list-usability-001; slimmed by
+// ui-list-redesign-impl-001).
 //
-// The default set was chosen from measured fill rates across the real board
-// (769 tasks), not from taste:
+// The default set follows the one-focal-element row: Title carries the id
+// chip, PR dot, presence, and tree affordances, so the defaults are only the
+// fields someone scans a list FOR — status, priority, owner, recency.
+// Everything else stays a picker opt-in.
 //
-//   id/title/status/priority/type  100%      always useful
-//   project                         94%      but constant when scoped to one project
-//   assignee                        87%
-//   component                       73%
-//   due_date                         0%      <- removed entirely, see below
+// Removed outright rather than hidden:
+//   - `due_date` — populated on ZERO tasks when measured (2026-04, 769
+//     tasks); a picker entry for a field nothing writes is dead weight.
+//   - `id` as a COLUMN — the id now renders inside the Title cell (still
+//     copyable), so a separate 32-wide column of mono noise is gone.
+//   - `parent` — superseded by the Thread grouping, which shows lineage
+//     structurally instead of as a raw id cell.
 //
-// `due_date` was a column on every row for every user and was populated on
-// ZERO of 769 tasks. It is not hidden-by-default, it is gone: keeping a
-// picker entry for a field nothing writes just moves the dead weight into
-// the picker. If due dates ever start being used, adding it back is a
-// one-line change.
-//
-// `depends_on` is likewise empty on all 769 tasks despite the agent
-// instructions calling for it, so there is deliberately no "Blocked by"
-// column — it would be an empty column dressed up as a feature.
+// Historical note: this file once ruled out a depends_on column because the
+// field was "empty on all 769 tasks". Re-measured 2026-08: 24% non-empty and
+// climbing (the phase-continuation pipeline writes it). It feeds the Thread
+// grouping in lib/taskThreads.js now — still not a column, but no longer
+// dead data.
 
 export const COLUMN_STORAGE_KEY = 'taskBoardListColumns'
 
@@ -25,28 +26,28 @@ export const COLUMN_STORAGE_KEY = 'taskBoardListColumns'
 // a tag set). Clicking them would appear to do nothing, which is worse than
 // not being clickable.
 export const ALL_COLUMNS = [
-  { key: 'id', label: 'ID', width: 'w-32', sortable: true, locked: true },
-  { key: 'title', label: 'Title', width: 'flex-1 min-w-[200px]', sortable: true, locked: true },
+  { key: 'title', label: 'Title', width: 'flex-1 min-w-[240px]', sortable: true, locked: true },
   { key: 'status', label: 'Status', width: 'w-28', sortable: true },
   { key: 'priority', label: 'Priority', width: 'w-24', sortable: true },
-  { key: 'phase', label: 'Phase', width: 'w-28', sortable: true },
-  { key: 'pr', label: 'PR', width: 'w-20', sortable: false },
   { key: 'assignee', label: 'Assignee', width: 'w-28', sortable: true },
   { key: 'updated', label: 'Updated', width: 'w-24', sortable: true },
+  { key: 'phase', label: 'Phase', width: 'w-28', sortable: true },
+  { key: 'pr', label: 'PR', width: 'w-20', sortable: false },
   { key: 'type', label: 'Type', width: 'w-24', sortable: true },
   { key: 'project', label: 'Project', width: 'w-28', sortable: true },
   { key: 'component', label: 'Component', width: 'w-32', sortable: true },
-  { key: 'parent', label: 'Parent', width: 'w-32', sortable: true },
   { key: 'tags', label: 'Tags', width: 'w-40', sortable: false },
 ]
 
 export const DEFAULT_VISIBLE = [
-  'id', 'title', 'status', 'priority', 'phase', 'pr', 'assignee', 'updated',
+  'title', 'status', 'priority', 'assignee', 'updated',
 ]
 
-// ID and Title are locked on: a row with neither is unidentifiable, and
-// letting someone hide both produces a table they cannot recover from
-// without clearing localStorage.
+// Title is locked on: a row without it is unidentifiable, and letting
+// someone hide it produces a table they cannot recover from without
+// clearing localStorage. (The id lives inside the Title cell, so it no
+// longer needs its own lock.) Stored sets that still contain removed keys
+// ('id', 'parent') are cleaned by loadVisibleColumns below — no migration.
 export const LOCKED = ALL_COLUMNS.filter(c => c.locked).map(c => c.key)
 
 /**
