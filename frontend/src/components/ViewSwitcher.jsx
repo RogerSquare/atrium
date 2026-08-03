@@ -1,13 +1,13 @@
 import { memo } from 'react'
-import { LayoutGrid, List, GitCommitHorizontal, Network, LayoutTemplate, Repeat } from 'lucide-react'
+import { LayoutGrid, List, GitCommitHorizontal, Network, Boxes } from 'lucide-react'
 
 const VIEWS = [
   { id: 'board', label: 'Board', icon: LayoutGrid },
   { id: 'list', label: 'List', icon: List },
   { id: 'changes', label: 'Changes', icon: GitCommitHorizontal },
   { id: 'graph', label: 'Graph', icon: Network },
-  { id: 'loops', label: 'Loops', icon: Repeat },
-  { id: 'demos', label: 'Demos', icon: LayoutTemplate },
+  // Hub replaced the separate Loops + Demos entries (feat-project-hub-impl-001).
+  { id: 'hub', label: 'Hub', icon: Boxes },
 ]
 
 function ViewSwitcher({ activeView, onChangeView }) {

@@ -11,8 +11,7 @@ import { lazy, Suspense } from 'react'
 import Board from '../Board'
 import ListView from '../ListView'
 import ChangesView from '../ChangesView'
-import DemosView from '../DemosView'
-import LoopsView from '../LoopsView'
+import HubView from '../HubView'
 import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
 
 // Lazy-loaded — vis-network is ~700KB and only matters when the graph view
@@ -113,10 +112,8 @@ export default function FocalZone({
                 githubLinks={githubLinks}
               />
             </Suspense>
-          ) : activeView === 'loops' ? (
-            <LoopsView projects={projects} activeProject={activeProject} socketRef={socketRef} />
-          ) : activeView === 'demos' ? (
-            <DemosView tasks={tasks} onSelectTask={onSelectTask} />
+          ) : activeView === 'hub' ? (
+            <HubView projects={projects} activeProject={activeProject} socketRef={socketRef} tasks={tasks} onSelectTask={onSelectTask} />
           ) : (
             <Board
               tasks={tasks}
