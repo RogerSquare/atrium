@@ -77,7 +77,9 @@ test.describe('Approvals inbox', () => {
     await page.goto('/');
     const chip = page.getByTestId('card-waiting-indicator');
     await expect(chip).toBeVisible({ timeout: 20_000 });
-    await expect(chip).toContainText('Needs you');
+    // Since ui-card-redesign-impl-001 the indicator is a color-coded dash —
+    // the words moved into its accessible name/tooltip.
+    await expect(chip).toHaveAccessibleName(/Needs you/);
   });
 
   test('quiet state: no badge, empty inbox message', async ({ page }) => {

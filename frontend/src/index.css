@@ -924,3 +924,42 @@ select:focus-visible {
   letter-spacing: var(--tracking-wide);
   pointer-events: none;
 }
+
+/* Signal dashes (ui-card-redesign-impl-001) — the task card's compact state
+   indicators. Resting state is a 12x4 color bar; hovering morphs it into an
+   icon + word chip so the meaning is one hover away instead of tooltip-only.
+   The reveal is max-width-driven so neighbors slide, not jump. */
+.signal-dash {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  cursor: default;
+}
+.signal-dash .dash-bar {
+  width: 12px;
+  height: 4px;
+  border-radius: var(--radius-full);
+  transition: width var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out);
+}
+.signal-dash .dash-reveal {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: var(--text-caption2);
+  font-weight: var(--font-semibold);
+  transition: max-width var(--duration-med, 200ms) var(--ease-out), opacity var(--duration-fast) var(--ease-out);
+}
+.signal-dash:hover .dash-bar,
+.signal-dash:focus-visible .dash-bar {
+  width: 0;
+  opacity: 0;
+}
+.signal-dash:hover .dash-reveal,
+.signal-dash:focus-visible .dash-reveal {
+  max-width: 140px;
+  opacity: 1;
+}
