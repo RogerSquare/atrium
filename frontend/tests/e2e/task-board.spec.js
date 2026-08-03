@@ -13,22 +13,23 @@ test('atrium frontend hydrates past initial shell', async ({ page }) => {
   await expect(page.locator('#root')).not.toBeEmpty();
 });
 
-// ui-collapse-draft-col-001 — the Draft column can be collapsed to a thin
-// rail to reclaim horizontal space, and the choice persists (localStorage,
-// so it survives reload AND a backend restart since it lives in the browser).
-test.describe('Draft column collapse', () => {
+// ui-collapse-draft-col-001 + ui-board-collapse-001 — Draft AND Done can
+// collapse to thin rails, and since ui-board-collapse-001 BOTH start
+// collapsed by default (drafts are half-formed, done is history — the board
+// opens on active work). An explicit expansion persists via localStorage,
+// so it survives reload AND a backend restart.
+test.describe('Board column rails', () => {
   // Seed localStorage before any app code runs: bypass the login gate (the
   // shared helper builds a decodable token — lib/session.js drops tokenless
   // users), force the board view, and skip the one-time OLED theme migration.
   // This runs on every navigation (including reload), so it MUST be idempotent
-  // — it must NOT touch taskBoardDraftCollapsed, or it would wipe the very
-  // state under test on reload. The fresh per-test context guarantees we
-  // start expanded.
-  test('collapses to a rail, persists across reload, and re-expands', async ({ page }) => {
+  // — it must NOT touch the collapse keys, or it would wipe the very state
+  // under test on reload. The fresh per-test context guarantees the default.
+  test.beforeEach(async ({ page }) => {
     await mockCoreApi(page);
     // At least one task must exist — a zero-task board renders the empty-state
     // CTA (ui-topbar-create-001) instead of columns, so there would be no
-    // Draft column to collapse.
+    // columns to collapse.
     await page.route('**/api/tasks', (route) => route.fulfill({
       json: [{
         id: 'feat-seed-001', title: 'Seed task', status: 'todo', priority: 'medium',
@@ -37,28 +38,48 @@ test.describe('Draft column collapse', () => {
       }],
     }));
     await page.addInitScript(seedSession, { storage: { taskBoardView: 'board' } });
+  });
+
+  test('Draft and Done open as rails by default', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByTestId('board-rail-draft')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('board-rail-done')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Collapse Draft column' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Collapse Done column' })).toHaveCount(0);
+  });
+
+  test('expanding persists across reload, and re-collapses', async ({ page }) => {
     await page.goto('/');
 
-    const collapseBtn = page.getByRole('button', { name: 'Collapse Draft column' });
-    const expandRail = page.getByRole('button', { name: /Expand Draft column/ });
+    const draftRail = page.getByTestId('board-rail-draft');
+    const collapseDraft = page.getByRole('button', { name: 'Collapse Draft column' });
 
-    // Expanded by default: the full-column collapse control is present.
-    await expect(collapseBtn).toBeVisible({ timeout: 20_000 });
-    await expect(expandRail).toHaveCount(0);
+    // Expand → the full column replaces the rail.
+    await expect(draftRail).toBeVisible({ timeout: 20_000 });
+    await draftRail.click();
+    await expect(collapseDraft).toBeVisible();
+    await expect(draftRail).toHaveCount(0);
 
-    // Collapse → the rail replaces the full column.
-    await collapseBtn.click();
-    await expect(expandRail).toBeVisible();
-    await expect(collapseBtn).toHaveCount(0);
-
-    // Persists across a reload (the localStorage requirement).
+    // The expansion persists across a reload (the localStorage requirement).
     await page.reload();
-    await expect(expandRail).toBeVisible({ timeout: 20_000 });
-    await expect(collapseBtn).toHaveCount(0);
+    await expect(collapseDraft).toBeVisible({ timeout: 20_000 });
+    await expect(draftRail).toHaveCount(0);
+    // Done was untouched, so it is still a rail.
+    await expect(page.getByTestId('board-rail-done')).toBeVisible();
 
-    // Re-expanding restores the full column.
-    await expandRail.click();
-    await expect(collapseBtn).toBeVisible();
-    await expect(expandRail).toHaveCount(0);
+    // Re-collapsing restores the rail.
+    await collapseDraft.click();
+    await expect(draftRail).toBeVisible();
+    await expect(collapseDraft).toHaveCount(0);
+  });
+
+  test('Done expands and collapses independently of Draft', async ({ page }) => {
+    await page.goto('/');
+    const doneRail = page.getByTestId('board-rail-done');
+    await expect(doneRail).toBeVisible({ timeout: 20_000 });
+    await doneRail.click();
+    await expect(page.getByRole('button', { name: 'Collapse Done column' })).toBeVisible();
+    // Draft stays a rail throughout.
+    await expect(page.getByTestId('board-rail-draft')).toBeVisible();
   });
 });
