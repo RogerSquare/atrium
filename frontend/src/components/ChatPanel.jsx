@@ -77,7 +77,10 @@ export default function ChatPanel({ user, socket, messages, onlineUsers, typingU
         : 'fixed inset-0 sm:inset-auto sm:bottom-4 sm:right-4 z-50 w-full h-full sm:w-[380px] sm:h-[540px] flex flex-col overflow-hidden'}
       style={docked
         ? { background: 'var(--bg-card)', borderLeft: 'var(--border-hairline)' }
-        : { background: 'var(--bg-card)', borderRadius: '0', boxShadow: 'var(--shadow-popover)' }}
+        // Full-screen on phones (inset-0 + viewport-fit=cover): pad the top
+        // safe inset so the header clears the notch. env() is 0 on desktop,
+        // where the sm: float never reaches the screen edge anyway.
+        : { background: 'var(--bg-card)', borderRadius: '0', boxShadow: 'var(--shadow-popover)', paddingTop: 'var(--safe-top)' }}
       ref={el => { if (el && !docked && window.innerWidth >= 640) el.style.borderRadius = 'var(--radius-md)' }}
     >
       {/* Header */}

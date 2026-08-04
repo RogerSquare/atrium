@@ -55,6 +55,14 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
   const [activeColumn, setActiveColumn] = useState('todo')
   const scrollRef = useRef(null)
   const touchStartX = useRef(null)
+  // Mobile column carousel: keep the active pill centered so its full label
+  // is always readable (the earlier 5-across grid truncated everything).
+  const colTabRefs = useRef({})
+  useEffect(() => {
+    if (!isMobile) return
+    const el = colTabRefs.current[activeColumn]
+    if (el) el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+  }, [activeColumn, isMobile])
 
   const sortTasks = useCallback((taskList) => {
     return [...taskList].sort((a, b) => {
@@ -261,37 +269,53 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
 
     return (
       <div>
-        {/* Segmented control for columns — grid wrapper around Button primitives */}
+        {/* Column carousel — Apple-style snap row. Full labels stay readable
+            because the strip SCROLLS instead of cramming five columns into
+            375px; the active pill auto-centers (see the scrollIntoView
+            effect) so what's in focus is always legible. */}
         <div
           role="tablist"
-          className="mb-3"
+          aria-label="Board columns"
+          className="mb-3 mobile-scroll-hidden"
           style={{
-            padding: 'var(--space-1)',
+            display: 'flex',
+            gap: 'var(--space-2)',
+            overflowX: 'auto',
+            scrollSnapType: 'x proximity',
+            WebkitOverflowScrolling: 'touch',
+            padding: 'var(--space-1) var(--space-2)',
             borderRadius: 'var(--radius-md)',
             background: 'var(--bg-secondary)',
-            display: 'grid',
-            gap: 'var(--space-1)',
-            gridTemplateColumns: `repeat(${displayColumns.length}, 1fr)`,
           }}
         >
           {displayColumns.map(col => {
             const count = col.isSafety ? uncategorizedTasks.length : tasks.filter(t => t.status === col.id).length
             const isActive = col.id === activeColumn
             return (
-              <Button
+              <button
                 key={col.id}
-                variant={col.isSafety ? 'danger' : isActive ? 'secondary' : 'ghost'}
-                size="sm"
-                pill={false}
+                ref={(el) => { colTabRefs.current[col.id] = el }}
                 role="tab"
                 aria-selected={isActive}
+                aria-label={`${col.title} column`}
+                data-testid={`board-col-tab-${col.id}`}
                 onClick={() => setActiveColumn(col.id)}
-                className="justify-center"
+                className="apple-press flex items-center"
                 style={{
+                  scrollSnapAlign: 'center',
+                  flexShrink: 0,
+                  gap: '6px',
                   minHeight: '44px',
-                  background: isActive ? 'var(--bg-card)' : 'transparent',
-                  border: isActive ? 'var(--border-hairline)' : '1px solid transparent',
-                  color: col.isSafety ? 'var(--apple-red)' : isActive ? 'var(--text-app)' : 'var(--text-muted)',
+                  padding: '8px 16px',
+                  borderRadius: 'var(--radius-full)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  fontSize: 'var(--text-footnote)',
+                  fontWeight: isActive ? 'var(--font-semibold)' : 'var(--font-medium)',
+                  background: isActive ? 'var(--accent-app)' : 'var(--fill-secondary)',
+                  color: isActive ? '#fff' : col.isSafety ? 'var(--apple-red)' : 'var(--text-muted)',
+                  transition: `background var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default)`,
                 }}
               >
                 {col.title}
@@ -299,19 +323,21 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                   style={{
                     minWidth: '18px',
                     height: '18px',
+                    flexShrink: 0,
+                    padding: '0 4px',
                     fontSize: 'var(--text-caption2)',
                     fontWeight: 'var(--font-semibold)',
                     borderRadius: 'var(--radius-full)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    background: isActive ? 'var(--accent-app)' : 'var(--fill-primary)',
-                    color: isActive ? 'white' : 'var(--text-muted)',
+                    background: isActive ? 'rgba(255, 255, 255, 0.25)' : 'var(--fill-primary)',
+                    color: isActive ? '#fff' : 'var(--text-muted)',
                   }}
                 >
                   {count}
                 </span>
-              </Button>
+              </button>
             )
           })}
         </div>

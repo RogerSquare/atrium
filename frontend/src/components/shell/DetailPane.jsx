@@ -27,6 +27,7 @@ import CommandCard from '../web-shell/CommandCard'
 import AutoEnterToggle from '../web-shell/AutoEnterToggle'
 import StatusSegmentedControl from '../StatusSegmentedControl'
 import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
+import useVisualViewport from '../../hooks/useVisualViewport'
 
 const TABS = [
   { id: 'description', label: 'Description', icon: FileText },
@@ -99,6 +100,9 @@ export default function DetailPane({
     try { window.localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, next) } catch { /* storage disabled */ }
   }
   const [handleHover, setHandleHover] = useState(false)
+  // Visible-viewport box while the mobile keyboard is open (null otherwise);
+  // must be called before the `!task` early return (rules of hooks).
+  const vv = useVisualViewport(narrow)
 
   // Drag the left edge to resize. Listeners are created per-drag as closures over
   // the start point/width and removed by their own identity on mouseup — this
@@ -129,10 +133,22 @@ export default function DetailPane({
 
   const asideStyle = narrow
     ? {
-        // Narrow-viewport mode: full-screen overlay.
+        // Narrow-viewport mode: full-screen overlay. viewport-fit=cover means
+        // inset:0 extends under the notch AND the home indicator, so pad the
+        // top with the safe inset and the bottom past the tab bar (which
+        // paints above this overlay — same z, later in the DOM). While the
+        // iOS keyboard is open (vv non-null) the overlay shrinks to the
+        // VISIBLE viewport instead — the Shell tab's cursor line was typing
+        // invisibly behind the keyboard; the tab bar is covered anyway so
+        // its reserve drops too.
         position: 'fixed',
-        inset: 0,
+        top: vv ? vv.top : 0,
+        left: 0,
+        right: 0,
+        height: vv ? vv.height : '100%',
         zIndex: 40,
+        paddingTop: vv && vv.top > 0 ? 0 : 'var(--safe-top)',
+        paddingBottom: vv ? 0 : 'var(--mobile-tabbar-h)',
         background: 'var(--bg-card)',
         display: 'flex',
         flexDirection: 'column',
@@ -230,7 +246,11 @@ export default function DetailPane({
         </IconButton>
       </header>
 
-      {/* Tab bar */}
+      {/* Tab bar. On narrow viewports the 6 labeled tabs measured 493px in a
+          375px viewport with no scroll — the trailing tabs (Shell!) were
+          unreachable and no work could be done from a phone. Mobile renders
+          icon-only tabs (the ACTIVE tab keeps its label) at ≥44px touch
+          size, which fits 375px statically. Desktop is unchanged. */}
       <nav
         className="shrink-0 flex items-center"
         style={{
@@ -239,19 +259,26 @@ export default function DetailPane({
           borderBottom: 'var(--border-hairline)',
         }}
         role="tablist"
+        aria-label="Task detail sections"
       >
-        {TABS.map(({ id, label, icon: Icon }) => {
+        {TABS.map((t) => {
+          const { id, label } = t
           const isActive = activeTab === id
+          const iconOnly = narrow && !isActive
           return (
             <button
               key={id}
               role="tab"
               aria-selected={isActive}
+              aria-label={label}
+              title={label}
+              data-testid={`detail-tab-${id}`}
               onClick={() => setActiveTab(id)}
-              className="apple-press relative flex items-center"
+              className="apple-press relative flex items-center justify-center"
               style={{
                 gap: 'var(--space-1)',
-                padding: 'var(--space-2) var(--space-2)',
+                padding: narrow ? 'var(--space-2) var(--space-1)' : 'var(--space-2) var(--space-2)',
+                ...(narrow ? { minWidth: '44px', minHeight: '44px' } : {}),
                 border: 'none',
                 background: 'transparent',
                 cursor: 'pointer',
@@ -262,8 +289,8 @@ export default function DetailPane({
                 marginBottom: '-1px', // overlap the border-bottom below
               }}
             >
-              <Icon className="w-3.5 h-3.5" />
-              {label}
+              <t.icon className="w-3.5 h-3.5" />
+              {!iconOnly && label}
             </button>
           )
         })}

@@ -1,7 +1,7 @@
 import { memo, useState, useCallback } from 'react'
 import { AlertCircle, AlignLeft, CheckCircle2, Circle, Copy, Check, CornerDownRight, Loader2, CalendarClock, Clock, Terminal, HelpCircle } from 'lucide-react'
-import { STATUS_OPTIONS, PRIORITY_COLOR, TYPE_STYLE, VIEWER_COLORS, MERGE_STATUS } from '../constants'
-import { Badge, Select, Checkbox, Avatar } from './ui'
+import { PRIORITY_COLOR, TYPE_STYLE, VIEWER_COLORS, MERGE_STATUS } from '../constants'
+import { Badge, Checkbox, Avatar } from './ui'
 
 const PRIORITY_ICONS = {
   low: <Circle className="w-3 h-3" />,
@@ -348,16 +348,10 @@ function TaskCard({ task, onUpdateTask, onClick, isDragging, agentRunning, viewe
           </div>
         )}
         <div className="flex-1" />
-        {/* Mobile status selector */}
-        <Select
-          value={task.status}
-          onClick={(e) => e.stopPropagation()}
-          onChange={(e) => { e.stopPropagation(); onUpdateTask(task.id, { status: e.target.value }) }}
-          className="sm:hidden ml-auto"
-          style={{ padding: 'var(--space-1) var(--space-2)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)' }}
-        >
-          {STATUS_OPTIONS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-        </Select>
+        {/* The mobile per-card status dropdown was removed by request
+            (mobile-ui-rework-impl-001, FR-092 → dropped): status changes on
+            a phone go through the detail view's segmented control instead —
+            one card = one tap target, less clutter. */}
       </div>
     </div>
   )

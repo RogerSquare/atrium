@@ -77,6 +77,10 @@ export default function ModalOverlay({ onClose, children, titleId, ariaLabel }) 
         ref={contentRef}
         className="w-full h-full sm:h-auto flex justify-center sm:items-center animate-slide-up"
         onClick={handleOverlayClick}
+        // Full-screen sheet on phones under viewport-fit=cover: pad both safe
+        // insets so modal headers clear the notch and footer buttons clear
+        // the home indicator. env() is 0 everywhere else.
+        style={{ paddingTop: 'var(--safe-top)', paddingBottom: 'var(--safe-bottom)' }}
       >
         {children}
       </div>

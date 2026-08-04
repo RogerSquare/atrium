@@ -130,6 +130,11 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
+  /* Mobile bottom tab bar: 49px of content (iOS-standard) + the home
+     indicator inset. Consumed by .mobile-tab-bar (its height), .app-shell
+     (the layout carve-out), and the DetailPane overlay (bottom padding) so
+     the three can never disagree again. */
+  --mobile-tabbar-h: calc(49px + var(--safe-bottom));
 }
 
 /* ============================================================
@@ -575,13 +580,19 @@ select:focus-visible {
   padding-bottom: max(0.75rem, var(--safe-bottom));
 }
 
-/* Chat input — nudge above bottom tab bar on mobile */
+/* Chat input — nudge above the home indicator on mobile. The old fixed 20px
+   ignored the safe-area inset, putting the input under the indicator on
+   notched iPhones. */
 @media (max-width: 768px) {
   .chat-input-safe {
-    padding-bottom: 20px !important;
+    padding-bottom: max(20px, calc(var(--safe-bottom) + 8px)) !important;
   }
   .app-shell {
-    height: calc(100dvh - 56px) !important;
+    /* Carve out the tab bar's REAL height. The old hardcoded 56px undersold
+       the ~61px bar (and ~87px with the home indicator), so the bottom of
+       every view was covered. --mobile-tabbar-h is the single source of
+       truth shared with .mobile-tab-bar and the DetailPane overlay. */
+    height: calc(100dvh - var(--mobile-tabbar-h)) !important;
   }
 }
 
@@ -839,9 +850,12 @@ select:focus-visible {
 }
 
 /* --- Mobile bottom tab bar --- */
+/* Fixed height from the shared var (49px content + safe-bottom) so the
+   .app-shell carve-out always matches the rendered bar. */
 .mobile-tab-bar {
-  padding-top: 8px;
-  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  height: var(--mobile-tabbar-h);
+  padding-top: 4px;
+  padding-bottom: var(--safe-bottom);
   background: color-mix(in srgb, var(--bg-card) 80%, transparent);
   border-top: 0.5px solid var(--separator);
 }
