@@ -21,7 +21,22 @@ export default defineConfig({
     video: 'on',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Desktop runs every spec EXCEPT the mobile suite; the mobile project runs
+    // ONLY the mobile suite at a real iPhone-ish viewport. Keeps desktop
+    // timings untouched while mobile regressions (unreachable tabs, safe-area
+    // sizing, touch targets) stay locked in CI.
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: /mobile\.spec\.js/ },
+    {
+      name: 'mobile-chromium',
+      testMatch: /mobile\.spec\.js/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 390, height: 844 },
+        deviceScaleFactor: 3,
+        hasTouch: true,
+        isMobile: true,
+      },
+    },
   ],
   webServer: {
     command: 'npm run dev',

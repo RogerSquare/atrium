@@ -277,6 +277,10 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
           {displayColumns.map(col => {
             const count = col.isSafety ? uncategorizedTasks.length : tasks.filter(t => t.status === col.id).length
             const isActive = col.id === activeColumn
+            // Full titles measured 411px across a 375px viewport (the last
+            // column landed off-screen) — short labels + tight padding fit,
+            // and minWidth:0 lets the grid truncate instead of overflow.
+            const shortTitle = { in_progress: 'Progress', todo: 'To Do' }[col.id] || col.title
             return (
               <Button
                 key={col.id}
@@ -285,20 +289,27 @@ function Board({ tasks, onUpdateTask, onSelectTask, activeAgents = [], onStartAg
                 pill={false}
                 role="tab"
                 aria-selected={isActive}
+                aria-label={`${col.title} column`}
+                title={col.title}
                 onClick={() => setActiveColumn(col.id)}
                 className="justify-center"
                 style={{
                   minHeight: '44px',
+                  minWidth: 0,
+                  padding: '4px 6px',
+                  overflow: 'hidden',
+                  whiteSpace: 'nowrap',
                   background: isActive ? 'var(--bg-card)' : 'transparent',
                   border: isActive ? 'var(--border-hairline)' : '1px solid transparent',
                   color: col.isSafety ? 'var(--apple-red)' : isActive ? 'var(--text-app)' : 'var(--text-muted)',
                 }}
               >
-                {col.title}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortTitle}</span>
                 <span
                   style={{
                     minWidth: '18px',
                     height: '18px',
+                    flexShrink: 0,
                     fontSize: 'var(--text-caption2)',
                     fontWeight: 'var(--font-semibold)',
                     borderRadius: 'var(--radius-full)',

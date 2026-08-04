@@ -230,7 +230,11 @@ export default function DetailPane({
         </IconButton>
       </header>
 
-      {/* Tab bar */}
+      {/* Tab bar. On narrow viewports the 6 labeled tabs measured 493px in a
+          375px viewport with no scroll — the trailing tabs (Shell!) were
+          unreachable and no work could be done from a phone. Mobile renders
+          icon-only tabs (the ACTIVE tab keeps its label) at ≥44px touch
+          size, which fits 375px statically. Desktop is unchanged. */}
       <nav
         className="shrink-0 flex items-center"
         style={{
@@ -239,19 +243,26 @@ export default function DetailPane({
           borderBottom: 'var(--border-hairline)',
         }}
         role="tablist"
+        aria-label="Task detail sections"
       >
-        {TABS.map(({ id, label, icon: Icon }) => {
+        {TABS.map((t) => {
+          const { id, label } = t
           const isActive = activeTab === id
+          const iconOnly = narrow && !isActive
           return (
             <button
               key={id}
               role="tab"
               aria-selected={isActive}
+              aria-label={label}
+              title={label}
+              data-testid={`detail-tab-${id}`}
               onClick={() => setActiveTab(id)}
-              className="apple-press relative flex items-center"
+              className="apple-press relative flex items-center justify-center"
               style={{
                 gap: 'var(--space-1)',
-                padding: 'var(--space-2) var(--space-2)',
+                padding: narrow ? 'var(--space-2) var(--space-1)' : 'var(--space-2) var(--space-2)',
+                ...(narrow ? { minWidth: '44px', minHeight: '44px' } : {}),
                 border: 'none',
                 background: 'transparent',
                 cursor: 'pointer',
@@ -262,8 +273,8 @@ export default function DetailPane({
                 marginBottom: '-1px', // overlap the border-bottom below
               }}
             >
-              <Icon className="w-3.5 h-3.5" />
-              {label}
+              <t.icon className="w-3.5 h-3.5" />
+              {!iconOnly && label}
             </button>
           )
         })}
