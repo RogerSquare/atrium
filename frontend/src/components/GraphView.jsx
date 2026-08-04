@@ -562,9 +562,45 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
   // mid-jump positions. The actual fit is suppressed when the user is
   // mid-drag (so we don't yank the camera out from under them) or when
   // the visible set is empty (vis-network throws on a zero-bounding-box).
+  // Manual fit-to-content (bug-graph-behavior-001): vis-network's own fit()
+  // lands the camera with a consistent rightward bias that grows with the
+  // content extent — clearly visible on large graphs. Centering on the node
+  // bounding box ourselves is exact on every browser.
+  const fitToContent = useCallback((animate) => {
+    const net = networkRef.current
+    if (!net) return
+    let pos
+    try { pos = net.getPositions() } catch { return }
+    const ids = Object.keys(pos)
+    if (!ids.length) return
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    for (const id of ids) {
+      const p = pos[id]
+      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x)
+      minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y)
+    }
+    const canvas = net.canvas && net.canvas.frame && net.canvas.frame.canvas
+    const w = canvas ? canvas.clientWidth : 0
+    const h = canvas ? canvas.clientHeight : 0
+    if (!w || !h) return
+    const PAD = 90 // world units of breathing room on every side
+    const scale = Math.min(w / (maxX - minX + PAD * 2), h / (maxY - minY + PAD * 2), 1.25)
+    net.moveTo({
+      position: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
+      scale,
+      animation: (animate && !prefersReducedMotionRef.current)
+        ? { duration: 250, easingFunction: 'easeInOutQuad' }
+        : false,
+    })
+  }, [])
+
   // `animate: false` is the resize path — snapping avoids a 250ms camera
-  // animation racing the next resize tick (visible as extra movement).
-  const scheduleAutoFit = useCallback(({ animate = true } = {}) => {
+  // animation racing the next resize tick. `respectUserView` (also the
+  // resize path) is re-checked AT FIRE TIME: a resize tick can arm this
+  // timer moments before the user grabs the camera, and the debounced fit
+  // must not land on top of their fresh zoom. Structural fits (filter
+  // toggles) always apply — recentering is the point of them.
+  const scheduleAutoFit = useCallback(({ animate = true, respectUserView = false } = {}) => {
     if (autoFitTimerRef.current) clearTimeout(autoFitTimerRef.current)
     autoFitTimerRef.current = setTimeout(() => {
       autoFitTimerRef.current = null
@@ -573,13 +609,10 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
       if (!net || !ds || !ds.nodes) return
       if (ds.nodes.length === 0) return
       if (draggedRef.current.size > 0) return
-      net.fit({
-        animation: (animate && !prefersReducedMotionRef.current)
-          ? { duration: 250, easingFunction: 'easeInOutQuad' }
-          : false,
-      })
+      if (respectUserView && userViewRef.current) return
+      fitToContent(animate)
     }, 150)
-  }, [])
+  }, [fitToContent])
 
   // --- Auto-recenter on container resize ---------------------------------
   // Fires whenever the graph's available area actually changes — DetailPane
@@ -621,7 +654,9 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
       }, 300)
       // Respect a hand-panned/zoomed view: the user's framing survives
       // resizes; auto-fit only serves users who never took the camera.
-      if (!userViewRef.current) scheduleAutoFit({ animate: false })
+      // Checked again at fire time (respectUserView) — the debounce can
+      // outlive this moment.
+      if (!userViewRef.current) scheduleAutoFit({ animate: false, respectUserView: true })
     })
     ro.observe(el)
     return () => {
@@ -736,7 +771,7 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     let settleFitTimer = null
     let unfreezeTimer = null
     if (hasSeededPositions && graphData.nodes.length > 0) {
-      net.once('afterDrawing', () => { try { net.fit({ animation: false }) } catch { /* torn down */ } })
+      net.once('afterDrawing', () => { fitToContent(false) })
       // Startup freeze: the saved layout renders + centers motionless, then
       // physics wakes. A gentle re-fit follows the wake-up glide unless the
       // user has already taken the camera.
@@ -1162,8 +1197,8 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     const net = networkRef.current
     if (!net) return
     userViewRef.current = false // recenter hands the camera back to auto-fit
-    net.fit({ animation: { duration: 250, easingFunction: 'easeInOutQuad' } })
-  }, [])
+    fitToContent(true)
+  }, [fitToContent])
 
   // --- Render -------------------------------------------------------------
   return (

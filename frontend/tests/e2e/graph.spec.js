@@ -113,12 +113,23 @@ test.describe('Graph view behavior', () => {
     // the-camera flag) — and a deterministic way to take the camera in a
     // test, where synthetic wheel events don't reach vis-network's legacy
     // mousewheel listeners.
-    const pre = await netStats(page);
-    await page.getByRole('button', { name: 'Zoom in' }).click();
-    await page.waitForTimeout(350); // the 200ms moveTo animation settles
+    // Late resize-observer ticks (layout settling under suite load) can land
+    // an auto-fit seconds after mount — wait for the camera to hold still so
+    // the baseline isn't captured mid-churn.
+    let pre = await netStats(page);
+    await expect.poll(async () => {
+      const now = await netStats(page);
+      const stable = Math.abs(now.scale - pre.scale) < 0.001;
+      pre = now;
+      return stable;
+    }, { timeout: 10_000, intervals: [400] }).toBe(true);
 
+    await page.getByRole('button', { name: 'Zoom in' }).click();
+    // Poll, not a fixed sleep — the 200ms moveTo animation stretches under
+    // parallel-suite CPU load.
+    await expect.poll(async () => (await netStats(page)).scale, { timeout: 5000 })
+      .toBeGreaterThan(pre.scale * 1.1);
     const zoomed = await netStats(page);
-    expect(zoomed.scale).toBeGreaterThan(pre.scale * 1.1); // the zoom registered
 
     // Count camera commands from here on. vis itself compensates scale on
     // canvas resize to preserve the framed content — the contract under test
