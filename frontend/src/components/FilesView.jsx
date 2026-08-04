@@ -537,7 +537,7 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
                       style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)', padding: 0, marginBottom: touchedOpen ? 4 : 0 }}
                     >
                       <History className="w-3 h-3" />
-                      Touched by {touched.length} task{touched.length === 1 ? '' : 's'}
+                      Change History by {touched.length} task{touched.length === 1 ? '' : 's'}
                       {touchedOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                     </button>
                     {touchedOpen && touched.map(({ task, ts }) => (

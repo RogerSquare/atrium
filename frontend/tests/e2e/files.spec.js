@@ -147,7 +147,7 @@ test.describe('Files view', () => {
     await page.getByText('src', { exact: true }).click();
     await page.getByText('index.js').click();
     const panel = page.getByTestId('files-touched-by');
-    await expect(panel).toContainText('Touched by 1 task');
+    await expect(panel).toContainText('Change History by 1 task');
     // Minimized by default (ui-files-preview-001) — expand to reach the chips.
     await expect(panel.getByTestId('files-touched-task')).toHaveCount(0);
     await panel.getByTestId('files-touched-toggle').click();
