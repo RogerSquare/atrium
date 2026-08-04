@@ -98,7 +98,9 @@ function UnmatchedNote({ items, onSelectTask }) {
 // `tasks` + `onSelectTask` (feat-files-tasks-impl-001): power the task↔file
 // join — count badges on the tree, the "Touched by" panel beside previews,
 // and per-project stale-history notes. Wired from FocalZone like DemosView.
-export default function FilesView({ tasks = [], onSelectTask }) {
+// `selectedTask` (feat-files-highlight-001): the open task's files light up
+// in the tree — the reverse affordance of the touched-by panel.
+export default function FilesView({ tasks = [], onSelectTask, selectedTask = null }) {
   const { activeProject } = useTaskData()
   const [info, setInfo] = useState(null)          // { configured, projects } | null
   const [error, setError] = useState(null)
@@ -194,6 +196,43 @@ export default function FilesView({ tasks = [], onSelectTask }) {
     }
     return m
   }, [info, tasks, resolutions])
+
+  // The open task's files (feat-files-highlight-001): resolved paths light
+  // up in that project's tree; checked-and-missing paths are counted for the
+  // header chip. Null whenever no task is open or nothing resolves.
+  const highlight = useMemo(() => {
+    const fa = selectedTask?.files_affected || []
+    if (!fa.length) return null
+    const folder = selectedTask.project || 'Root'
+    const res = resolutions[folder] || {}
+    const files = new Set()
+    const dirs = new Set()
+    let missing = 0
+    for (const raw of fa) {
+      if (!(raw in res)) continue
+      const rel = res[raw]
+      if (!rel) { missing++; continue }
+      files.add(rel)
+      const parts = rel.split('/')
+      for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'))
+    }
+    if (!files.size && !missing) return null
+    return { folder, taskId: selectedTask.id, files, dirs, missing }
+  }, [selectedTask, resolutions])
+
+  // Auto-expand ancestors of highlighted files so nothing lit is hidden.
+  // EPHEMERAL by design: goes to `expanded` state only, never through
+  // rememberToggle — closing the task must not have rewritten the user's
+  // persisted choices.
+  useEffect(() => {
+    if (!highlight?.files.size) return
+    setExpanded((prev) => {
+      const next = { ...prev }
+      next[`${highlight.folder}:`] = true
+      for (const dir of highlight.dirs) next[`${highlight.folder}:${dir}`] = true
+      return next
+    })
+  }, [highlight])
 
   // In-flight guard: StrictMode double-invokes and the refetch effect below
   // must never issue two identical listings at once.
@@ -298,13 +337,26 @@ export default function FilesView({ tasks = [], onSelectTask }) {
       const touchCount = entry.type === 'dir'
         ? (idx?.dirCounts.get(childPath) || 0)
         : (idx?.byPath.get(childPath)?.length || 0)
+      const isHl = highlight?.folder === project && (entry.type === 'file'
+        ? highlight.files.has(childPath)
+        : highlight.dirs.has(childPath))
+      const isSelected = preview?.project === project && preview?.path === childPath
       return (
         <div key={childKey}>
           <button
             data-testid={entry.type === 'dir' ? 'files-dir' : 'files-file'}
             onClick={() => (entry.type === 'dir' ? toggleDir(project, childPath) : openFile(project, childPath))}
             className="apple-press w-full flex items-center gap-1.5 text-left"
-            style={{ paddingLeft: depth * 16 + 8, paddingTop: 3, paddingBottom: 3, background: preview?.project === project && preview?.path === childPath ? 'color-mix(in srgb, var(--accent-app) 8%, transparent)' : 'transparent', border: 'none', cursor: 'pointer', borderRadius: 'var(--radius-sm)' }}
+            style={{
+              paddingLeft: depth * 16 + 8,
+              paddingTop: 3,
+              paddingBottom: 3,
+              background: isSelected ? 'color-mix(in srgb, var(--accent-app) 8%, transparent)'
+                : isHl && entry.type === 'file' ? 'color-mix(in srgb, var(--apple-yellow) 10%, transparent)'
+                : 'transparent',
+              boxShadow: isHl && entry.type === 'file' ? 'inset 2px 0 0 var(--apple-yellow)' : 'none',
+              border: 'none', cursor: 'pointer', borderRadius: 'var(--radius-sm)',
+            }}
           >
             {entry.type === 'dir'
               ? (isOpen ? <ChevronDown className="w-3 h-3 shrink-0" style={{ color: 'var(--text-tertiary)' }} /> : <ChevronRight className="w-3 h-3 shrink-0" style={{ color: 'var(--text-tertiary)' }} />)
@@ -313,6 +365,9 @@ export default function FilesView({ tasks = [], onSelectTask }) {
               ? <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent-app)', opacity: dim ? 0.5 : 0.9 }} />
               : <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--text-tertiary)', opacity: dim ? 0.5 : 1 }} />}
             <span className="truncate" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption1)', color: dim ? 'var(--text-tertiary)' : 'var(--text-app)' }}>{entry.name}</span>
+            {isHl && entry.type === 'file' && (
+              <span data-testid="files-highlighted" title={`Changed in ${highlight.taskId}`} className="shrink-0" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--apple-yellow)' }} />
+            )}
             <span className="flex-1" />
             {touchCount > 0 && (
               <span
@@ -341,6 +396,18 @@ export default function FilesView({ tasks = [], onSelectTask }) {
           <FolderOpen className="w-5 h-5" style={{ color: 'var(--accent-app)' }} />
           Files{scoped ? ` · ${activeProject === 'Root' ? 'No project' : activeProject}` : ''}
         </h1>
+        {highlight && (
+          <span
+            data-testid="files-highlight-chip"
+            className="inline-flex items-center gap-1.5"
+            style={{ padding: '2px 10px', borderRadius: 'var(--radius-full)', background: 'color-mix(in srgb, var(--apple-yellow) 14%, transparent)', color: 'var(--text-app)', fontSize: 'var(--text-caption2)' }}
+            title={`Files changed in ${highlight.taskId} are highlighted in the tree`}
+          >
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--apple-yellow)', flexShrink: 0 }} />
+            highlighting {highlight.files.size} file{highlight.files.size === 1 ? '' : 's'} from <span style={{ fontFamily: 'var(--font-mono)' }}>{highlight.taskId}</span>
+            {highlight.missing > 0 && <span style={{ color: 'var(--text-muted)' }}>· {highlight.missing} not in tree</span>}
+          </span>
+        )}
         <div className="flex-1" />
         <button
           data-testid="files-show-ignored"

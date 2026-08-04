@@ -150,6 +150,45 @@ test.describe('Files view', () => {
     await expect(page.getByTestId('detail-pane')).toBeVisible();
   });
 
+  test('open task highlights its files: tint + auto-expand, ephemeral, clears on close', async ({ page }) => {
+    const TASK = {
+      id: 'feat-hl-001', title: 'Highlight probe', status: 'in_progress', priority: 'medium',
+      project: 'Alpha', type: 'backend', tags: [], depends_on: [],
+      files_affected: ['src/index.js', 'old-prefix/gone.md'],
+      activity_log: [{ timestamp: new Date().toISOString(), action: 'x' }],
+      content: '### Description\nx\n\n### Comments\n', assignee: null,
+    };
+    await page.route('**/api/tasks', (r) => r.fulfill({ json: [TASK] }));
+    await page.route('**/api/tasks/*', (r) => r.fulfill({ json: TASK }));
+    await page.route('**/api/files/resolve-paths**', (r) => r.fulfill({ json: {
+      resolutions: { 'src/index.js': 'src/index.js', 'old-prefix/gone.md': null },
+    } }));
+    await page.goto('/');
+    await expect(page.getByText('README.md')).toBeVisible();
+    await expect(page.getByText('index.js')).toHaveCount(0); // src starts collapsed
+
+    // Open the task (via the unmatched note's task row) — highlights engage.
+    await page.getByTestId('files-unmatched-note').getByRole('button').first().click();
+    await page.getByTestId('files-unmatched-note').getByText('feat-hl-001').click();
+    await expect(page.getByTestId('detail-pane')).toBeVisible();
+
+    const chip = page.getByTestId('files-highlight-chip');
+    await expect(chip).toContainText('highlighting 1 file from feat-hl-001');
+    await expect(chip).toContainText('1 not in tree');
+    await expect(page.getByText('index.js')).toBeVisible();        // src auto-expanded
+    await expect(page.getByTestId('files-highlighted')).toHaveCount(1);
+
+    // Ephemeral: the auto-expansion never reached the persisted choices.
+    const stored = await page.evaluate(() => localStorage.getItem('taskBoardFilesExpanded') || '{}');
+    expect(JSON.parse(stored)['Alpha:src']).toBeUndefined();
+
+    // Closing the task clears the highlights and the chip.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('detail-pane')).toHaveCount(0);
+    await expect(page.getByTestId('files-highlight-chip')).toHaveCount(0);
+    await expect(page.getByTestId('files-highlighted')).toHaveCount(0);
+  });
+
   test('active project scopes the roots', async ({ page }) => {
     await page.addInitScript(seedSession, { storage: { taskBoardView: 'files', opusBoardActiveProject: 'Alpha' } });
     await page.goto('/');

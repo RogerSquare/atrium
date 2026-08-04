@@ -475,6 +475,7 @@ export default function AppShell() {
         projects={projects}
         activeProject={activeProject}
         loading={loading}
+        selectedTask={selectedTask}
         onSelectTask={selectTaskFromFocal}
         onUpdateTask={undoRedo.updateTaskWithUndo}
         onStartAgent={handleStartAgent}
