@@ -54,7 +54,7 @@ FR numbering continues from FR-084 (project-hub intake).
 | FR-089 | Shell tab layer stays mounted across tab switches (terminal state survives); CommandCard reserves bottom 56px | DetailPane.jsx:288-307 | core-flow | preserved |
 | FR-090 | Status segmented control inside Description tab; waiting_input renders a non-interactive badge | DetailPane.jsx:338-370 | core-flow | preserved |
 | FR-091 | Board mobile: column segmented control (44px minHeight tabs, counts) + swipe left/right between columns | Board.jsx:265-338 | core-flow | preserved |
-| FR-092 | TaskCard inline status select below 640px | TaskCard.jsx:351-359 | core-flow | preserved |
+| FR-092 | TaskCard inline status select below 640px | TaskCard.jsx:351-359 | core-flow | **dropped** — requestor decision 2026-08-04 ("lets just stick with the option in the modal status change"); status changes on mobile go through the detail view's segmented control |
 | FR-093 | ListView mobile: card list (list-card), group-by select, collapsible group headers, priority edge color, depth indent | ListView.jsx:334-412 | core-flow | preserved |
 | FR-094 | FilterBar: horizontally scrollable pill row (search + type + priority + Mine/Today/Stale/Active shells + Reset + count), scrollbar hidden | FilterBar.jsx:33-206 | core-flow | preserved |
 | FR-095 | TopBar mobile set: brand, ProjectAnchor, ApprovalsBell (+count badge, 300px menu), Avatar menu | TopBar.jsx:51-168 | core-flow | preserved |

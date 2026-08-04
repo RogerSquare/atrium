@@ -112,16 +112,20 @@ test.describe('Mobile AppShell (375px)', () => {
     expect(posted.response).toBe('before');
   });
 
-  test('filter bar scrolls horizontally instead of clipping', async ({ page }) => {
+  test('filter bar is slim: no pill overflow, filters live in the sheet', async ({ page }) => {
+    // mobile-ui-rework-impl-001 superseded the scrolling pill row: the bar
+    // is now search + one badged Filters button; every filter is a 44px row
+    // inside a bottom sheet.
     await mockWorld(page);
     await page.goto('/');
     const bar = page.getByTestId('filter-bar');
     await expect(bar).toBeVisible({ timeout: 20_000 });
-    // More content than width → scrollable, and the FAR pill is reachable.
-    const scrollable = await bar.evaluate((el) => el.scrollWidth > el.clientWidth)
-    expect(scrollable).toBe(true);
-    const lastPill = page.getByRole('button', { name: 'Active shells' });
-    await lastPill.scrollIntoViewIfNeeded();
-    await expect(lastPill).toBeVisible();
+    const scrollable = await bar.evaluate((el) => el.scrollWidth > el.clientWidth);
+    expect(scrollable).toBe(false);
+
+    await page.getByTestId('filter-sheet-toggle').click();
+    const sheet = page.getByTestId('filter-sheet');
+    await expect(sheet.getByText('Active shells')).toBeVisible();
+    await expect(sheet.getByText('Stale')).toBeVisible();
   });
 });
