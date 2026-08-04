@@ -84,6 +84,14 @@ RUN apt-get update \
 RUN npm install -g @anthropic-ai/claude-code \
  && npm cache clean --force
 
+# The install above runs as root but the container runs as `node` (uid 1000),
+# so the CLI's self-updater can never write /usr/local/lib/node_modules — it
+# fails with EACCES and every web-shell session shows "Auto-update failed".
+# Containers update via image rebuild (the install line always fetches
+# latest), so disable self-update outright. Web-shell PTYs inherit this via
+# `...process.env` (backend/sockets/web-shell.js).
+ENV DISABLE_AUTOUPDATER=1
+
 WORKDIR /app
 
 # Compiled node_modules from stage 1 — NOT reinstalled here, so the runtime
