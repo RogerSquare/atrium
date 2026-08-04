@@ -116,6 +116,40 @@ test.describe('Files view', () => {
     expect(listCalls.some((s) => s.includes('all=1'))).toBe(true);
   });
 
+  test('task history: tree badges, touched-by panel, honest unmatched note', async ({ page }) => {
+    const TASK = {
+      id: 'feat-hist-001', title: 'History probe', status: 'review', priority: 'medium',
+      project: 'Alpha', type: 'backend', tags: [], depends_on: [],
+      files_affected: ['src/index.js', 'old-prefix/gone.md'],
+      activity_log: [{ timestamp: new Date().toISOString(), action: 'x' }],
+      content: '### Description\nx\n\n### Comments\n', assignee: null,
+    };
+    await page.route('**/api/tasks', (r) => r.fulfill({ json: [TASK] }));
+    await page.route('**/api/tasks/*', (r) => r.fulfill({ json: TASK }));
+    await page.route('**/api/files/resolve-paths**', (r) => r.fulfill({ json: {
+      resolutions: { 'src/index.js': 'src/index.js', 'old-prefix/gone.md': null },
+    } }));
+    await page.goto('/');
+
+    // The src dir carries a count badge before it's even expanded.
+    await expect(page.getByTestId('files-task-count').first()).toHaveText('1');
+
+    // Honest unmatched note, expandable to the task→path pair.
+    const note = page.getByTestId('files-unmatched-note');
+    await expect(note).toContainText('1 history entry');
+    await note.getByRole('button').first().click();
+    await expect(note.getByText('old-prefix/gone.md')).toBeVisible();
+
+    // Open the file: the touched-by panel lists the task and navigates to it.
+    await page.getByText('src', { exact: true }).click();
+    await page.getByText('index.js').click();
+    const panel = page.getByTestId('files-touched-by');
+    await expect(panel).toContainText('Touched by 1 task');
+    await expect(panel).toContainText('feat-hist-001');
+    await panel.getByTestId('files-touched-task').click();
+    await expect(page.getByTestId('detail-pane')).toBeVisible();
+  });
+
   test('active project scopes the roots', async ({ page }) => {
     await page.addInitScript(seedSession, { storage: { taskBoardView: 'files', opusBoardActiveProject: 'Alpha' } });
     await page.goto('/');

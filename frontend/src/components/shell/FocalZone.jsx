@@ -116,7 +116,7 @@ export default function FocalZone({
           ) : activeView === 'hub' ? (
             <HubView projects={projects} activeProject={activeProject} socketRef={socketRef} tasks={tasks} onSelectTask={onSelectTask} />
           ) : activeView === 'files' ? (
-            <FilesView />
+            <FilesView tasks={tasks} onSelectTask={onSelectTask} />
           ) : (
             <Board
               tasks={tasks}
