@@ -136,6 +136,31 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
   const [zipBusy, setZipBusy] = useState(null)
   const [rawMd, setRawMd] = useState(false)       // markdown files: raw source instead of rendered
   const [touchedOpen, setTouchedOpen] = useState(false) // touched-by panel: minimized by default
+  const [highlightLine, setHighlightLine] = useState(null) // clicked line in the code preview
+  // Tree width (ui-files-tree-lines-001): smaller default, drag-resizable,
+  // persisted so it sticks where you left it across reloads.
+  const TREE_DEFAULT = 320, TREE_MIN = 220, TREE_MAX = 560
+  const clampTree = (w) => Math.min(TREE_MAX, Math.max(TREE_MIN, w))
+  const [treeWidth, setTreeWidth] = useState(() => {
+    const stored = Number.parseInt(localStorage.getItem('taskBoardFilesTreeWidth'), 10)
+    return Number.isFinite(stored) ? clampTree(stored) : TREE_DEFAULT
+  })
+  const persistTreeWidth = (w) => { try { localStorage.setItem('taskBoardFilesTreeWidth', String(w)) } catch { /* full */ } }
+  const onTreeResizeStart = (e) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = treeWidth
+    let latest = startWidth
+    const onMove = (ev) => { latest = clampTree(startWidth + (ev.clientX - startX)); setTreeWidth(latest) }
+    const onUp = () => {
+      persistTreeWidth(latest)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+  const resetTreeWidth = () => { setTreeWidth(TREE_DEFAULT); persistTreeWidth(TREE_DEFAULT) }
   // PR diff mode (feat-files-pr-diff-001): when set, the preview shows what a
   // task's PR changed in THIS file instead of the current content.
   const [diff, setDiff] = useState(null) // { state, pr, prUrl, taskId, patch?, additions?, deletions?, error? }
@@ -334,6 +359,7 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
     setRawMd(false)
     setTouchedOpen(false) // every file starts with the panel minimized
     setDiff(null)         // and with the current content, not a stale diff
+    setHighlightLine(null)
     setPreview({ project, path: relPath, state: 'loading' })
     try {
       const res = await apiFetch(`/api/files/content?${new URLSearchParams({ project, path: relPath })}`)
@@ -487,9 +513,9 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
         <div style={{ color: 'var(--text-muted)' }}>No working directory configured — set one in Settings → Project first.</div>
       )}
 
-      <div className="flex-1 min-h-0 flex gap-4">
+      <div className="flex-1 min-h-0 flex">
         {/* Tree */}
-        <div className="overflow-y-auto custom-scrollbar" style={{ flex: '0 0 44%', minWidth: 280, borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)', border: 'var(--border-hairline)', padding: 'var(--space-2)' }}>
+        <div data-testid="files-tree" className="overflow-y-auto custom-scrollbar" style={{ flex: `0 0 ${treeWidth}px`, borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)', border: 'var(--border-hairline)', padding: 'var(--space-2)' }}>
           {visibleProjects.map((p) => (
             <div key={p.id} style={{ marginBottom: 'var(--space-2)' }}>
               <div className="flex items-center gap-2" data-testid="files-project-root" style={{ padding: 'var(--space-1) var(--space-2)' }}>
@@ -535,6 +561,21 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
           {info?.configured && visibleProjects.length === 0 && (
             <div style={{ padding: 'var(--space-4)', color: 'var(--text-muted)', fontSize: 'var(--text-caption1)' }}>No projects to browse.</div>
           )}
+        </div>
+
+        {/* Resize handle — drag to size the tree, double-click resets. */}
+        <div
+          data-testid="files-tree-resize"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize file tree"
+          title="Drag to resize · double-click to reset"
+          onMouseDown={onTreeResizeStart}
+          onDoubleClick={resetTreeWidth}
+          className="shrink-0"
+          style={{ width: 10, cursor: 'col-resize', display: 'flex', alignItems: 'stretch', justifyContent: 'center' }}
+        >
+          <div style={{ width: 1, background: 'var(--separator)' }} />
         </div>
 
         {/* Preview */}
@@ -685,7 +726,18 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
                   if (!language) return plain
                   return (
                     <Suspense fallback={plain}>
-                      <CodePreview language={language} code={preview.text} />
+                      <CodePreview
+                        language={language}
+                        code={preview.text}
+                        showLineNumbers
+                        highlightedLine={highlightLine}
+                        // Click a line to point at it: highlight + copy a
+                        // pasteable project/path:line reference.
+                        onLineClick={(n) => {
+                          setHighlightLine((cur) => (cur === n ? null : n))
+                          copyPath(`${preview.project}/${preview.path}:${n}`)
+                        }}
+                      />
                     </Suspense>
                   )
                 })()}

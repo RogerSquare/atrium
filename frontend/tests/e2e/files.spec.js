@@ -226,6 +226,34 @@ test.describe('Files view', () => {
     await expect(page.getByTestId('files-preview')).toContainText('from preview');
     const tokens = await page.getByTestId('files-code-highlighted').locator('.token').count();
     expect(tokens).toBeGreaterThan(0);
+
+    // Line numbers render; clicking a line highlights it (the point-at-a-line
+    // affordance — also copies project/path:line, which clipboard sandboxing
+    // keeps out of assert reach).
+    await expect(page.locator('.linenumber').first()).toBeVisible();
+    const line = page.locator('[data-line="1"]');
+    await line.click();
+    await expect(line).toHaveAttribute('style', /color-mix/);
+    await line.click(); // second click clears the highlight
+    await expect(line).not.toHaveAttribute('style', /color-mix/);
+  });
+
+  test('the tree width is resizable and sticks across reloads', async ({ page }) => {
+    const tree = page.getByTestId('files-tree');
+    await expect(tree).toBeVisible();
+    expect(Math.round((await tree.boundingBox()).width)).toBe(320); // new smaller default
+
+    const handle = page.getByTestId('files-tree-resize');
+    const hb = await handle.boundingBox();
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + 200);
+    await page.mouse.down();
+    await page.mouse.move(hb.x + hb.width / 2 - 60, hb.y + 200);
+    await page.mouse.up();
+    expect(Math.round((await tree.boundingBox()).width)).toBe(260);
+
+    await page.reload();
+    await expect(page.getByTestId('files-tree')).toBeVisible();
+    expect(Math.round((await page.getByTestId('files-tree').boundingBox()).width)).toBe(260);
   });
 
   test('open task highlights its files: tint + auto-expand, ephemeral, clears on close', async ({ page }) => {
