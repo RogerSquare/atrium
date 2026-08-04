@@ -56,12 +56,40 @@ export default function FilesView() {
   const [zipBusy, setZipBusy] = useState(null)
   const [rawMd, setRawMd] = useState(false)       // markdown files: raw source instead of rendered
 
+  // The user's explicit expand/collapse choices, persisted so the tree stops
+  // "resetting minimized" on every visit. Read once per mount.
+  const storedExpanded = useRef((() => {
+    try { return JSON.parse(localStorage.getItem('taskBoardFilesExpanded')) || {} } catch { return {} }
+  })())
+  const rememberToggle = useCallback((key, open) => {
+    storedExpanded.current[key] = open
+    try { localStorage.setItem('taskBoardFilesExpanded', JSON.stringify(storedExpanded.current)) } catch { /* full/blocked */ }
+  }, [])
+
   const loadProjects = useCallback(async () => {
     setError(null)
     try {
       const res = await apiFetch('/api/files/projects')
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      setInfo(await res.json())
+      const body = await res.json()
+      setInfo(body)
+      // Roots open by default (feat-files-tasks-impl-001) — the tree used to
+      // reset collapsed on every visit because nothing persisted. The user's
+      // explicit toggles (stored) override the default in either direction.
+      setExpanded((prev) => {
+        const next = { ...prev }
+        for (const p of body.projects || []) {
+          if (!p.linked) continue
+          const key = `${p.project}:`
+          if (!(key in next)) next[key] = storedExpanded.current[key] !== undefined ? storedExpanded.current[key] : true
+        }
+        // Restore stored sub-directory choices too (only opens survive — a
+        // stored `false` just stays closed, which is the default for dirs).
+        for (const [key, open] of Object.entries(storedExpanded.current)) {
+          if (open && !(key in next)) next[key] = true
+        }
+        return next
+      })
     } catch (e) {
       setError(e.message)
     }
@@ -94,8 +122,9 @@ export default function FilesView() {
     const key = `${project}:${relPath}`
     const willOpen = !expanded[key]
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }))
+    rememberToggle(key, willOpen)
     if (willOpen && !listings[key]) fetchDir(project, relPath)
-  }, [expanded, listings, fetchDir])
+  }, [expanded, listings, fetchDir, rememberToggle])
 
   // Toggling ignored-visibility invalidates every cached listing; the effect
   // below then re-fetches whatever is still expanded.
