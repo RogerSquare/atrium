@@ -49,16 +49,46 @@ test.describe('Mobile web UI', () => {
     await expect(page.getByTestId('detail-tab-description')).not.toContainText('Description');
   });
 
-  test('board column tabs all fit the viewport', async ({ page }) => {
-    const tabs = page.getByRole('tab');
-    await expect(tabs.first()).toBeVisible(); // count() doesn't auto-wait
-    const count = await tabs.count();
-    expect(count).toBeGreaterThanOrEqual(4);
-    for (let i = 0; i < count; i++) {
-      const box = await tabs.nth(i).boundingBox();
-      expect(box.x).toBeGreaterThanOrEqual(0);
-      expect(Math.round(box.x + box.width)).toBeLessThanOrEqual(390);
-    }
+  test('board column carousel: full labels, scrollable strip, active pill readable', async ({ page }) => {
+    const active = page.getByTestId('board-col-tab-todo');
+    await expect(active).toBeVisible();
+    await expect(active).toHaveText(/To Do/); // full label, not truncated
+    const box = await active.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(Math.round(box.x + box.width)).toBeLessThanOrEqual(390);
+    expect(Math.round(box.height)).toBeGreaterThanOrEqual(44);
+
+    // The strip scrolls (that's the design) instead of cramming/truncating.
+    const strip = page.getByRole('tablist', { name: 'Board columns' });
+    const overflow = await strip.evaluate((el) => ({ x: getComputedStyle(el).overflowX, scrollable: el.scrollWidth >= el.clientWidth }));
+    expect(overflow.x).toBe('auto');
+
+    // Selecting the LAST column centers it into view with its full label.
+    await page.getByTestId('board-col-tab-done').click({ force: true });
+    await expect(page.getByTestId('board-col-tab-done')).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(async () => {
+      const b = await page.getByTestId('board-col-tab-done').boundingBox();
+      return b && b.x >= 0 && b.x + b.width <= 390;
+    }).toBe(true);
+  });
+
+  test('mobile filter bar: slim row with search + filters sheet', async ({ page }) => {
+    await expect(page.getByTestId('filter-search')).toBeVisible();
+    const toggle = page.getByTestId('filter-sheet-toggle');
+    const tb = await toggle.boundingBox();
+    expect(Math.round(tb.width)).toBeGreaterThanOrEqual(44);
+
+    await toggle.click();
+    const sheet = page.getByTestId('filter-sheet');
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByText('Stale')).toBeVisible();
+    await expect(sheet.getByText('Active shells')).toBeVisible();
+
+    // Toggling a filter works from the sheet; backdrop closes it.
+    await sheet.getByText('Today').click();
+    await expect(sheet.getByText('Today')).toHaveAttribute('aria-pressed', 'true');
+    await page.mouse.click(195, 100); // backdrop
+    await expect(sheet).toHaveCount(0);
   });
 
   test('safe-area sizing: tab bar, layout carve-out, and detail overlay all track the insets', async ({ page }) => {
