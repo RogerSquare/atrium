@@ -70,9 +70,14 @@ export default function GlobalShellPanel({
 
   const style = narrow
     ? {
+        // Full-screen overlay above the tab bar (z 45 > 40): pad both safe
+        // insets — viewport-fit=cover otherwise puts the header under the
+        // notch and the command pill under the home indicator.
         position: 'fixed',
         inset: 0,
         zIndex: 45,
+        paddingTop: 'var(--safe-top)',
+        paddingBottom: 'var(--safe-bottom)',
         background: 'var(--bg-card)',
         display: 'flex',
         flexDirection: 'column',

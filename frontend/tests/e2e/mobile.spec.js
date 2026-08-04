@@ -61,6 +61,31 @@ test.describe('Mobile web UI', () => {
     }
   });
 
+  test('safe-area sizing: tab bar, layout carve-out, and detail overlay all track the insets', async ({ page }) => {
+    // Emulated browsers report env(safe-area-inset-*) as 0 — override the
+    // vars with iPhone-ish values and assert every consumer follows.
+    await page.addStyleTag({ content: ':root { --safe-bottom: 34px; --safe-top: 47px; }' });
+
+    const bar = await page.getByTestId('mobile-tab-bar').boundingBox();
+    expect(Math.round(bar.height)).toBe(49 + 34); // content + home indicator
+
+    // The layout carves out exactly the bar's height — no covered content.
+    const shellBottom = await page.evaluate(() => {
+      const el = document.querySelector('.app-shell');
+      return el ? Math.round(el.getBoundingClientRect().bottom) : null;
+    });
+    expect(shellBottom).toBe(844 - 83);
+
+    // The detail overlay pads the notch at the top and clears the bar below.
+    await page.getByText('Mobile probe task').first().click();
+    const pad = await page.getByTestId('detail-pane').evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { top: s.paddingTop, bottom: s.paddingBottom };
+    });
+    expect(pad.top).toBe('47px');
+    expect(pad.bottom).toBe('83px');
+  });
+
   test('no horizontal document overflow on board or list', async ({ page }) => {
     for (const view of ['board', 'list']) {
       await page.addInitScript(seedSession, { storage: { taskBoardView: view } });

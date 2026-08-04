@@ -129,10 +129,15 @@ export default function DetailPane({
 
   const asideStyle = narrow
     ? {
-        // Narrow-viewport mode: full-screen overlay.
+        // Narrow-viewport mode: full-screen overlay. viewport-fit=cover means
+        // inset:0 extends under the notch AND the home indicator, so pad the
+        // top with the safe inset and the bottom past the tab bar (which
+        // paints above this overlay — same z, later in the DOM).
         position: 'fixed',
         inset: 0,
         zIndex: 40,
+        paddingTop: 'var(--safe-top)',
+        paddingBottom: 'var(--mobile-tabbar-h)',
         background: 'var(--bg-card)',
         display: 'flex',
         flexDirection: 'column',
