@@ -17,7 +17,7 @@ import { languageForPath } from './files/languageMap'
 // Lazy: the highlighter + grammars are their own chunk, fetched only when a
 // code file is actually previewed. The plain <pre> serves as the fallback.
 const CodePreview = lazy(() => import('./files/CodePreview'))
-import { FolderOpen, Folder, ChevronRight, ChevronDown, FileText, Download, Archive, Copy, Check, Eye, EyeOff, Unlink, RefreshCw, Code, History, AlertTriangle } from 'lucide-react'
+import { FolderOpen, Folder, ChevronRight, ChevronDown, FileText, Download, Archive, Copy, Check, Eye, EyeOff, Unlink, RefreshCw, Code, History, AlertTriangle, X } from 'lucide-react'
 import { apiFetch } from '../config'
 import { useTaskData } from '../contexts/TaskContext'
 import { buildFileTaskIndex } from '../lib/fileTaskIndex'
@@ -62,11 +62,14 @@ async function blobDownload(url, filename) {
 
 // Honest history: files_affected entries the server checked and could NOT
 // find in the tree (renames/deletions). Collapsed to one line; expands to
-// task → path pairs that still click through to the task.
-function UnmatchedNote({ items, onSelectTask }) {
+// task → path pairs that still click through to the task. Dismissible per
+// project (ui-files-unmatched-dismiss-001) — the parent keys the dismissal
+// by entry count, so a CHANGED situation brings the note back.
+function UnmatchedNote({ items, onSelectTask, onDismiss }) {
   const [open, setOpen] = useState(false)
   return (
-    <div data-testid="files-unmatched-note" style={{ margin: '0 var(--space-2) var(--space-1)', paddingLeft: 22 }}>
+    <div data-testid="files-unmatched-note" className="flex items-start gap-1" style={{ margin: '0 var(--space-2) var(--space-1)', paddingLeft: 22 }}>
+      <div className="flex-1 min-w-0">
       <button
         onClick={() => setOpen((v) => !v)}
         className="apple-press flex items-center gap-1.5"
@@ -96,6 +99,17 @@ function UnmatchedNote({ items, onSelectTask }) {
           )}
         </div>
       )}
+      </div>
+      <button
+        data-testid="files-unmatched-dismiss"
+        onClick={onDismiss}
+        aria-label="Dismiss this warning"
+        title="Dismiss (returns if the entries change)"
+        className="apple-press shrink-0"
+        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: '2px' }}
+      >
+        <X className="w-3 h-3" />
+      </button>
     </div>
   )
 }
@@ -117,6 +131,18 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
   const [zipBusy, setZipBusy] = useState(null)
   const [rawMd, setRawMd] = useState(false)       // markdown files: raw source instead of rendered
   const [touchedOpen, setTouchedOpen] = useState(false) // touched-by panel: minimized by default
+  // Dismissed not-in-tree warnings, keyed folder -> entry count. Count as
+  // signature: if the stale set grows or shrinks, the note honestly returns.
+  const [unmatchedDismissed, setUnmatchedDismissed] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('taskBoardFilesUnmatchedDismissed')) || {} } catch { return {} }
+  })
+  const dismissUnmatched = useCallback((folder, count) => {
+    setUnmatchedDismissed((prev) => {
+      const next = { ...prev, [folder]: count }
+      try { localStorage.setItem('taskBoardFilesUnmatchedDismissed', JSON.stringify(next)) } catch { /* full/blocked */ }
+      return next
+    })
+  }, [])
 
   // The user's explicit expand/collapse choices, persisted so the tree stops
   // "resetting minimized" on every visit. Read once per mount.
@@ -472,8 +498,13 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
                   </span>
                 )}
               </div>
-              {p.linked && (indexes[p.folder]?.unmatched.length || 0) > 0 && (
-                <UnmatchedNote items={indexes[p.folder].unmatched} onSelectTask={onSelectTask} />
+              {p.linked && (indexes[p.folder]?.unmatched.length || 0) > 0
+                && unmatchedDismissed[p.folder] !== indexes[p.folder].unmatched.length && (
+                <UnmatchedNote
+                  items={indexes[p.folder].unmatched}
+                  onSelectTask={onSelectTask}
+                  onDismiss={() => dismissUnmatched(p.folder, indexes[p.folder].unmatched.length)}
+                />
               )}
               {p.linked && expanded[`${p.folder}:`] && renderEntries(p.folder, '', 1)}
             </div>

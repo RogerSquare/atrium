@@ -156,6 +156,30 @@ test.describe('Files view', () => {
     await expect(page.getByTestId('detail-pane')).toBeVisible();
   });
 
+  test('the not-in-tree warning is dismissible and stays dismissed across reloads', async ({ page }) => {
+    const TASK = {
+      id: 'feat-dis-001', title: 'Dismiss probe', status: 'todo', priority: 'medium',
+      project: 'Alpha', type: 'backend', tags: [], depends_on: [],
+      files_affected: ['old-prefix/gone.md'],
+      activity_log: [], content: '### Description\nx\n\n### Comments\n', assignee: null,
+    };
+    await page.route('**/api/tasks', (r) => r.fulfill({ json: [TASK] }));
+    await page.route('**/api/files/resolve-paths**', (r) => r.fulfill({ json: {
+      resolutions: { 'old-prefix/gone.md': null },
+    } }));
+    await page.goto('/');
+
+    const note = page.getByTestId('files-unmatched-note');
+    await expect(note).toBeVisible();
+    await note.getByTestId('files-unmatched-dismiss').click();
+    await expect(note).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.getByTestId('files-view')).toBeVisible();
+    await expect(page.getByText('README.md')).toBeVisible(); // tree rendered
+    await expect(page.getByTestId('files-unmatched-note')).toHaveCount(0); // still dismissed
+  });
+
   test('code previews are syntax highlighted for known languages', async ({ page }) => {
     await page.getByText('src', { exact: true }).click();
     await page.getByText('index.js').click();
