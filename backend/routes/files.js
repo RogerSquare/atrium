@@ -202,4 +202,42 @@ router.post('/resolve-paths', (req, res) => {
   }
 });
 
+// GET /api/files/pr-diff?project=&pr=&path= — one file's patch from a PR
+// (feat-files-pr-diff-001). Powers the Change History panel's diff view.
+// The patch text comes from GitHub's own API, never from local file reads,
+// so the jail is only needed to confirm the project resolves at all.
+const github = require('../lib/github');
+router.get('/pr-diff', async (req, res) => {
+  try {
+    const root = rootFor(req, res);
+    if (!root) return;
+    const prNumber = Number.parseInt(String(req.query.pr || ''), 10);
+    if (!Number.isInteger(prNumber) || prNumber <= 0) {
+      return res.status(400).json({ error: 'pr must be a positive integer' });
+    }
+    const relPath = String(req.query.path || '').trim();
+    if (!relPath || relPath.includes('\0')) return res.status(400).json({ error: 'path is required' });
+
+    const result = await github.getPrFiles(String(req.query.project || ''), prNumber);
+    if (result.error) {
+      const msg = { no_git_repo: 'Project has no git repo', no_pr: 'Invalid PR', gh_failed: 'GitHub request failed', parse_failed: 'GitHub response unreadable' }[result.error] || 'GitHub request failed';
+      return res.status(result.error === 'no_git_repo' ? 404 : 502).json({ error: msg });
+    }
+    const file = github.findPrFile(result.files, relPath);
+    if (!file) return res.status(404).json({ error: `PR #${prNumber} did not change this file` });
+
+    res.json({
+      pr_number: prNumber,
+      filename: file.filename,
+      status: file.status,
+      additions: file.additions,
+      deletions: file.deletions,
+      patch: file.patch, // null when GitHub omitted it (huge files) — client links out
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'files/pr-diff failed');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;

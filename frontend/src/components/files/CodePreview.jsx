@@ -20,6 +20,7 @@ import python from 'react-syntax-highlighter/dist/esm/languages/prism/python'
 import yaml from 'react-syntax-highlighter/dist/esm/languages/prism/yaml'
 import sql from 'react-syntax-highlighter/dist/esm/languages/prism/sql'
 import docker from 'react-syntax-highlighter/dist/esm/languages/prism/docker'
+import diff from 'react-syntax-highlighter/dist/esm/languages/prism/diff'
 
 SyntaxHighlighter.registerLanguage('javascript', javascript)
 SyntaxHighlighter.registerLanguage('jsx', jsx)
@@ -33,6 +34,7 @@ SyntaxHighlighter.registerLanguage('python', python)
 SyntaxHighlighter.registerLanguage('yaml', yaml)
 SyntaxHighlighter.registerLanguage('sql', sql)
 SyntaxHighlighter.registerLanguage('docker', docker)
+SyntaxHighlighter.registerLanguage('diff', diff) // PR patch view (feat-files-pr-diff-001)
 
 export default function CodePreview({ language, code }) {
   return (

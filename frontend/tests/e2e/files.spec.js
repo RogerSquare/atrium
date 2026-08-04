@@ -156,6 +156,44 @@ test.describe('Files view', () => {
     await expect(page.getByTestId('detail-pane')).toBeVisible();
   });
 
+  test('a task chip with a PR shows its per-file diff, then returns to current content', async ({ page }) => {
+    const TASK = {
+      id: 'feat-diff-001', title: 'Diff probe', status: 'done', priority: 'medium',
+      project: 'Alpha', type: 'backend', tags: [], depends_on: [],
+      files_affected: ['src/index.js'], github_pr_url: 'https://github.com/x/y/pull/42',
+      activity_log: [{ timestamp: new Date().toISOString(), action: 'x' }],
+      content: '### Description\nx\n\n### Comments\n', assignee: null,
+    };
+    const NO_PR_TASK = { ...TASK, id: 'feat-nopr-001', title: 'No PR probe', github_pr_url: null };
+    await page.route('**/api/tasks', (r) => r.fulfill({ json: [TASK, NO_PR_TASK] }));
+    await page.route('**/api/files/resolve-paths**', (r) => r.fulfill({ json: {
+      resolutions: { 'src/index.js': 'src/index.js' },
+    } }));
+    await page.route('**/api/files/pr-diff**', (r) => r.fulfill({ json: {
+      pr_number: 42, filename: 'src/index.js', status: 'modified', additions: 2, deletions: 1,
+      patch: '@@ -1,2 +1,3 @@\n-const old = 1\n+const hello = "from preview"\n+const added = 2',
+    } }));
+    await page.goto('/');
+
+    await page.getByText('src', { exact: true }).click();
+    await page.getByText('index.js').click();
+    await page.getByTestId('files-touched-toggle').click();
+
+    // Only the PR-linked task gets the diff affordance.
+    await expect(page.getByTestId('files-diff-toggle')).toHaveCount(1);
+    await page.getByTestId('files-diff-toggle').click();
+
+    await expect(page.getByTestId('files-diff-header')).toContainText('PR #42 · +2 −1');
+    const diffView = page.getByTestId('files-diff-view');
+    await expect(diffView).toContainText('const added = 2');
+    await expect(diffView).toContainText('const old = 1');
+
+    // Back to the live file.
+    await page.getByTestId('files-diff-back').click();
+    await expect(page.getByTestId('files-diff-view')).toHaveCount(0);
+    await expect(page.getByTestId('files-preview')).toContainText('from preview');
+  });
+
   test('the not-in-tree warning is dismissible and stays dismissed across reloads', async ({ page }) => {
     const TASK = {
       id: 'feat-dis-001', title: 'Dismiss probe', status: 'todo', priority: 'medium',

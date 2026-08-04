@@ -17,7 +17,7 @@ import { languageForPath } from './files/languageMap'
 // Lazy: the highlighter + grammars are their own chunk, fetched only when a
 // code file is actually previewed. The plain <pre> serves as the fallback.
 const CodePreview = lazy(() => import('./files/CodePreview'))
-import { FolderOpen, Folder, ChevronRight, ChevronDown, FileText, Download, Archive, Copy, Check, Eye, EyeOff, Unlink, RefreshCw, Code, History, AlertTriangle, X } from 'lucide-react'
+import { FolderOpen, Folder, ChevronRight, ChevronDown, FileText, Download, Archive, Copy, Check, Eye, EyeOff, Unlink, RefreshCw, Code, History, AlertTriangle, X, GitPullRequest, Undo2 } from 'lucide-react'
 import { apiFetch } from '../config'
 import { useTaskData } from '../contexts/TaskContext'
 import { buildFileTaskIndex } from '../lib/fileTaskIndex'
@@ -41,6 +41,11 @@ function fmtSize(n) {
 }
 
 const isMarkdownPath = (p) => /\.(md|markdown|mdx)$/i.test(p || '')
+
+const prNumberFromUrl = (url) => {
+  const m = /\/pull\/(\d+)/.exec(url || '')
+  return m ? Number(m[1]) : null
+}
 
 // Same prose treatment the task-description tab uses — READMEs read like docs,
 // not like source dumps.
@@ -131,6 +136,23 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
   const [zipBusy, setZipBusy] = useState(null)
   const [rawMd, setRawMd] = useState(false)       // markdown files: raw source instead of rendered
   const [touchedOpen, setTouchedOpen] = useState(false) // touched-by panel: minimized by default
+  // PR diff mode (feat-files-pr-diff-001): when set, the preview shows what a
+  // task's PR changed in THIS file instead of the current content.
+  const [diff, setDiff] = useState(null) // { state, pr, prUrl, taskId, patch?, additions?, deletions?, error? }
+  const loadDiff = useCallback(async (task) => {
+    const pr = prNumberFromUrl(task.github_pr_url)
+    if (!pr || !preview) return
+    const base = { pr, prUrl: task.github_pr_url, taskId: task.id }
+    setDiff({ ...base, state: 'loading' })
+    try {
+      const res = await apiFetch(`/api/files/pr-diff?${new URLSearchParams({ project: preview.project, pr: String(pr), path: preview.path })}`)
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error || `HTTP ${res.status}`)
+      setDiff({ ...base, state: 'ok', ...body })
+    } catch (e) {
+      setDiff({ ...base, state: 'error', error: e.message })
+    }
+  }, [preview])
   // Dismissed not-in-tree warnings, keyed folder -> entry count. Count as
   // signature: if the stale set grows or shrinks, the note honestly returns.
   const [unmatchedDismissed, setUnmatchedDismissed] = useState(() => {
@@ -311,6 +333,7 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
   const openFile = useCallback(async (project, relPath) => {
     setRawMd(false)
     setTouchedOpen(false) // every file starts with the panel minimized
+    setDiff(null)         // and with the current content, not a stale diff
     setPreview({ project, path: relPath, state: 'loading' })
     try {
       const res = await apiFetch(`/api/files/content?${new URLSearchParams({ project, path: relPath })}`)
@@ -527,7 +550,25 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
                   {preview.path}
                 </span>
                 <span className="flex-1" />
-                {isMarkdownPath(preview.path) && preview.state === 'ok' && (
+                {diff && (
+                  <>
+                    <span data-testid="files-diff-header" className="shrink-0 inline-flex items-center gap-1" style={{ padding: '2px 8px', borderRadius: 'var(--radius-full)', background: 'color-mix(in srgb, var(--accent-app) 12%, transparent)', color: 'var(--accent-app)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)' }}>
+                      <GitPullRequest className="w-3 h-3" />
+                      PR #{diff.pr}{diff.state === 'ok' ? ` · +${diff.additions} −${diff.deletions}` : ''}
+                    </span>
+                    <button
+                      data-testid="files-diff-back"
+                      onClick={() => setDiff(null)}
+                      aria-label="Back to current file"
+                      title="Back to current file"
+                      className="apple-press shrink-0"
+                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                    >
+                      <Undo2 className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
+                {!diff && isMarkdownPath(preview.path) && preview.state === 'ok' && (
                   <button
                     data-testid="files-md-raw-toggle"
                     onClick={() => setRawMd((v) => !v)}
@@ -572,32 +613,64 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
                       {touchedOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                     </button>
                     {touchedOpen && touched.map(({ task, ts }) => (
-                      <button
-                        key={task.id}
-                        data-testid="files-touched-task"
-                        onClick={() => onSelectTask?.(task)}
-                        className="apple-press w-full flex items-center gap-2 text-left"
-                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '3px 0', minWidth: 0, borderRadius: 'var(--radius-sm)' }}
-                        title={`${task.id} — ${task.title} (${task.status})`}
-                      >
-                        <span className="shrink-0" style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_COLOR[task.status] || 'var(--text-muted)' }} />
-                        <span className="shrink-0" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', color: 'var(--text-muted)' }}>{task.id}</span>
-                        <span className="truncate" style={{ fontSize: 'var(--text-caption1)', color: 'var(--text-app)' }}>{task.title}</span>
-                        <span className="flex-1" />
-                        <span className="shrink-0" style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>{relTime(ts)}</span>
-                      </button>
+                      <div key={task.id} className="flex items-center gap-1" style={{ minWidth: 0 }}>
+                        <button
+                          data-testid="files-touched-task"
+                          onClick={() => onSelectTask?.(task)}
+                          className="apple-press flex-1 flex items-center gap-2 text-left"
+                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '3px 0', minWidth: 0, borderRadius: 'var(--radius-sm)' }}
+                          title={`${task.id} — ${task.title} (${task.status})`}
+                        >
+                          <span className="shrink-0" style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_COLOR[task.status] || 'var(--text-muted)' }} />
+                          <span className="shrink-0" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption2)', color: 'var(--text-muted)' }}>{task.id}</span>
+                          <span className="truncate" style={{ fontSize: 'var(--text-caption1)', color: 'var(--text-app)' }}>{task.title}</span>
+                          <span className="flex-1" />
+                          <span className="shrink-0" style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)' }}>{relTime(ts)}</span>
+                        </button>
+                        {prNumberFromUrl(task.github_pr_url) && (
+                          <button
+                            data-testid="files-diff-toggle"
+                            onClick={() => loadDiff(task)}
+                            aria-label={`View this file's changes from PR #${prNumberFromUrl(task.github_pr_url)}`}
+                            title={`View this file's changes from PR #${prNumberFromUrl(task.github_pr_url)}`}
+                            className="apple-press shrink-0"
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: diff?.taskId === task.id ? 'var(--accent-app)' : 'var(--text-tertiary)', padding: '2px' }}
+                          >
+                            <GitPullRequest className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     ))}
                   </div>
                 )
               })()}
               <div data-testid="files-preview" className="flex-1 overflow-auto custom-scrollbar" style={{ padding: 'var(--space-3)' }}>
-                {preview.state === 'loading' && <div className="italic animate-pulse" style={{ color: 'var(--text-muted)' }}>Loading…</div>}
-                {preview.state === 'blocked' && (
+                {diff && (
+                  <div data-testid="files-diff-view">
+                    {diff.state === 'loading' && <div className="italic animate-pulse" style={{ color: 'var(--text-muted)' }}>Loading PR diff…</div>}
+                    {diff.state === 'error' && (
+                      <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-caption1)' }}>
+                        Could not load the diff: {diff.error} — <a href={diff.prUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-app)' }}>open PR #{diff.pr} on GitHub</a>
+                      </div>
+                    )}
+                    {diff.state === 'ok' && (diff.patch ? (
+                      <Suspense fallback={<pre style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption1)', whiteSpace: 'pre-wrap' }}>{diff.patch}</pre>}>
+                        <CodePreview language="diff" code={diff.patch} />
+                      </Suspense>
+                    ) : (
+                      <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-caption1)' }}>
+                        GitHub did not provide a patch for this file (usually it is too large) — <a href={diff.prUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-app)' }}>view it on PR #{diff.pr}</a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!diff && preview.state === 'loading' && <div className="italic animate-pulse" style={{ color: 'var(--text-muted)' }}>Loading…</div>}
+                {!diff && preview.state === 'blocked' && (
                   <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-caption1)' }}>
                     {preview.error} — use the download button instead.
                   </div>
                 )}
-                {preview.state === 'ok' && (() => {
+                {!diff && preview.state === 'ok' && (() => {
                   if (isMarkdownPath(preview.path) && !rawMd) {
                     return (
                       <div data-testid="files-md-rendered" className={PROSE_CLASSES} style={{ fontSize: 'var(--text-subhead)' }}>
