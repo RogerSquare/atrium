@@ -20,7 +20,7 @@ const path = require('path');
 const archiver = require('archiver');
 const { SETTINGS_FILE } = require('../lib/constants');
 const registry = require('../lib/projectRegistry');
-const { resolveProjectDir, listWorkspaceDirs, containedRealPath, IGNORED_NAMES } = require('../lib/projectDirs');
+const { resolveProjectDir, listWorkspaceDirs, containedRealPath, resolveTaskPath, IGNORED_NAMES } = require('../lib/projectDirs');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
@@ -172,6 +172,32 @@ router.get('/archive', (req, res) => {
     archive.finalize();
   } catch (error) {
     logger.error({ err: error }, 'files/archive failed');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/files/resolve-paths?project= — batch-resolve task files_affected
+// entries against the real tree (feat-files-tasks-impl-001). Read-only
+// existence checks through the same jail as everything else; powers the
+// Files view's "which tasks touched this file" join, whose normalization
+// (stale-prefix rescue) needs filesystem truth the lazy client tree lacks.
+const RESOLVE_CAP = 2000;
+router.post('/resolve-paths', (req, res) => {
+  try {
+    const root = rootFor(req, res);
+    if (!root) return;
+    const paths = req.body && req.body.paths;
+    if (!Array.isArray(paths)) return res.status(400).json({ error: 'paths must be an array' });
+    if (paths.length > RESOLVE_CAP) return res.status(400).json({ error: `Too many paths (max ${RESOLVE_CAP})` });
+
+    const resolutions = {};
+    for (const raw of paths) {
+      if (typeof raw !== 'string' || raw.includes('\0')) continue;
+      if (!(raw in resolutions)) resolutions[raw] = resolveTaskPath(root, raw);
+    }
+    res.json({ resolutions });
+  } catch (error) {
+    logger.error({ err: error }, 'files/resolve-paths failed');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
