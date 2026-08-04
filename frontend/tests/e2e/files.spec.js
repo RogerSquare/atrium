@@ -53,17 +53,18 @@ test.describe('Files view', () => {
     await page.goto('/');
   });
 
-  test('roots render with linked and unlinked states', async ({ page }) => {
+  test('roots render with linked and unlinked states, linked roots open by default', async ({ page }) => {
     await expect(page.getByTestId('files-view')).toBeVisible();
     const roots = page.getByTestId('files-project-root');
     await expect(roots).toHaveCount(2);
     await expect(page.getByTestId('files-unlinked')).toBeVisible(); // Ghost
     await expect(page.getByTestId('files-zip')).toHaveCount(1);     // only linked projects zip
+    // feat-files-tasks-impl-001: linked roots start expanded.
+    await expect(page.getByText('README.md')).toBeVisible();
   });
 
   test('lazy tree: one fetch per expanded directory, files preview on click', async ({ page }) => {
-    await page.getByText('Alpha', { exact: true }).click();      // expand root
-    await expect(page.getByText('README.md')).toBeVisible();
+    await expect(page.getByText('README.md')).toBeVisible();     // root auto-expanded
     expect(listCalls.filter((s) => !s.includes('path=src'))).toHaveLength(1);
 
     await page.getByText('src', { exact: true }).click();        // expand child dir
@@ -74,8 +75,21 @@ test.describe('Files view', () => {
     await expect(page.getByTestId('files-download')).toBeVisible();
   });
 
+  test('a collapsed root stays collapsed across a reload', async ({ page }) => {
+    await expect(page.getByText('README.md')).toBeVisible();
+    await page.getByText('Alpha', { exact: true }).click();      // explicit collapse
+    await expect(page.getByText('README.md')).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.getByTestId('files-view')).toBeVisible();
+    await expect(page.getByTestId('files-project-root')).toHaveCount(2);
+    await expect(page.getByText('README.md')).toHaveCount(0);    // choice remembered
+
+    await page.getByText('Alpha', { exact: true }).click();      // re-open works
+    await expect(page.getByText('README.md')).toBeVisible();
+  });
+
   test('markdown files render formatted, with a raw-source toggle', async ({ page }) => {
-    await page.getByText('Alpha', { exact: true }).click();
     await page.getByText('README.md').click();
 
     // Rendered by default: the # heading becomes a real heading element.
@@ -94,13 +108,46 @@ test.describe('Files view', () => {
   });
 
   test('show-ignored toggle refetches and reveals dimmed dirs', async ({ page }) => {
-    await page.getByText('Alpha', { exact: true }).click();
-    await expect(page.getByText('README.md')).toBeVisible();
+    await expect(page.getByText('README.md')).toBeVisible();     // root auto-expanded
     await expect(page.getByText('node_modules')).toHaveCount(0);
 
     await page.getByTestId('files-show-ignored').click();
     await expect(page.getByText('node_modules')).toBeVisible();
     expect(listCalls.some((s) => s.includes('all=1'))).toBe(true);
+  });
+
+  test('task history: tree badges, touched-by panel, honest unmatched note', async ({ page }) => {
+    const TASK = {
+      id: 'feat-hist-001', title: 'History probe', status: 'review', priority: 'medium',
+      project: 'Alpha', type: 'backend', tags: [], depends_on: [],
+      files_affected: ['src/index.js', 'old-prefix/gone.md'],
+      activity_log: [{ timestamp: new Date().toISOString(), action: 'x' }],
+      content: '### Description\nx\n\n### Comments\n', assignee: null,
+    };
+    await page.route('**/api/tasks', (r) => r.fulfill({ json: [TASK] }));
+    await page.route('**/api/tasks/*', (r) => r.fulfill({ json: TASK }));
+    await page.route('**/api/files/resolve-paths**', (r) => r.fulfill({ json: {
+      resolutions: { 'src/index.js': 'src/index.js', 'old-prefix/gone.md': null },
+    } }));
+    await page.goto('/');
+
+    // The src dir carries a count badge before it's even expanded.
+    await expect(page.getByTestId('files-task-count').first()).toHaveText('1');
+
+    // Honest unmatched note, expandable to the task→path pair.
+    const note = page.getByTestId('files-unmatched-note');
+    await expect(note).toContainText('1 history entry');
+    await note.getByRole('button').first().click();
+    await expect(note.getByText('old-prefix/gone.md')).toBeVisible();
+
+    // Open the file: the touched-by panel lists the task and navigates to it.
+    await page.getByText('src', { exact: true }).click();
+    await page.getByText('index.js').click();
+    const panel = page.getByTestId('files-touched-by');
+    await expect(panel).toContainText('Touched by 1 task');
+    await expect(panel).toContainText('feat-hist-001');
+    await panel.getByTestId('files-touched-task').click();
+    await expect(page.getByTestId('detail-pane')).toBeVisible();
   });
 
   test('active project scopes the roots', async ({ page }) => {

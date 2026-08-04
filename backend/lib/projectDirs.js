@@ -93,4 +93,28 @@ function containedRealPath(root, rel, fsMod = fs) {
   }
 }
 
-module.exports = { normalizeSlug, listWorkspaceDirs, resolveProjectDir, containedRealPath, IGNORED_NAMES };
+/**
+ * Resolve a task's files_affected entry to a jail-verified relative path
+ * (feat-files-tasks-impl-001). Entries are agent-typed strings, so:
+ *   1. normalize separators + strip leading ./ or /
+ *   2. exact hit inside the jail → done
+ *   3. miss with ≥2 segments → retry with the FIRST segment stripped: the
+ *      measured failure mode is a stale root prefix from a pre-rename layout
+ *      ('ai-gallery/backend/server.js' → 'backend/server.js').
+ * Returns the normalized rel path that resolved, or null. Never returns an
+ * absolute path; containedRealPath enforces the jail on every attempt.
+ */
+function resolveTaskPath(root, raw, fsMod = fs) {
+  if (typeof raw !== 'string') return null;
+  const rel = raw.trim().replace(/\\/g, '/').replace(/^(\.\/|\/)+/, '');
+  if (!rel || rel === '.') return null;
+  if (containedRealPath(root, rel, fsMod)) return rel;
+  const parts = rel.split('/').filter(Boolean);
+  if (parts.length >= 2) {
+    const stripped = parts.slice(1).join('/');
+    if (containedRealPath(root, stripped, fsMod)) return stripped;
+  }
+  return null;
+}
+
+module.exports = { normalizeSlug, listWorkspaceDirs, resolveProjectDir, containedRealPath, resolveTaskPath, IGNORED_NAMES };

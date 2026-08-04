@@ -86,3 +86,36 @@ test('a link inside the jail pointing outside is refused', () => {
   assert.strictEqual(containedRealPath(root, 'escape'), null);
   assert.strictEqual(containedRealPath(root, path.join('escape', 'secret.txt')), null);
 });
+
+// --- task-path resolution (feat-files-tasks-impl-001) ----------------------
+
+const { resolveTaskPath } = require('./projectDirs');
+
+test('resolveTaskPath: exact hits, normalization, and the stale-prefix rescue', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tp-'));
+  fs.mkdirSync(path.join(root, 'backend'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'backend', 'server.js'), 'x');
+
+  // Exact hit + separator/prefix normalization.
+  assert.strictEqual(resolveTaskPath(root, 'backend/server.js'), 'backend/server.js');
+  assert.strictEqual(resolveTaskPath(root, 'backend\\server.js'), 'backend/server.js');
+  assert.strictEqual(resolveTaskPath(root, './backend/server.js'), 'backend/server.js');
+
+  // The measured failure mode: a stale first segment from a pre-rename layout.
+  assert.strictEqual(resolveTaskPath(root, 'ai-gallery/backend/server.js'), 'backend/server.js');
+
+  // Misses stay misses; single-segment paths never strip.
+  assert.strictEqual(resolveTaskPath(root, 'gone/away.js'), null);
+  assert.strictEqual(resolveTaskPath(root, 'server.js'), null);
+  assert.strictEqual(resolveTaskPath(root, ''), null);
+  assert.strictEqual(resolveTaskPath(root, null), null);
+});
+
+test('resolveTaskPath: traversal never escapes the jail', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tp-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'tpout-'));
+  fs.writeFileSync(path.join(outside, 'secret.txt'), 'leak');
+  assert.strictEqual(resolveTaskPath(root, '../' + path.basename(outside) + '/secret.txt'), null);
+  // Strip-fallback must not create an escape either: 'x/../../etc' strips to '../../etc'.
+  assert.strictEqual(resolveTaskPath(root, 'x/../../etc/passwd'), null);
+});
