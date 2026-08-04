@@ -9,9 +9,14 @@
 // Downloads go through fetch+blob so the Authorization header rides along —
 // a bare <a href> would either leak a token in the URL or arrive anonymous.
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspense } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { languageForPath } from './files/languageMap'
+
+// Lazy: the highlighter + grammars are their own chunk, fetched only when a
+// code file is actually previewed. The plain <pre> serves as the fallback.
+const CodePreview = lazy(() => import('./files/CodePreview'))
 import { FolderOpen, Folder, ChevronRight, ChevronDown, FileText, Download, Archive, Copy, Check, Eye, EyeOff, Unlink, RefreshCw, Code, History, AlertTriangle } from 'lucide-react'
 import { apiFetch } from '../config'
 import { useTaskData } from '../contexts/TaskContext'
@@ -111,6 +116,7 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
   const [copied, setCopied] = useState(false)
   const [zipBusy, setZipBusy] = useState(null)
   const [rawMd, setRawMd] = useState(false)       // markdown files: raw source instead of rendered
+  const [touchedOpen, setTouchedOpen] = useState(false) // touched-by panel: minimized by default
 
   // The user's explicit expand/collapse choices, persisted so the tree stops
   // "resetting minimized" on every visit. Read once per mount.
@@ -278,6 +284,7 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
 
   const openFile = useCallback(async (project, relPath) => {
     setRawMd(false)
+    setTouchedOpen(false) // every file starts with the panel minimized
     setPreview({ project, path: relPath, state: 'loading' })
     try {
       const res = await apiFetch(`/api/files/content?${new URLSearchParams({ project, path: relPath })}`)
@@ -520,11 +527,20 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
                 if (!touched?.length) return null
                 return (
                   <div data-testid="files-touched-by" style={{ borderBottom: '0.5px solid var(--separator)', padding: 'var(--space-2) var(--space-3)', maxHeight: 150, overflowY: 'auto' }} className="custom-scrollbar shrink-0">
-                    <div className="flex items-center gap-1.5" style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)', marginBottom: 4 }}>
+                    {/* Minimized by default (ui-files-preview-001) — the list
+                        competes with the code for vertical space. */}
+                    <button
+                      data-testid="files-touched-toggle"
+                      onClick={() => setTouchedOpen((v) => !v)}
+                      aria-expanded={touchedOpen}
+                      className="apple-press w-full flex items-center gap-1.5"
+                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)', padding: 0, marginBottom: touchedOpen ? 4 : 0 }}
+                    >
                       <History className="w-3 h-3" />
-                      Touched by {touched.length} task{touched.length === 1 ? '' : 's'}
-                    </div>
-                    {touched.map(({ task, ts }) => (
+                      Change History by {touched.length} task{touched.length === 1 ? '' : 's'}
+                      {touchedOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                    </button>
+                    {touchedOpen && touched.map(({ task, ts }) => (
                       <button
                         key={task.id}
                         data-testid="files-touched-task"
@@ -550,15 +566,25 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
                     {preview.error} — use the download button instead.
                   </div>
                 )}
-                {preview.state === 'ok' && (
-                  isMarkdownPath(preview.path) && !rawMd ? (
-                    <div data-testid="files-md-rendered" className={PROSE_CLASSES} style={{ fontSize: 'var(--text-subhead)' }}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview.text}</ReactMarkdown>
-                    </div>
-                  ) : (
+                {preview.state === 'ok' && (() => {
+                  if (isMarkdownPath(preview.path) && !rawMd) {
+                    return (
+                      <div data-testid="files-md-rendered" className={PROSE_CLASSES} style={{ fontSize: 'var(--text-subhead)' }}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview.text}</ReactMarkdown>
+                      </div>
+                    )
+                  }
+                  const plain = (
                     <pre style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-caption1)', lineHeight: 1.6, color: 'var(--text-app)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{preview.text}</pre>
                   )
-                )}
+                  const language = isMarkdownPath(preview.path) ? null : languageForPath(preview.path)
+                  if (!language) return plain
+                  return (
+                    <Suspense fallback={plain}>
+                      <CodePreview language={language} code={preview.text} />
+                    </Suspense>
+                  )
+                })()}
               </div>
             </>
           )}
