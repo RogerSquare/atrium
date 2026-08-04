@@ -47,6 +47,9 @@ test.describe('Files view', () => {
       if (p.endsWith('.md')) {
         return route.fulfill({ contentType: 'text/plain', body: '# Readme heading\n\nhello from preview' });
       }
+      if (p.endsWith('.js')) {
+        return route.fulfill({ contentType: 'text/plain', body: 'const hello = "from preview";\n' });
+      }
       return route.fulfill({ contentType: 'text/plain', body: 'hello from preview' });
     });
     await page.addInitScript(seedSession, { storage: { taskBoardView: 'files' } });
@@ -145,9 +148,22 @@ test.describe('Files view', () => {
     await page.getByText('index.js').click();
     const panel = page.getByTestId('files-touched-by');
     await expect(panel).toContainText('Touched by 1 task');
+    // Minimized by default (ui-files-preview-001) — expand to reach the chips.
+    await expect(panel.getByTestId('files-touched-task')).toHaveCount(0);
+    await panel.getByTestId('files-touched-toggle').click();
     await expect(panel).toContainText('feat-hist-001');
     await panel.getByTestId('files-touched-task').click();
     await expect(page.getByTestId('detail-pane')).toBeVisible();
+  });
+
+  test('code previews are syntax highlighted for known languages', async ({ page }) => {
+    await page.getByText('src', { exact: true }).click();
+    await page.getByText('index.js').click();
+    // The lazy chunk renders tokenized code; plain files never get the wrapper.
+    await expect(page.getByTestId('files-code-highlighted')).toBeVisible();
+    await expect(page.getByTestId('files-preview')).toContainText('from preview');
+    const tokens = await page.getByTestId('files-code-highlighted').locator('.token').count();
+    expect(tokens).toBeGreaterThan(0);
   });
 
   test('open task highlights its files: tint + auto-expand, ephemeral, clears on close', async ({ page }) => {
