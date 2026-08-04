@@ -77,10 +77,12 @@ function LoopRow({ loop, onOpen, onToggle, onRun, onEdit, onDelete }) {
 // `embedded` (feat-project-hub-impl-001): rendered inside HubView, which owns
 // the page title — the standalone h1/description are suppressed but every
 // working affordance (New loop, rows, modals) is untouched.
-export default function LoopsView({ projects = [], activeProject, socketRef, embedded = false }) {
+// `openLoopId` (feat-hub-rethink-impl-001): a Hub Overview card hands off to
+// this view with the loop's cockpit already open (consumed once, on mount).
+export default function LoopsView({ projects = [], activeProject, socketRef, embedded = false, openLoopId = null }) {
   const { loops, loading, error, createLoop, updateLoop, deleteLoop, runLoop, runsByLoop, fetchRuns, summarize, fetchInstructions, templates, fetchTemplates, createTemplate, deleteTemplate, startTerminalRun, fetchTerminalRuns, activityByLoop, fetchActivity } = useLoops(socketRef)
   const [modal, setModal] = useState(null)      // { loop, initialProject? } | null  (create/edit form)
-  const [detailId, setDetailId] = useState(null) // open loop's id (detail cockpit)
+  const [detailId, setDetailId] = useState(openLoopId) // open loop's id (detail cockpit)
 
   const scoped = !!activeProject && activeProject !== 'All'
   const visibleLoops = scoped

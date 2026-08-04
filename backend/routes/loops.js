@@ -45,6 +45,26 @@ router.get('/', (req, res) => {
 
 /**
  * @swagger
+ * /api/loops/activity:
+ *   get:
+ *     summary: Merged newest-first activity across all loops (Hub Overview feed)
+ *     tags: [Loops]
+ */
+// NOTE: must be registered BEFORE /:id or Express matches id='activity'.
+router.get('/activity', (req, res) => {
+  try {
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const all = [];
+    for (const l of loops.list()) all.push(...loopActivity.list(l.id));
+    all.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+    res.json(all.slice(0, limit));
+  } catch (err) {
+    handleError(res, err, 'Failed to list merged loop activity');
+  }
+});
+
+/**
+ * @swagger
  * /api/loops/{id}:
  *   get:
  *     summary: Get a single loop by id

@@ -129,10 +129,38 @@ function isRunning(runId) {
   return !!(e && !e.exited);
 }
 
+// Startup sweep (feat-hub-rethink-impl-001): a backend restart kills PTY
+// children but leaves their metas 'running' forever. Called from
+// loopManager.init() BEFORE any new run starts, so everything still marked
+// 'running' on disk is by definition dead. `rootDir` injectable for tests.
+function sweepInterrupted(rootDir = LOOP_RUNS_DIR) {
+  const swept = [];
+  let loopDirs = [];
+  try { loopDirs = fs.readdirSync(rootDir, { withFileTypes: true }).filter((d) => d.isDirectory()); } catch { return swept; }
+  for (const d of loopDirs) {
+    const dp = path.join(rootDir, d.name);
+    let files = [];
+    try { files = fs.readdirSync(dp).filter((f) => f.endsWith('.termrun.json')); } catch { continue; }
+    for (const f of files) {
+      const p = path.join(dp, f);
+      try {
+        const meta = JSON.parse(fs.readFileSync(p, 'utf-8'));
+        if (meta.status !== 'running') continue;
+        meta.status = 'interrupted';
+        meta.finished_at = new Date().toISOString();
+        fs.writeFileSync(p + '.tmp', JSON.stringify(meta, null, 2));
+        fs.renameSync(p + '.tmp', p);
+        swept.push({ loop_id: meta.loop_id, run_id: meta.run_id, label: meta.label });
+      } catch { /* unreadable meta — leave it */ }
+    }
+  }
+  return swept;
+}
+
 function kill(runId) {
   const e = active.get(runId);
   if (e && !e.exited) { try { e.pty.kill(); } catch {} return true; }
   return false;
 }
 
-module.exports = { start, listRuns, getLog, isRunning, kill };
+module.exports = { start, listRuns, getLog, isRunning, kill, sweepInterrupted };

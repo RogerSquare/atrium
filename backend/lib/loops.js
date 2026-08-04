@@ -1,6 +1,7 @@
 const fs = require('fs');
 const { LOOPS_FILE } = require('./constants');
 const { logger } = require('./logger');
+const { scheduleError, normalizeSchedule } = require('./loopSchedule');
 
 /**
  * Loops registry (feat-loops-model-001)
@@ -17,7 +18,7 @@ const { logger } = require('./logger');
 const WATCH_TYPES = ['prs', 'ci', 'commits', 'issues'];
 const ACTION_TYPES = ['update_fields', 'comment', 'ai_summary'];
 const SCOPES = ['project', 'global'];
-const MODES = ['watcher', 'worker'];
+const MODES = ['watcher', 'worker', 'playbook'];
 const STATUSES = ['idle', 'running', 'error'];
 const MIN_INTERVAL_MS = 60000;       // floor: 1 minute
 const DEFAULT_INTERVAL_MS = 300000;  // default: 5 minutes
@@ -35,6 +36,7 @@ const WORKER_DEFAULTS = {
   require_checks_pass: true,
   open_pr: true,
   draft_pr: false,
+  max_runs_per_day: 10, // 0 = unlimited; counts executor PTY runs, resets at local midnight
 };
 
 function normalizeWorker(w) {
@@ -51,13 +53,15 @@ function normalizeWorker(w) {
     require_checks_pass: bool(x.require_checks_pass, true),
     open_pr: bool(x.open_pr, true),
     draft_pr: bool(x.draft_pr, false),
+    max_runs_per_day: (Number.isFinite(x.max_runs_per_day) && x.max_runs_per_day >= 0)
+      ? Math.floor(x.max_runs_per_day) : WORKER_DEFAULTS.max_runs_per_day,
   };
 }
 
 // Fields a client may set on create/update. Engine-managed runtime fields
 // (status, last_run_at, next_run_at, last_result, last_error, snapshot) and
 // immutable fields (id, created_at) are never accepted from the API.
-const EDITABLE_FIELDS = ['name', 'scope', 'project', 'repo', 'watch', 'actions', 'interval_ms', 'enabled', 'instructions', 'mode', 'prompt_template', 'extra_context', 'worker'];
+const EDITABLE_FIELDS = ['name', 'scope', 'project', 'repo', 'watch', 'actions', 'interval_ms', 'schedule', 'enabled', 'instructions', 'mode', 'prompt_template', 'extra_context', 'worker'];
 
 class LoopValidationError extends Error {
   constructor(details) {
@@ -156,6 +160,10 @@ function validate(input, { partial = false, merged = null } = {}) {
       errors.interval_ms = `interval_ms must be a number >= ${MIN_INTERVAL_MS}`;
     }
   }
+  if (has('schedule')) {
+    const schedErr = scheduleError(input.schedule ?? null);
+    if (schedErr) errors.schedule = schedErr;
+  }
   if (has('enabled') && typeof input.enabled !== 'boolean') {
     errors.enabled = 'enabled must be a boolean';
   }
@@ -178,10 +186,16 @@ function validate(input, { partial = false, merged = null } = {}) {
     if (typeof view.project !== 'string' || !view.project.trim()) {
       errors.project = 'project is required when scope is "project"';
     }
-  } else if (view.scope === 'global') {
+  } else if (view.scope === 'global' && view.mode !== 'playbook') {
+    // Playbooks don't poll a repo — a global playbook is a standalone
+    // scheduled prompt and needs neither project nor repo.
     if (typeof view.repo !== 'string' || !/^[^/\s]+\/[^/\s]+$/.test(view.repo)) {
       errors.repo = 'repo (owner/name) is required when scope is "global"';
     }
+  }
+  if (view.mode === 'playbook') {
+    const instr = typeof view.instructions === 'string' ? view.instructions.trim() : '';
+    if (!instr) errors.instructions = 'instructions are required for playbook loops — the playbook IS the prompt';
   }
 
   if (Object.keys(errors).length) throw new LoopValidationError(errors);
@@ -233,6 +247,7 @@ function create(input, { now = new Date().toISOString() } = {}) {
     watch: clean.watch,
     actions: clean.actions,
     interval_ms: clean.interval_ms,
+    schedule: normalizeSchedule(clean.schedule ?? null),
     enabled: clean.enabled,
     instructions: clean.instructions ?? null,
     mode: clean.mode || 'watcher',
@@ -265,6 +280,11 @@ function update(id, patch, { now = new Date().toISOString() } = {}) {
   // Deep-merge the nested worker config so partial worker updates don't drop fields.
   if (clean.worker !== undefined) {
     merged.worker = normalizeWorker({ ...(loops[idx].worker || {}), ...(clean.worker || {}) });
+  }
+
+  // Schedule replaces wholesale (it's two fields); null clears it back to interval mode.
+  if (clean.schedule !== undefined) {
+    merged.schedule = normalizeSchedule(clean.schedule ?? null);
   }
 
   // Keep project/repo consistent with the (possibly changed) scope.

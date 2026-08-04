@@ -4,6 +4,7 @@ const registry = require('./projectRegistry');
 const { getIO } = require('./io');
 const { logger } = require('./logger');
 const { TASKS_DIR } = require('./constants');
+const loopSchedule = require('./loopSchedule');
 
 /**
  * Loop engine (feat-loops-engine-001)
@@ -285,6 +286,13 @@ async function runWorkerTick(loop) {
   if (executor.isExecuting(loop.id)) {
     return { result: { note: 'executor busy (one task at a time)' }, snapshot: loop.snapshot };
   }
+  const w = loops.normalizeWorker(loop.worker);
+  if (w.max_runs_per_day > 0) {
+    const runsToday = executor.execRunsToday(require('./loopPty').listRuns(loop.id));
+    if (runsToday >= w.max_runs_per_day) {
+      return { result: { note: `daily executor cap reached (${runsToday}/${w.max_runs_per_day})` }, snapshot: loop.snapshot };
+    }
+  }
   const proj = registry.resolve(loop.project);
   if (!proj) return { result: { note: `project not found: ${loop.project}` }, snapshot: loop.snapshot };
 
@@ -295,6 +303,17 @@ async function runWorkerTick(loop) {
   require('./loopActivity').append(loop.id, { type: 'task_claimed', message: `Claimed ${task.id}: ${task.title}`, refs: { task_id: task.id } });
   executor.run(loop, task); // fire-and-forget; streams to the Terminal tab
   return { result: { claimed: 1, task: task.id, note: 'executor dispatched' }, snapshot: loop.snapshot };
+}
+
+// Playbook mode (feat-hub-rethink-impl-001): the tick IS an agent run — no
+// GitHub involved. Awaited so the loop shows 'running' for the run's duration
+// and the tick result carries the outcome.
+async function runPlaybookTick(loop) {
+  const run = await require('./loopAgent').runPlaybook(loop, { event: 'schedule' });
+  return {
+    result: { playbook_run_id: run.id, status: run.status, cost_usd: run.cost_usd ?? null, fetched_at: new Date().toISOString() },
+    snapshot: loop.snapshot,
+  };
 }
 
 function emitUpdated(loop) {
@@ -313,13 +332,15 @@ async function tick(loopId) {
   running.add(loopId);
   emitUpdated(loops.patchRuntime(loopId, { status: 'running', last_run_at: new Date().toISOString() }));
   try {
-    const { result, snapshot } = loop.mode === 'worker' ? await runWorkerTick(loop) : await runTick(loop);
+    const { result, snapshot } = loop.mode === 'worker' ? await runWorkerTick(loop)
+      : loop.mode === 'playbook' ? await runPlaybookTick(loop)
+      : await runTick(loop);
     const updated = loops.patchRuntime(loopId, {
       status: 'idle',
       last_result: result,
       last_error: null,
       snapshot,
-      next_run_at: new Date(Date.now() + loop.interval_ms).toISOString(),
+      next_run_at: nextRunAtISO(loop),
     });
     emitUpdated(updated);
     return updated;
@@ -329,7 +350,7 @@ async function tick(loopId) {
     const updated = loops.patchRuntime(loopId, {
       status: 'error',
       last_error: String((err && err.message) || err),
-      next_run_at: new Date(Date.now() + loop.interval_ms).toISOString(),
+      next_run_at: nextRunAtISO(loop),
     });
     emitUpdated(updated);
     return updated;
@@ -345,20 +366,80 @@ function clearTimer(id) {
   if (t) { clearTimeout(t); timers.delete(id); }
 }
 
+// A schedule ({time, days}) replaces the interval; long waits are chunked so
+// a desktop host that sleeps, wakes, or changes clock re-computes on the way
+// instead of trusting one huge setTimeout.
+function nextDelay(loop) {
+  if (loop.schedule) {
+    const delay = loopSchedule.delayUntilNext(loop.schedule);
+    if (delay != null) {
+      return delay > loopSchedule.MAX_CHUNK_MS
+        ? { delay: loopSchedule.MAX_CHUNK_MS, fire: false }
+        : { delay, fire: true };
+    }
+    logger.warn({ loopId: loop.id }, 'invalid loop schedule; falling back to interval');
+  }
+  return { delay: loop.interval_ms, fire: true };
+}
+
+function nextRunAtISO(loop) {
+  if (loop.schedule) {
+    const next = loopSchedule.nextOccurrence(loop.schedule);
+    if (next) return next.toISOString();
+  }
+  return new Date(Date.now() + loop.interval_ms).toISOString();
+}
+
 function schedule(loop) {
   clearTimer(loop.id);
   if (!loop || !loop.enabled) return;
+  const { delay, fire } = nextDelay(loop);
   const t = setTimeout(async () => {
-    await tick(loop.id);
-    const fresh = loops.get(loop.id);   // interval/enabled may have changed mid-tick
+    if (fire) await tick(loop.id);
+    const fresh = loops.get(loop.id);   // schedule/interval/enabled may have changed mid-tick
     if (fresh && fresh.enabled) schedule(fresh);
-  }, loop.interval_ms);
+  }, delay);
   if (t.unref) t.unref(); // don't keep the process alive on its own
   timers.set(loop.id, t);
+  // Keep next_run_at truthful from the moment of scheduling, not only post-tick
+  // (a daily loop shows its next fire time before it has ever run).
+  if (loop.schedule && loop.next_run_at !== nextRunAtISO(loop)) {
+    emitUpdated(loops.patchRuntime(loop.id, { next_run_at: nextRunAtISO(loop) }));
+  }
+}
+
+// Startup recovery (feat-hub-rethink-impl-001): mark PTY runs orphaned by the
+// previous process as 'interrupted' and requeue any task a dead executor left
+// claimed-but-PR-less. Runs before any new executor can start, so nothing
+// live is touched. Fire-and-forget from init().
+async function recoverInterrupted() {
+  const activity = require('./loopActivity');
+  const swept = require('./loopPty').sweepInterrupted();
+  for (const m of swept) {
+    activity.append(m.loop_id, { type: 'executor', message: `Marked run ${m.run_id} interrupted (backend restart)`, refs: { run_id: m.run_id } });
+  }
+  try {
+    const { getAllTasks, updateTaskField, appendComment } = require('./tasks');
+    const stranded = getAllTasks(TASKS_DIR).filter((t) => t.status === 'in_progress'
+      && typeof t.assignee === 'string' && t.assignee.startsWith('loop:') && !t.github_pr_url);
+    for (const t of stranded) {
+      const loopId = t.assignee.slice('loop:'.length);
+      await appendComment(t.id, `- **[loop]**: Executor was interrupted by a backend restart before opening a PR — returned to \`todo\`.`, t.assignee);
+      await updateTaskField(t.id, 'assignee', null, t.assignee, null);
+      await updateTaskField(t.id, 'status', 'todo', t.assignee, 'Requeued after backend restart (executor interrupted)');
+      activity.append(loopId, { type: 'executor_failed', message: `Requeued ${t.id} after restart (executor interrupted)`, refs: { task_id: t.id } });
+    }
+    if (swept.length || stranded.length) {
+      logger.info({ swept: swept.length, requeued: stranded.length }, 'loop engine: interrupted-run recovery done');
+    }
+  } catch (err) {
+    logger.warn({ err: err.message }, 'loop engine: interrupted-run recovery failed');
+  }
 }
 
 // Called once after server.listen (server.js).
 function init() {
+  recoverInterrupted().catch(() => {});
   const all = loops.list();
   for (const loop of all) schedule(loop);
   const enabled = all.filter((l) => l.enabled).length;
@@ -389,4 +470,5 @@ module.exports = {
   init, onLoopChanged, onLoopRemoved, runLoopNow, shutdown,
   // exported for tests:
   detectChanges, normalizeEntry, describeEvents, detectNewIssues, issueTaskId, HIGH_SIGNAL,
+  nextDelay, nextRunAtISO,
 };

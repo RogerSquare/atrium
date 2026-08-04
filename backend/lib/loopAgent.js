@@ -45,7 +45,7 @@ function listRuns(loopId) {
   const dir = loopDir(loopId);
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir)
-    .filter((f) => f.endsWith('.json'))
+    .filter((f) => f.endsWith('.json') && !f.endsWith('.termrun.json')) // PTY metas live in loopPty.listRuns
     .map((f) => { try { return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf-8')); } catch { return null; } })
     .filter(Boolean)
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
@@ -60,7 +60,7 @@ function getRun(loopId, runId) {
 function pruneRuns(loopId) {
   const dir = loopDir(loopId);
   if (!fs.existsSync(dir)) return;
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'))
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json') && !f.endsWith('.termrun.json'))
     .map((f) => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs }))
     .sort((a, b) => b.t - a.t);
   for (const { f } of files.slice(MAX_LOOP_RUNS_PER_LOOP)) {
@@ -257,6 +257,93 @@ async function summarize(loop, { taskId = null, prNumber = null, event = 'manual
   }
 }
 
+// --- Public: playbook runs (feat-hub-rethink-impl-001) --------------------
+//
+// A playbook loop's tick IS an agent run: execute the loop's instructions on
+// schedule with a small board-context block. Same no-tools posture and run
+// record as summaries (cost tracked for free); output lives in run history —
+// v1 writes nothing to the board.
+
+function buildPlaybookContext(loop) {
+  let board = null;
+  if (loop.scope === 'project' && loop.project) {
+    try {
+      const { getAllTasks } = require('./tasks');
+      const { TASKS_DIR } = require('./constants');
+      const registry = require('./projectRegistry');
+      const proj = registry.resolve(loop.project);
+      if (proj) {
+        const tasks = getAllTasks(TASKS_DIR).filter((t) => (t.project || 'Root') === proj.folder);
+        const task_counts = {};
+        for (const t of tasks) task_counts[t.status] = (task_counts[t.status] || 0) + 1;
+        board = { project: loop.project, total_tasks: tasks.length, task_counts };
+      }
+    } catch { /* board context is best-effort */ }
+  }
+  return {
+    kind: 'playbook',
+    loop: { id: loop.id, name: loop.name, project: loop.project || null },
+    playbook: require('./loopInstructions').resolve(loop),
+    board,
+    generated_at: new Date().toISOString(),
+  };
+}
+
+function buildPlaybookPrompt(context) {
+  return [
+    `You are the agent behind the scheduled playbook loop "${context.loop.name}". Execute the playbook below using only the data provided — you have no tools and no filesystem.`,
+    '',
+    'PLAYBOOK (this loop\'s configured instructions — follow them):',
+    context.playbook,
+    '',
+    'CONTEXT (JSON):',
+    '```json',
+    JSON.stringify(context, null, 2),
+    '```',
+    '',
+    'Respond with only the playbook output.',
+  ].join('\n');
+}
+
+/** Run a playbook loop once. Returns the persisted run record. */
+async function runPlaybook(loop, { event = 'schedule' } = {}) {
+  const id = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const run = {
+    id, loop_id: loop.id, kind: 'playbook', task_id: null, pr_number: null, event,
+    status: 'running', created_at: new Date().toISOString(), started_at: new Date().toISOString(),
+    finished_at: null, duration_ms: null, model: 'claude-cli', session_id: null,
+    cost_usd: null, usage: null, context: null, output: null, error: null,
+  };
+  saveRun(run); emitRun(run);
+  try {
+    const context = buildPlaybookContext(loop);
+    const prompt = buildPlaybookPrompt(context);
+    run.context = { prompt, data: context }; // full reviewable context
+    saveRun(run); emitRun(run);
+
+    const res = await runClaude(prompt);
+    run.status = res.is_error ? 'error' : 'done';
+    run.output = res.output;
+    run.session_id = res.session_id;
+    run.cost_usd = res.cost_usd;
+    run.usage = res.usage;
+    run.duration_ms = res.duration_ms;
+    run.finished_at = new Date().toISOString();
+    if (res.is_error) run.error = 'agent reported an error';
+    saveRun(run); emitRun(run);
+    require('./loopActivity').append(loop.id, { type: 'playbook_run', message: `Playbook run (${event}) — ${run.status}${run.cost_usd != null ? ` · $${Number(run.cost_usd).toFixed(4)}` : ''}`, refs: { run_id: id } });
+    return run;
+  } catch (err) {
+    run.status = 'error';
+    run.error = String((err && err.message) || err);
+    run.finished_at = new Date().toISOString();
+    saveRun(run); emitRun(run);
+    require('./loopActivity').append(loop.id, { type: 'error', message: `Playbook run failed: ${run.error}`, refs: { run_id: id } });
+    logger.warn({ err: run.error, loopId: loop.id }, 'loop: playbook run failed');
+    return run;
+  }
+}
+
 // Fire-and-forget wrapper for the engine (must never block / throw into a tick).
 function summarizeAsync(loop, opts) {
   if (activeRuns.has(loop.id)) return; // avoid piling up runs for one loop
@@ -265,6 +352,6 @@ function summarizeAsync(loop, opts) {
 }
 
 module.exports = {
-  summarize, summarizeAsync, listRuns, getRun,
-  buildContext, buildPrompt, // exported for tests
+  summarize, summarizeAsync, runPlaybook, listRuns, getRun,
+  buildContext, buildPrompt, buildPlaybookContext, buildPlaybookPrompt, // exported for tests
 };

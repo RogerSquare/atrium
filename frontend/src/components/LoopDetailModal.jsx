@@ -28,8 +28,35 @@ function relTime(iso) {
 // Human-readable description of what the loop does, derived from its toggles.
 // This is the read-only preview of the "system instructions" the config implies;
 // editable instructions + a template library land in feat-loopsv2-instructions-001.
+// Human-readable trigger: "daily 09:00 (weekdays)" or "every N min".
+function describeTrigger(loop) {
+  if (loop.schedule) {
+    const days = loop.schedule.days || []
+    const set = new Set(days)
+    const daysLabel = days.length === 7 ? 'every day'
+      : days.length === 5 && !set.has('sat') && !set.has('sun') ? 'weekdays'
+      : days.join(', ')
+    return `daily at ${loop.schedule.time} (${daysLabel})`
+  }
+  return `every ${Math.round((loop.interval_ms || 0) / 60000)} min`
+}
+
 function describeLoop(loop) {
-  const target = loop.scope === 'project' ? `project "${loop.project}"` : `repo ${loop.repo}`
+  const target = loop.scope === 'project' ? `project "${loop.project}"` : loop.repo ? `repo ${loop.repo}` : 'no target'
+  if (loop.mode === 'playbook') {
+    return [
+      `Runs its playbook (${describeTrigger(loop)}) as a headless agent — no tools, no GitHub.`,
+      'Output lands in the run history; nothing is written to the board.',
+      'The playbook text is the Instructions tab.',
+    ].join('\n')
+  }
+  if (loop.mode === 'worker') {
+    return [
+      `${describeTrigger(loop)}, claim the next eligible todo in ${target} and drive it to a PR.`,
+      'NEVER merges, never pushes to the base branch, always stops at review.',
+      'A run that ends without a PR requeues its task to todo.',
+    ].join('\n')
+  }
   const watch = (loop.watch || []).join(', ') || 'nothing'
   const acts = []
   if ((loop.actions || []).includes('update_fields')) acts.push('set github_branch/github_pr_url on matching tasks')
@@ -37,7 +64,7 @@ function describeLoop(loop) {
   if ((loop.actions || []).includes('ai_summary')) acts.push('run an AI summary on high-signal events (PR opened/merged, CI failure)')
   if ((loop.watch || []).includes('issues')) acts.push('create a draft task for each new GitHub issue')
   return [
-    `Every ${Math.round((loop.interval_ms || 0) / 60000)} min, watch ${target} for: ${watch}.`,
+    `${describeTrigger(loop)[0].toUpperCase()}${describeTrigger(loop).slice(1)}, watch ${target} for: ${watch}.`,
     'On a change, it will:',
     ...acts.map((a) => `  • ${a}`),
     '',
@@ -187,15 +214,15 @@ export default function LoopDetailModal({ loop, runs = [], onClose, onEdit, onRu
 
         {/* Tab bar */}
         <div style={{ display: 'flex', gap: '2px', padding: '6px var(--space-4)', borderBottom: '0.5px solid var(--separator)' }}>
-          {TABS.map(({ id, label, icon: Icon }) => (
+          {TABS.map((t) => (
             <button
-              key={id}
-              data-testid={`loop-tab-${id}`}
-              onClick={() => pick(id)}
+              key={t.id}
+              data-testid={`loop-tab-${t.id}`}
+              onClick={() => pick(t.id)}
               className="apple-press flex items-center gap-1.5"
-              style={{ padding: '4px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: activeTab === id ? 'var(--text-app)' : 'var(--text-muted)', background: activeTab === id ? 'var(--fill-secondary)' : 'transparent' }}
+              style={{ padding: '4px 10px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-medium)', color: activeTab === t.id ? 'var(--text-app)' : 'var(--text-muted)', background: activeTab === t.id ? 'var(--fill-secondary)' : 'transparent' }}
             >
-              <Icon className="w-3.5 h-3.5" /> {label}
+              <t.icon className="w-3.5 h-3.5" /> {t.label}
             </button>
           ))}
         </div>
@@ -204,11 +231,12 @@ export default function LoopDetailModal({ loop, runs = [], onClose, onEdit, onRu
           {activeTab === 'config' && (
             <div>
               <Row label="Status"><span style={{ color: status.color, fontWeight: 'var(--font-semibold)' }}>{status.label}</span>{loop.last_error ? ` — ${loop.last_error}` : ''}</Row>
-              <Row label="Scope">{loop.scope === 'project' ? `project · ${loop.project}` : `independent · ${loop.repo}`}</Row>
-              <Row label="Mode">{loop.mode === 'worker' ? <span style={{ color: 'var(--apple-orange)', fontWeight: 'var(--font-semibold)' }}>worker (autonomous)</span> : 'watcher'}</Row>
-              <Row label="Watch">{(loop.watch || []).map((w) => <Badge key={w} preset="muted" style={{ marginRight: 4 }}>{w}</Badge>)}</Row>
-              <Row label="On change">{(loop.actions || []).join(', ') || '—'}</Row>
-              <Row label="Interval">every {Math.round((loop.interval_ms || 0) / 60000)} min</Row>
+              <Row label="Scope">{loop.scope === 'project' ? `project · ${loop.project}` : loop.repo ? `independent · ${loop.repo}` : 'standalone'}</Row>
+              <Row label="Mode">{loop.mode === 'worker' ? <span style={{ color: 'var(--apple-orange)', fontWeight: 'var(--font-semibold)' }}>worker (autonomous)</span> : loop.mode === 'playbook' ? <span style={{ color: 'var(--accent-app)', fontWeight: 'var(--font-semibold)' }}>playbook (scheduled agent run)</span> : 'watcher'}</Row>
+              {loop.mode !== 'playbook' && <Row label="Watch">{(loop.watch || []).map((w) => <Badge key={w} preset="muted" style={{ marginRight: 4 }}>{w}</Badge>)}</Row>}
+              {loop.mode !== 'playbook' && <Row label="On change">{(loop.actions || []).join(', ') || '—'}</Row>}
+              <Row label="Trigger"><span data-testid="loop-trigger-desc">{describeTrigger(loop)}</span></Row>
+              {loop.mode === 'worker' && loop.worker?.max_runs_per_day > 0 && <Row label="Daily cap">{loop.worker.max_runs_per_day} executor runs/day</Row>}
               <Row label="Enabled">
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                   <Checkbox checked={loop.enabled} onChange={(e) => onToggle(loop, e.target.checked)} aria-label="Enabled" />

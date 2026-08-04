@@ -10,8 +10,12 @@ const { PORT } = require('./constants');
  *
  * Runs a Claude agent IN THE PROJECT'S REPO (PTY, tools enabled) with a prompt
  * that drives an Atrium task from start to a PR, then STOP at review. NEVER
- * merges (human-only). One executor per loop (concurrency guard). Hardening
- * (outcome verification, cost cap, failure->todo) is feat-loopsv2-executor-001.
+ * merges (human-only). One executor per loop (concurrency guard).
+ *
+ * Hardening (feat-hub-rethink-impl-001): when a run ends and the task is
+ * still in_progress, assigned to this loop, with no PR, the task is requeued
+ * to `todo` so it never strands — regardless of exit code. If the agent got
+ * the task to review (PR opened), a non-zero exit does NOT yank it back.
  *
  * SAFETY: only runs when a loop is explicitly mode='worker' AND enabled — both
  * off by default. cwd is scoped to the single project repo, never the whole
@@ -63,6 +67,34 @@ function buildExecutionPrompt(loop, task, instructions, repoPath) {
   return tpl.build(loop && loop.prompt_template, vars);
 }
 
+// Requeue a task stranded by a finished executor run: still in_progress,
+// still assigned to this loop, no PR. Deps injectable for tests.
+async function requeueIfStranded(loop, taskId, { code, runId }, deps = null) {
+  const d = deps || { ...require('./tasks'), TASKS_DIR: require('./constants').TASKS_DIR, activity: loopActivity };
+  try {
+    const fresh = d.getAllTasks(d.TASKS_DIR).find((t) => t.id === taskId);
+    const stranded = fresh && fresh.status === 'in_progress'
+      && fresh.assignee === `loop:${loop.id}` && !fresh.github_pr_url;
+    if (!stranded) return false;
+    const actor = `loop:${loop.id}`;
+    await d.appendComment(taskId, `- **[loop:${loop.name}]**: Executor run ${runId} ended (exit ${code}) without a PR — returned to \`todo\` for a retry or human pickup. Log: this loop's Terminal tab, run ${runId}.`, actor);
+    await d.updateTaskField(taskId, 'assignee', null, actor, null);
+    await d.updateTaskField(taskId, 'status', 'todo', actor, 'Requeued by loop executor (run ended without a PR)');
+    d.activity.append(loop.id, { type: 'executor_failed', message: `Requeued ${taskId}: run ended (exit ${code}) without a PR`, refs: { task_id: taskId, run_id: runId } });
+    return true;
+  } catch (err) {
+    logger.warn({ err: err.message, taskId }, 'loop executor: requeue failed');
+    return false;
+  }
+}
+
+// Count today's executor runs from termrun metas (pure, exported for tests).
+function execRunsToday(metas, now = new Date()) {
+  const today = now.toDateString();
+  return (metas || []).filter((m) => m && typeof m.label === 'string' && m.label.startsWith('execute ')
+    && m.started_at && new Date(m.started_at).toDateString() === today).length;
+}
+
 // Fire-and-forget: start an executor run for a claimed task. Returns the runId
 // (or null if it could not start). Caller guards on isExecuting().
 function run(loop, task) {
@@ -82,6 +114,7 @@ function run(loop, task) {
     onExit: ({ code, status }) => {
       activeExecutors.delete(loop.id);
       loopActivity.append(loop.id, { type: 'executor', message: `Executor for ${task.id} finished (${status}, exit ${code})`, refs: { task_id: task.id, run_id: runId } });
+      requeueIfStranded(loop, task.id, { code, runId }).catch(() => {});
     },
   });
   activeExecutors.set(loop.id, { taskId: task.id, runId });
@@ -90,4 +123,4 @@ function run(loop, task) {
   return runId;
 }
 
-module.exports = { run, isExecuting, buildExecutionPrompt };
+module.exports = { run, isExecuting, buildExecutionPrompt, requeueIfStranded, execRunsToday };
