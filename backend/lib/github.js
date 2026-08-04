@@ -454,6 +454,62 @@ function clearChangesCache() {
   changesCache.clear();
 }
 
+// ---- Per-file PR patches (feat-files-pr-diff-001) ----------------------
+// `gh pr view --json files` gives stats but NO hunks; the REST pulls/N/files
+// endpoint is the one place per-file `patch` text lives (GitHub omits it for
+// very large files — callers must handle patch:null honestly). {owner}/{repo}
+// placeholders resolve from the repo cwd, same auth path as every gh call.
+const prFilesCache = new Map();
+
+async function getPrFiles(projectIdOrName, prNumber, { refresh = false } = {}) {
+  const repoPath = resolveProjectRepoPath(projectIdOrName);
+  if (!repoPath) return { error: 'no_git_repo' };
+  if (!Number.isInteger(prNumber) || prNumber <= 0) return { error: 'no_pr' };
+
+  const cacheKey = `${repoPath}#${prNumber}`;
+  const cached = prFilesCache.get(cacheKey);
+  if (!refresh && cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.data;
+
+  const out = await ghOutput(repoPath, [
+    'api', `repos/{owner}/{repo}/pulls/${prNumber}/files`, '--paginate',
+  ]);
+  if (!out) return { error: 'gh_failed' };
+  let parsed;
+  try {
+    // --paginate concatenates JSON arrays; normalize `][` seams into one array.
+    parsed = JSON.parse(out.trim().replace(/\]\s*\[/g, ','));
+  } catch (err) {
+    logger.warn({ err: err.message }, 'gh api pulls/files returned invalid JSON');
+    return { error: 'parse_failed' };
+  }
+
+  const data = {
+    pr_number: prNumber,
+    files: (Array.isArray(parsed) ? parsed : []).map((f) => ({
+      filename: f.filename,
+      previous_filename: f.previous_filename || null,
+      status: f.status,
+      additions: f.additions ?? 0,
+      deletions: f.deletions ?? 0,
+      patch: typeof f.patch === 'string' ? f.patch : null, // null = GitHub omitted it
+    })),
+    fetched_at: new Date().toISOString(),
+  };
+  prFilesCache.set(cacheKey, { fetchedAt: Date.now(), data });
+  return data;
+}
+
+// Pure (exported for tests): match a tree-relative path against a PR's file
+// list. Exact filename first; then suffix match (`.../<path>`) for history
+// written against a pre-rename layout; renames also match their old name.
+function findPrFile(files, relPath) {
+  if (!Array.isArray(files) || !relPath) return null;
+  const exact = files.find((f) => f.filename === relPath || f.previous_filename === relPath);
+  if (exact) return exact;
+  const suffix = `/${relPath}`;
+  return files.find((f) => f.filename.endsWith(suffix) || (f.previous_filename || '').endsWith(suffix)) || null;
+}
+
 // ---- Open issues (feat-loops-watch-types-001) -------------------------
 // Reuses the links `cache` map under an `issues#<repo>` key (same 5-min TTL)
 // so the loop engine's issue polling is rate-limit friendly. Returns open
@@ -531,6 +587,8 @@ module.exports = {
   getLinks,
   clearCache,
   getPrChanges,
+  getPrFiles,
+  findPrFile,
   verifyToken,
   authStatus,
   getLastGhError,
