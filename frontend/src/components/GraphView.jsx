@@ -293,6 +293,14 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
   // toggling several chips in a row collapses into a single fit.
   // Cleared on network rebuild + unmount.
   const autoFitTimerRef = useRef(null)
+  // bug-graph-behavior-001: once the user pans or zooms by hand, resizes stop
+  // auto-fitting (their framing wins). The Recenter button clears it.
+  const userViewRef = useRef(false)
+  // While a resize burst is in flight the physics engine + Brownian rAF are
+  // frozen — on large graphs, camera fits during continuous node motion read
+  // as the whole graph thrashing.
+  const physicsFrozenRef = useRef(false)
+  const resizeSettleTimerRef = useRef(null)
   // prefers-reduced-motion subscription — drives whether the auto-fit
   // animates or snaps. Updated live via the matchMedia change listener
   // below so toggling the OS-level setting doesn't require a refresh.
@@ -554,7 +562,9 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
   // mid-jump positions. The actual fit is suppressed when the user is
   // mid-drag (so we don't yank the camera out from under them) or when
   // the visible set is empty (vis-network throws on a zero-bounding-box).
-  const scheduleAutoFit = useCallback(() => {
+  // `animate: false` is the resize path — snapping avoids a 250ms camera
+  // animation racing the next resize tick (visible as extra movement).
+  const scheduleAutoFit = useCallback(({ animate = true } = {}) => {
     if (autoFitTimerRef.current) clearTimeout(autoFitTimerRef.current)
     autoFitTimerRef.current = setTimeout(() => {
       autoFitTimerRef.current = null
@@ -564,9 +574,9 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
       if (ds.nodes.length === 0) return
       if (draggedRef.current.size > 0) return
       net.fit({
-        animation: prefersReducedMotionRef.current
-          ? false
-          : { duration: 250, easingFunction: 'easeInOutQuad' },
+        animation: (animate && !prefersReducedMotionRef.current)
+          ? { duration: 250, easingFunction: 'easeInOutQuad' }
+          : false,
       })
     }, 150)
   }, [])
@@ -591,10 +601,37 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
         suppressInitial = false
         return
       }
-      scheduleAutoFit()
+      // Freeze the simulation for the duration of the resize burst
+      // (bug-graph-behavior-001): node positions HOLD, only the viewport
+      // adjusts. Without this, large graphs pair every resize tick with
+      // live Brownian/spring motion and the whole layout appears to thrash.
+      const net = networkRef.current
+      if (net && !physicsFrozenRef.current) {
+        physicsFrozenRef.current = true
+        try { net.setOptions({ physics: { enabled: false } }) } catch { /* torn down */ }
+      }
+      if (resizeSettleTimerRef.current) clearTimeout(resizeSettleTimerRef.current)
+      resizeSettleTimerRef.current = setTimeout(() => {
+        resizeSettleTimerRef.current = null
+        physicsFrozenRef.current = false
+        const liveNet = networkRef.current
+        if (liveNet) {
+          try { liveNet.setOptions({ physics: { enabled: true, stabilization: { enabled: false } } }) } catch { /* torn down */ }
+        }
+      }, 300)
+      // Respect a hand-panned/zoomed view: the user's framing survives
+      // resizes; auto-fit only serves users who never took the camera.
+      if (!userViewRef.current) scheduleAutoFit({ animate: false })
     })
     ro.observe(el)
-    return () => ro.disconnect()
+    return () => {
+      ro.disconnect()
+      if (resizeSettleTimerRef.current) {
+        clearTimeout(resizeSettleTimerRef.current)
+        resizeSettleTimerRef.current = null
+      }
+      physicsFrozenRef.current = false
+    }
   }, [scheduleAutoFit])
 
   // --- Init / refresh network --------------------------------------------
@@ -647,7 +684,11 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
         arrows: { to: { enabled: false } },  // per-edge `arrows: 'to'` still applies
       },
       physics: {
-        enabled: true,
+        // Seeded layouts start FROZEN (bug-graph-behavior-001): they appear
+        // exactly as saved and centered, then start breathing ~500ms later.
+        // Without this, stale seeds glide off mid-fit and the first frame the
+        // user sees is already in motion away from the camera.
+        enabled: !hasSeededPositions,
         solver: 'repulsion',
         repulsion: {
           // springLength + nodeDistance scale with the slider state. A live
@@ -684,6 +725,38 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     }
     const net = new Network(containerRef.current, data, options)
     networkRef.current = net
+    // Test hook (harmless in prod): the graph is canvas-rendered, so e2e
+    // assertions about centering/positions need the live instance.
+    if (typeof window !== 'undefined') window.__atriumGraphNet = net
+
+    // First-load recenter (bug-graph-behavior-001): with seeded positions the
+    // stabilization pass is skipped — and vis-network's auto-fit lives INSIDE
+    // stabilization, so returning users landed on an off-center camera at
+    // default scale. Fit once after the first draw of the seeded layout.
+    let settleFitTimer = null
+    let unfreezeTimer = null
+    if (hasSeededPositions && graphData.nodes.length > 0) {
+      net.once('afterDrawing', () => { try { net.fit({ animation: false }) } catch { /* torn down */ } })
+      // Startup freeze: the saved layout renders + centers motionless, then
+      // physics wakes. A gentle re-fit follows the wake-up glide unless the
+      // user has already taken the camera.
+      unfreezeTimer = setTimeout(() => {
+        physicsFrozenRef.current = false
+        try { net.setOptions({ physics: { enabled: true, stabilization: { enabled: false } } }) } catch { /* torn down */ }
+      }, 500)
+      settleFitTimer = setTimeout(() => {
+        if (!userViewRef.current) scheduleAutoFit({ animate: true })
+      }, 1100)
+    }
+
+    // A hand-taken camera survives resizes (see the ResizeObserver): a
+    // node-less drag is a pan; a zoom with a pointer is a user wheel/pinch
+    // (fit()/moveTo() animations emit zoom without one). Fresh build clears
+    // the flag — a rebuilt layout deserves a fresh fit.
+    userViewRef.current = false
+    physicsFrozenRef.current = hasSeededPositions // startup freeze pairs with physics.enabled above
+    net.on('dragEnd', p => { if (!p.nodes || p.nodes.length === 0) userViewRef.current = true })
+    net.on('zoom', p => { if (p && p.pointer) userViewRef.current = true })
 
     draggedRef.current.clear()
     net.on('dragStart', p => (p.nodes || []).forEach(id => draggedRef.current.add(id)))
@@ -728,6 +801,8 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     prevSyncedTasksRef.current = tasks
 
     return () => {
+      if (settleFitTimer) clearTimeout(settleFitTimer)
+      if (unfreezeTimer) clearTimeout(unfreezeTimer)
       // Snapshot final positions before tearing down — covers the gap
       // between the last rAF save and the unmount (e.g. user drags then
       // immediately switches views).
@@ -743,6 +818,9 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
         persistPositions(positionsRef.current)
       }
       if (networkRef.current) {
+        if (typeof window !== 'undefined' && window.__atriumGraphNet === networkRef.current) {
+          delete window.__atriumGraphNet
+        }
         networkRef.current.destroy()
         networkRef.current = null
       }
@@ -850,6 +928,10 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     if (updates.length > 0) data.edges.update(updates)
     net.setOptions({
       physics: {
+        // vis-network's mergeOptions treats an ABSENT `enabled` as true —
+        // without stating it explicitly this call silently re-enables a
+        // frozen simulation (startup/resize freeze, bug-graph-behavior-001).
+        enabled: !physicsFrozenRef.current,
         repulsion: {
           springLength,
           nodeDistance: springLength * 1.5,
@@ -912,7 +994,9 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
     const tick = () => {
       const net = networkRef.current
       const hubs = hubListRef.current
-      if (net && net.body && net.body.nodes) {
+      // Frozen during resize bursts (bug-graph-behavior-001): no hub motion,
+      // no Brownian impulses — positions hold perfectly still.
+      if (net && net.body && net.body.nodes && !physicsFrozenRef.current) {
         const bodyNodes = net.body.nodes
 
         // Hub physics
@@ -1063,18 +1147,21 @@ export default function GraphView({ tasks, projects, onSelectTask, githubLinks }
   const handleZoomIn = useCallback(() => {
     const net = networkRef.current
     if (!net) return
+    userViewRef.current = true // explicit zoom = the user owns the framing now
     const scale = net.getScale()
     net.moveTo({ scale: scale * 1.25, animation: { duration: 200, easingFunction: 'easeInOutQuad' } })
   }, [])
   const handleZoomOut = useCallback(() => {
     const net = networkRef.current
     if (!net) return
+    userViewRef.current = true
     const scale = net.getScale()
     net.moveTo({ scale: scale * 0.8, animation: { duration: 200, easingFunction: 'easeInOutQuad' } })
   }, [])
   const handleFit = useCallback(() => {
     const net = networkRef.current
     if (!net) return
+    userViewRef.current = false // recenter hands the camera back to auto-fit
     net.fit({ animation: { duration: 250, easingFunction: 'easeInOutQuad' } })
   }, [])
 
