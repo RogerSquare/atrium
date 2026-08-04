@@ -39,6 +39,7 @@ import ShellTerminal from '../web-shell/Terminal'
 import CommandCard from '../web-shell/CommandCard'
 import { GLOBAL_COMMANDS } from '../web-shell/globalCommands'
 import { API_BASE, getStoredToken } from '../../config'
+import useVisualViewport from '../../hooks/useVisualViewport'
 
 const GLOBAL_TASK = { id: '__global__', title: 'Global Shell' }
 
@@ -68,16 +69,26 @@ export default function GlobalShellPanel({
     }
   }, [])
 
+  // While the iOS keyboard is open, size to the VISIBLE viewport — otherwise
+  // the terminal's cursor line renders invisibly behind the keyboard (the
+  // layout viewport doesn't shrink). The Terminal's FitAddon+ResizeObserver
+  // re-fit xterm to the shorter panel automatically.
+  const vv = useVisualViewport(narrow)
   const style = narrow
     ? {
         // Full-screen overlay above the tab bar (z 45 > 40): pad both safe
         // insets — viewport-fit=cover otherwise puts the header under the
         // notch and the command pill under the home indicator.
         position: 'fixed',
-        inset: 0,
+        top: vv ? vv.top : 0,
+        left: 0,
+        right: 0,
+        height: vv ? vv.height : '100%',
         zIndex: 45,
-        paddingTop: 'var(--safe-top)',
-        paddingBottom: 'var(--safe-bottom)',
+        // Notch padding stays even keyboard-open (the top edge doesn't move);
+        // bottom padding drops — the keyboard covers the home indicator.
+        paddingTop: vv && vv.top > 0 ? 0 : 'var(--safe-top)',
+        paddingBottom: vv ? 0 : 'var(--safe-bottom)',
         background: 'var(--bg-card)',
         display: 'flex',
         flexDirection: 'column',

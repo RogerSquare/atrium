@@ -27,6 +27,7 @@ import CommandCard from '../web-shell/CommandCard'
 import AutoEnterToggle from '../web-shell/AutoEnterToggle'
 import StatusSegmentedControl from '../StatusSegmentedControl'
 import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
+import useVisualViewport from '../../hooks/useVisualViewport'
 
 const TABS = [
   { id: 'description', label: 'Description', icon: FileText },
@@ -99,6 +100,9 @@ export default function DetailPane({
     try { window.localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, next) } catch { /* storage disabled */ }
   }
   const [handleHover, setHandleHover] = useState(false)
+  // Visible-viewport box while the mobile keyboard is open (null otherwise);
+  // must be called before the `!task` early return (rules of hooks).
+  const vv = useVisualViewport(narrow)
 
   // Drag the left edge to resize. Listeners are created per-drag as closures over
   // the start point/width and removed by their own identity on mouseup — this
@@ -132,12 +136,19 @@ export default function DetailPane({
         // Narrow-viewport mode: full-screen overlay. viewport-fit=cover means
         // inset:0 extends under the notch AND the home indicator, so pad the
         // top with the safe inset and the bottom past the tab bar (which
-        // paints above this overlay — same z, later in the DOM).
+        // paints above this overlay — same z, later in the DOM). While the
+        // iOS keyboard is open (vv non-null) the overlay shrinks to the
+        // VISIBLE viewport instead — the Shell tab's cursor line was typing
+        // invisibly behind the keyboard; the tab bar is covered anyway so
+        // its reserve drops too.
         position: 'fixed',
-        inset: 0,
+        top: vv ? vv.top : 0,
+        left: 0,
+        right: 0,
+        height: vv ? vv.height : '100%',
         zIndex: 40,
-        paddingTop: 'var(--safe-top)',
-        paddingBottom: 'var(--mobile-tabbar-h)',
+        paddingTop: vv && vv.top > 0 ? 0 : 'var(--safe-top)',
+        paddingBottom: vv ? 0 : 'var(--mobile-tabbar-h)',
         background: 'var(--bg-card)',
         display: 'flex',
         flexDirection: 'column',
