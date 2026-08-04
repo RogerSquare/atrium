@@ -44,6 +44,7 @@ const githubRoutes = require('./routes/github');
 const setupRoutes = require('./routes/setup');
 const diagnosticsRoutes = require('./routes/diagnostics');
 const loopsRoutes = require('./routes/loops');
+const filesRoutes = require('./routes/files');
 const loopTemplatesRoutes = require('./routes/loopTemplates');
 const loopManager = require('./lib/loopManager');
 const e2eRunsRoutes = require('./routes/e2eRuns');
@@ -336,6 +337,9 @@ app.use('/api/github', requireAuth, githubRoutes);
 app.use('/api/setup', requireAuth, setupRoutes);
 app.use('/api/diagnostics', requireAuth, diagnosticsRoutes);
 app.use('/api/loops', requireAuth, loopsRoutes);
+// Read-only project file browsing (feat-project-hub-impl-001). requireAuth —
+// this serves source code, stricter than the preview proxy's optionalAuth.
+app.use('/api/files', requireAuth, filesRoutes);
 app.use('/api/loop-templates', requireAuth, loopTemplatesRoutes);
 app.use('/api/shell', requireAuth, shellRoutes);
 // e2e-runs handles auth per-endpoint so the artifact-file GET can accept ?token= for media tags.

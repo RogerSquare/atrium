@@ -24,7 +24,7 @@ function decodeUsername(jwt) {
 test.describe('Loops view (render)', () => {
   test.beforeEach(async ({ page }) => {
     await mockCoreApi(page);
-    await page.addInitScript(seedSession, { storage: { taskBoardView: 'loops' } });
+    await page.addInitScript(seedSession, { storage: { taskBoardView: 'hub', taskBoardHubTab: 'loops' } });
     await page.goto('/');
   });
 
@@ -40,7 +40,7 @@ test.describe('Loops view (render)', () => {
 test.describe('Loops view (project-scoped)', () => {
   test.beforeEach(async ({ page }) => {
     await mockCoreApi(page);
-    await page.addInitScript(seedSession, { storage: { taskBoardView: 'loops', opusBoardActiveProject: 'Atrium' } });
+    await page.addInitScript(seedSession, { storage: { taskBoardView: 'hub', taskBoardHubTab: 'loops', opusBoardActiveProject: 'Atrium' } });
     await page.goto('/');
   });
 
@@ -61,7 +61,7 @@ test.describe('Loops view (backend flow)', () => {
     const username = decodeUsername(TOKEN);
     await page.addInitScript(([token, name]) => {
       localStorage.setItem('taskBoardUser', JSON.stringify({ username: name, token }));
-      localStorage.setItem('taskBoardView', 'loops');
+      localStorage.setItem('taskBoardView', 'hub'); localStorage.setItem('taskBoardHubTab', 'loops');
       localStorage.setItem('taskBoardThemeMigratedToOled', '1');
     }, [TOKEN, username]);
     await page.goto('/');

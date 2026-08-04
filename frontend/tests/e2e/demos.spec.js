@@ -31,7 +31,7 @@ test.describe('Demos view', () => {
     const username = decodeUsername(TOKEN);
     await page.addInitScript(([token, name]) => {
       localStorage.setItem('taskBoardUser', JSON.stringify({ username: name, token }));
-      localStorage.setItem('taskBoardView', 'demos');
+      localStorage.setItem('taskBoardView', 'hub'); localStorage.setItem('taskBoardHubTab', 'demos');
       // Force "All" project so every service group is eligible to render
       // regardless of which project was last selected. Test must be
       // deterministic.

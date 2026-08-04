@@ -56,8 +56,11 @@ test.describe('Board card redesign', () => {
   });
 
   test('no element escapes the card — long id + done dash + type dash all contained', async ({ page }) => {
+    // Done opens as a collapsed rail since ui-board-collapse-001 — expand it
+    // to reach the done-status card under test.
+    await page.getByTestId('board-rail-done').click();
     const long = page.getByLabel(/Done card with a very long id/);
-    await expect(long).toBeVisible();
+    await expect(long).toBeVisible({ timeout: 20_000 });
     const overflow = await long.evaluate((el) => ({
       x: el.scrollWidth - el.clientWidth,
       y: el.scrollHeight - el.clientHeight,

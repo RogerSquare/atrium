@@ -12,7 +12,10 @@ import ServiceGroup from './ServiceGroup'
 //
 // See feat-demos-services-grouping-001-implement plan.
 
-export default function DemosView({ tasks = [], onSelectTask }) {
+// `embedded` (feat-project-hub-impl-001): rendered inside HubView, which owns
+// the page title — the standalone h1 is suppressed; count chip, filter note,
+// and the show-all toggle all stay.
+export default function DemosView({ tasks = [], onSelectTask, embedded = false }) {
   const { activeProject } = useTaskData()
   const [groups, setGroups] = useState([])
   const [state, setState] = useState('loading') // 'loading' | 'ok' | 'error'
@@ -86,9 +89,11 @@ export default function DemosView({ tasks = [], onSelectTask }) {
       style={{ padding: 'var(--space-5) var(--space-6)' }}
     >
       <div className="flex items-center gap-3 flex-wrap" style={{ marginBottom: 'var(--space-4)' }}>
-        <h1 style={{ fontSize: 'var(--text-title2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>
-          Demos
-        </h1>
+        {!embedded && (
+          <h1 style={{ fontSize: 'var(--text-title2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-app)' }}>
+            Demos
+          </h1>
+        )}
         <span
           style={{
             padding: '2px 8px',

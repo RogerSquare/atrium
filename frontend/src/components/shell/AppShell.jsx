@@ -119,7 +119,17 @@ export default function AppShell() {
     setErrorToast,
   } = useTaskActions()
 
-  const [activeView, setActiveView] = useState(() => localStorage.getItem('taskBoardView') || 'board')
+  const [activeView, setActiveView] = useState(() => {
+    const stored = localStorage.getItem('taskBoardView')
+    // 'loops' and 'demos' merged into the Hub (feat-project-hub-impl-001):
+    // migrate a stored legacy id to Hub + the matching sub-tab, once.
+    if (stored === 'loops' || stored === 'demos') {
+      localStorage.setItem('taskBoardHubTab', stored)
+      localStorage.setItem('taskBoardView', 'hub')
+      return 'hub'
+    }
+    return stored || 'board'
+  })
   const [focusModal, setFocusModal] = useState(false)
   const [detailWidth, setDetailWidth] = useState(readStoredWidth)
 

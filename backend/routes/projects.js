@@ -399,6 +399,31 @@ router.get('/:idOrName/description', (req, res) => {
  *       200:
  *         description: Description updated
  */
+// PUT /:idOrName/directory — link (or unlink, with empty body value) the
+// project's source folder for the Files view (feat-project-hub-impl-001).
+// Path may be absolute or relative to the workspace root; existence is NOT
+// required here — resolveProjectDir treats a dangling link as unlinked.
+router.put('/:idOrName/directory', (req, res) => {
+  try {
+    const project = registry.resolve(req.params.idOrName);
+    if (!project || !project.id) return res.status(404).json({ error: 'Project not found' });
+    const { directory } = req.body || {};
+    if (directory !== undefined && directory !== null && typeof directory !== 'string') {
+      return res.status(400).json({ error: 'directory must be a string (or null to unlink)' });
+    }
+    if (typeof directory === 'string' && directory.includes('\0')) {
+      return res.status(400).json({ error: 'Invalid directory path' });
+    }
+    if (!registry.setDirectory(project.id, directory ? directory.trim() : null)) {
+      return res.status(400).json({ error: 'Could not update project' });
+    }
+    res.json({ success: true, id: project.id, directory: directory ? directory.trim() : null });
+  } catch (error) {
+    logger.error({ err: error }, 'Request failed');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.put('/:idOrName/description', (req, res) => {
   try {
     const { idOrName } = req.params;
