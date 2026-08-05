@@ -1,5 +1,6 @@
 const fs = require('fs');
-const { WORKSPACES_FILE } = require('./constants');
+const path = require('path');
+const { WORKSPACES_FILE, TASKS_DIR } = require('./constants');
 
 /**
  * Workspace Registry (feat-workspaces-impl-001)
@@ -119,6 +120,19 @@ function rename(id, name) {
     ([wid, ws]) => wid !== id && ws.name.toLowerCase() === trimmed.toLowerCase()
   );
   if (taken || dirCollides(registry, trimmed, id)) return false;
+
+  // Workspace directories are keyed by sanitized NAME (requestor decision) —
+  // a rename therefore renames the on-disk directory. One atomic rename on
+  // the same volume; the 5s task-cache rescan picks it up.
+  const { sanitizeWorkspaceDirName } = require('./taskPaths');
+  const oldDir = path.join(TASKS_DIR, sanitizeWorkspaceDirName(registry[id].name, id));
+  const newDir = path.join(TASKS_DIR, sanitizeWorkspaceDirName(trimmed, id));
+  if (oldDir !== newDir && fs.existsSync(oldDir)) {
+    if (fs.existsSync(newDir)) return false; // never clobber
+    fs.renameSync(oldDir, newDir);
+    require('./tasks').invalidateCache();
+  }
+
   registry[id].name = trimmed;
   save(registry);
   return true;
@@ -155,6 +169,12 @@ function remove(id) {
   const count = Object.values(projectRegistry.getAll({ include: 'all' }))
     .filter(p => (p.workspace || DEFAULT_WORKSPACE_ID) === id).length;
   if (count > 0) return { ok: false, reason: 'in_use', count };
+  // Clean up the (necessarily empty of projects) workspace directory.
+  const { sanitizeWorkspaceDirName } = require('./taskPaths');
+  const wsDir = path.join(TASKS_DIR, sanitizeWorkspaceDirName(registry[id].name, id));
+  try {
+    if (fs.existsSync(wsDir)) fs.rmdirSync(wsDir); // non-recursive: throws if not empty
+  } catch { /* leave a non-empty dir alone — better a stray dir than lost files */ }
   delete registry[id];
   save(registry);
   return { ok: true };
