@@ -15,6 +15,10 @@ export default function useTasks(user, socketRef) {
   // default that holds Root and every pre-workspaces project.
   const [workspaces, setWorkspaces] = useState([{ id: 'personal', name: 'Personal', order: 0 }])
   const [activeWorkspace, setActiveWorkspace] = useState(localStorage.getItem('atriumActiveWorkspace') || 'personal')
+  // Mirror for fetchData's load-time validation — fetchData deliberately does
+  // NOT depend on activeWorkspace (a switch should not trigger a refetch).
+  const activeWorkspaceRef = useRef(activeWorkspace)
+  useEffect(() => { activeWorkspaceRef.current = activeWorkspace }, [activeWorkspace])
   const [filterType, setFilterType] = useState('all')
   const [filterPriority, setFilterPriority] = useState('all')
   const [filterAssignee, setFilterAssignee] = useState('all')
@@ -69,12 +73,18 @@ export default function useTasks(user, socketRef) {
         }
 
         // Validate active project — only override if the saved project has
-        // been archived mid-session. Don't silently switch to 'folders[0]'
-        // on a transient-looking mismatch, that was stomping persisted
+        // been archived mid-session, or if it demonstrably belongs to a
+        // different workspace than the active one (a persisted cross-
+        // workspace pairing would render an empty board with a misleading
+        // anchor label). Don't silently switch to 'folders[0]' on a
+        // transient-looking mismatch, that was stomping persisted
         // selections when the API shape drifted or the project loaded late.
         setActiveProject(prev => {
+          if (prev === 'All') return prev
           const archivedFolders = archivedData.map(p => p.folder || p)
-          if (prev !== 'All' && archivedFolders.includes(prev)) return 'All'
+          if (archivedFolders.includes(prev)) return 'All'
+          const proj = projectsData.find(p => (p.folder || p) === prev)
+          if (proj && (proj.workspace || 'personal') !== activeWorkspaceRef.current) return 'All'
           return prev
         })
 
@@ -432,6 +442,12 @@ export default function useTasks(user, socketRef) {
     for (const p of projects) m.set(p.folder || p, p.workspace || 'personal')
     return m
   }, [projects])
+  // The active workspace's tasks, before any board filters — feeds both
+  // filteredTasks and count surfaces (ProjectAnchor's "All projects" total).
+  const workspaceTasks = useMemo(
+    () => tasks.filter(t => (workspaceByFolder.get(t.project || 'Root') ?? 'personal') === activeWorkspace),
+    [tasks, workspaceByFolder, activeWorkspace]
+  )
   const workspaceArchivedProjects = useMemo(
     () => archivedProjects.filter(p => (p.workspace || 'personal') === activeWorkspace),
     [archivedProjects, activeWorkspace]
@@ -532,14 +548,12 @@ export default function useTasks(user, socketRef) {
   const filteredTasks = useMemo(() => {
     const todayStart = filterToday ? new Date().setHours(0, 0, 0, 0) : 0
 
-    return tasks.filter(t => {
+    // workspaceTasks is already isolation-filtered — the workspace lens
+    // trumps everything below, including the uncategorized-status passthrough.
+    return workspaceTasks.filter(t => {
       const standardStatusIds = ['draft', 'todo', 'in_progress', 'waiting_input', 'review', 'done']
       const isUncategorized = !standardStatusIds.includes(t.status)
 
-      // Isolation trumps everything, including the uncategorized-status
-      // passthrough: a task outside the active workspace does not exist here.
-      // Unknown folders default to 'personal' rather than nowhere.
-      const workspaceMatch = (workspaceByFolder.get(t.project || 'Root') ?? 'personal') === activeWorkspace
       const projectMatch = activeProject === 'All' || t.project === activeProject || isUncategorized
       const typeMatch = filterType === 'all' || t.type === filterType
       const priorityMatch = filterPriority === 'all' || t.priority === filterPriority
@@ -565,9 +579,9 @@ export default function useTasks(user, socketRef) {
         return daysSince >= threshold
       })()
 
-      return workspaceMatch && projectMatch && typeMatch && priorityMatch && assigneeMatch && searchMatch && todayMatch && staleMatch
+      return projectMatch && typeMatch && priorityMatch && assigneeMatch && searchMatch && todayMatch && staleMatch
     })
-  }, [tasks, activeProject, workspaceByFolder, activeWorkspace, filterType, filterPriority, filterAssignee, filterToday, filterStale, searchQuery, user?.username])
+  }, [workspaceTasks, activeProject, filterType, filterPriority, filterAssignee, filterToday, filterStale, searchQuery, user?.username])
 
   // Cleanup flash timers on unmount
   useEffect(() => {
@@ -578,6 +592,7 @@ export default function useTasks(user, socketRef) {
 
   return {
     tasks,
+    workspaceTasks,
     // The workspace-scoped list ships under the historical name so every
     // consumer (pickers, board, anchor, graph, loops) isolates for free;
     // allProjects is the unscoped registry for management surfaces only.

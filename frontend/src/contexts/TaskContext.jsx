@@ -185,6 +185,7 @@ export function TaskProvider({ user, socketRef, children }) {
   //   - errorToast (transient, but cheap).
   const highChurnValue = useMemo(() => ({
     tasks: taskState.tasks,
+    workspaceTasks: taskState.workspaceTasks,
     projects: taskState.projects,
     allProjects: taskState.allProjects,
     workspaces: taskState.workspaces,
@@ -223,7 +224,7 @@ export function TaskProvider({ user, socketRef, children }) {
     batchLoading,
     errorToast,
   }), [
-    taskState.tasks, taskState.projects, taskState.allProjects,
+    taskState.tasks, taskState.workspaceTasks, taskState.projects, taskState.allProjects,
     taskState.workspaces, taskState.activeWorkspace,
     taskState.archivedProjects, taskState.loading,
     taskState.selectedTask, taskState.activeProject, taskState.setActiveProject,

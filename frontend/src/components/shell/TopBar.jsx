@@ -32,6 +32,15 @@ export default function TopBar({
   onOpenArchived,
   onArchiveProject,
   archivedCount,
+  // Workspaces (feat-workspaces-impl-001)
+  workspaces,
+  activeWorkspace,
+  allProjects,
+  onSetActiveWorkspace,
+  onCreateWorkspace,
+  onRenameWorkspace,
+  onDeleteWorkspace,
+  onAssignProjectWorkspace,
   // Avatar popover
   onOpenSettings,
   onOpenHelp,
@@ -70,6 +79,14 @@ export default function TopBar({
           onOpenArchived={onOpenArchived}
           onArchiveProject={onArchiveProject}
           archivedCount={archivedCount}
+          workspaces={workspaces}
+          activeWorkspace={activeWorkspace}
+          allProjects={allProjects}
+          onSetActiveWorkspace={onSetActiveWorkspace}
+          onCreateWorkspace={onCreateWorkspace}
+          onRenameWorkspace={onRenameWorkspace}
+          onDeleteWorkspace={onDeleteWorkspace}
+          onAssignProjectWorkspace={onAssignProjectWorkspace}
         />
       </div>
 

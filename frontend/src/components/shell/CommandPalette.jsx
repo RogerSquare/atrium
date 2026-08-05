@@ -9,7 +9,7 @@ import { Command } from 'cmdk'
 import {
   Folder, FolderPlus, Plus, Filter as FilterIcon, UserCircle2, Clock,
   AlertCircle, X, Sun, Moon, Settings as SettingsIcon, HelpCircle,
-  LogOut, LayoutGrid, List, GitBranch,
+  LogOut, LayoutGrid, List, GitBranch, Layers,
 } from 'lucide-react'
 import { motion, AnimatePresence, useMotionTransition, MOTION_DURATIONS } from '../../lib/motion'
 
@@ -26,6 +26,9 @@ export default function CommandPalette({
   open,
   onOpenChange,
   projects = [],
+  workspaces = [],
+  activeWorkspace = 'personal',
+  onSetActiveWorkspace,
   onSetActiveProject,
   onChangeView,
   onSetFilterType,
@@ -146,6 +149,20 @@ export default function CommandPalette({
           >
             No commands match.
           </Command.Empty>
+
+          {workspaces.length > 1 && (
+            <Group heading="Switch workspace">
+              {workspaces.filter((w) => w.id !== activeWorkspace).map((w) => (
+                <Item
+                  key={`ws-${w.id}`}
+                  value={`workspace switch ${w.name}`}
+                  onSelect={run(() => onSetActiveWorkspace?.(w.id))}
+                  icon={<Layers className="w-3.5 h-3.5" />}
+                  label={`Workspace: ${w.name}`}
+                />
+              ))}
+            </Group>
+          )}
 
           <Group heading="Go to project">
             {projects.map((p) => {
