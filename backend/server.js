@@ -31,6 +31,7 @@ const authRoutes = require('./routes/auth');
 const settingsRoutes = require('./routes/settings');
 const servicesRoutes = require('./routes/services');
 const projectsRoutes = require('./routes/projects');
+const workspacesRoutes = require('./routes/workspaces');
 const tasksRoutes = require('./routes/tasks');
 const { router: agentsRoutes, setIO: setAgentsIO } = require('./routes/agents');
 const chatRoutes = require('./routes/chat');
@@ -325,6 +326,7 @@ app.use('/api', authRoutes);
 app.use('/api/settings', requireAuth, settingsRoutes);
 app.use('/api/services', requireAuth, servicesRoutes);
 app.use('/api/projects', requireAuth, projectsRoutes);
+app.use('/api/workspaces', requireAuth, workspacesRoutes);
 app.use('/api/tasks', requireAuth, tasksRoutes);
 app.use('/api/approvals', requireAuth, approvalsRoutes);
 app.use('/api/runners', requireAuth, runnersRoutes);
@@ -450,6 +452,16 @@ io.on('connection', (socket) => {
 });
 
 // --- Start Server ---
+// Workspace bootstrap (feat-workspaces-impl-001): guarantee the default
+// "Personal" workspace exists and stamp any pre-workspaces project entries
+// into it. Both idempotent — safe on every boot.
+try {
+  require('./lib/workspaceRegistry').ensureDefault();
+  require('./lib/projectRegistry').migrateWorkspaces();
+} catch (err) {
+  logger.error({ err }, 'Workspace bootstrap failed');
+}
+
 server.listen(PORT, '0.0.0.0', () => {
   logger.info({ port: PORT }, `Backend server running on http://0.0.0.0:${PORT}`);
   logger.info({ features: featureSnapshot() }, 'Feature flags');
