@@ -16,7 +16,7 @@ import ServiceGroup from './ServiceGroup'
 // the page title — the standalone h1 is suppressed; count chip, filter note,
 // and the show-all toggle all stay.
 export default function DemosView({ tasks = [], onSelectTask, embedded = false }) {
-  const { activeProject } = useTaskData()
+  const { activeProject, allProjects, activeWorkspace } = useTaskData()
   const [groups, setGroups] = useState([])
   const [state, setState] = useState('loading') // 'loading' | 'ok' | 'error'
   const [error, setError] = useState(null)
@@ -58,12 +58,27 @@ export default function DemosView({ tasks = [], onSelectTask, embedded = false }
     await load()
   }, [load])
 
-  // Apply the active-project filter and the empty-group toggle.
+  // Apply the workspace lens, the active-project filter, and the empty-group toggle.
   const visibleGroups = useMemo(() => {
     if (state !== 'ok') return []
     const filterByProject = activeProject && activeProject !== 'All'
+    // Service groups join projects by NAME string; groups belonging to other
+    // workspaces' projects do not exist here. The Unassigned bucket and any
+    // group matching NO registered project follow the Root rule: default
+    // workspace only — nothing may vanish from every workspace.
+    const groupWorkspace = (groupName) => {
+      const p = allProjects.find(
+        (proj) => (proj.name || proj) === groupName || (proj.folder || proj) === groupName
+      )
+      return p ? (p.workspace || 'personal') : 'personal'
+    }
     return groups
       .filter((g) => {
+        if (g.group === 'Unassigned') {
+          if (activeWorkspace !== 'personal') return false
+        } else if (groupWorkspace(g.group) !== activeWorkspace) {
+          return false
+        }
         if (filterByProject) {
           // Show this group only if its name matches the active project,
           // OR it's the Unassigned bucket containing demos in this project
@@ -75,7 +90,7 @@ export default function DemosView({ tasks = [], onSelectTask, embedded = false }
         return true
       })
       .filter((g) => showAllServices || g.demos.length > 0 || g.group === 'Unassigned')
-  }, [groups, activeProject, showAllServices, state])
+  }, [groups, activeProject, showAllServices, state, allProjects, activeWorkspace])
 
   const totalDemos = useMemo(
     () => visibleGroups.reduce((sum, g) => sum + g.demos.length, 0),

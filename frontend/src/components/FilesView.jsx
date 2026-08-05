@@ -125,7 +125,7 @@ function UnmatchedNote({ items, onSelectTask, onDismiss }) {
 // `selectedTask` (feat-files-highlight-001): the open task's files light up
 // in the tree — the reverse affordance of the touched-by panel.
 export default function FilesView({ tasks = [], onSelectTask, selectedTask = null }) {
-  const { activeProject } = useTaskData()
+  const { activeProject, allProjects, activeWorkspace } = useTaskData()
   const [info, setInfo] = useState(null)          // { configured, projects } | null
   const [error, setError] = useState(null)
   const [showIgnored, setShowIgnored] = useState(false)
@@ -394,9 +394,15 @@ export default function FilesView({ tasks = [], onSelectTask, selectedTask = nul
   const scoped = !!activeProject && activeProject !== 'All'
   const visibleProjects = useMemo(() => {
     const all = info?.projects || []
-    const named = all.filter((p) => p.folder !== 'Root')
+    // /api/files/projects is registry-wide; the workspace lens is applied
+    // here client-side — roots belonging to OTHER workspaces do not exist.
+    // A folder the registry doesn't know resolves to 'personal', same rule
+    // as task filtering: nothing may vanish from every workspace.
+    const wsByFolder = new Map(allProjects.map((p) => [p.folder || p, p.workspace || 'personal']))
+    const named = all.filter((p) => p.folder !== 'Root'
+      && (wsByFolder.get(p.folder) ?? 'personal') === activeWorkspace)
     return scoped ? named.filter((p) => p.folder === activeProject || p.project === activeProject) : named
-  }, [info, scoped, activeProject])
+  }, [info, scoped, activeProject, allProjects, activeWorkspace])
 
   const renderEntries = (project, relPath, depth) => {
     const key = `${project}:${relPath}`

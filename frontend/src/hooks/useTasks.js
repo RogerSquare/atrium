@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, startTransition } from 'react'
-import { API_URL, API_BASE, apiFetch } from '../config'
+import { API_URL, apiFetch } from '../config'
 
 export default function useTasks(user, socketRef) {
   const [tasks, setTasks] = useState([])
@@ -9,6 +9,16 @@ export default function useTasks(user, socketRef) {
   const [recentlyUpdatedIds, setRecentlyUpdatedIds] = useState([])
   const flashTimersRef = useRef({})
   const [activeProject, setActiveProject] = useState(localStorage.getItem('opusBoardActiveProject') || 'All')
+  // Workspaces isolate (feat-workspaces-impl-001): the active workspace is a
+  // filter ONE LEVEL ABOVE activeProject — only its projects (and their
+  // tasks) exist anywhere in the UI. 'personal' is the backend-guaranteed
+  // default that holds Root and every pre-workspaces project.
+  const [workspaces, setWorkspaces] = useState([{ id: 'personal', name: 'Personal', order: 0 }])
+  const [activeWorkspace, setActiveWorkspace] = useState(localStorage.getItem('atriumActiveWorkspace') || 'personal')
+  // Mirror for fetchData's load-time validation — fetchData deliberately does
+  // NOT depend on activeWorkspace (a switch should not trigger a refetch).
+  const activeWorkspaceRef = useRef(activeWorkspace)
+  useEffect(() => { activeWorkspaceRef.current = activeWorkspace }, [activeWorkspace])
   const [filterType, setFilterType] = useState('all')
   const [filterPriority, setFilterPriority] = useState('all')
   const [filterAssignee, setFilterAssignee] = useState('all')
@@ -28,6 +38,10 @@ export default function useTasks(user, socketRef) {
     localStorage.setItem('opusBoardActiveProject', activeProject)
   }, [activeProject])
 
+  useEffect(() => {
+    localStorage.setItem('atriumActiveWorkspace', activeWorkspace)
+  }, [activeWorkspace])
+
   const fetchData = useCallback(async () => {
     if (!user) return
     try {
@@ -36,27 +50,41 @@ export default function useTasks(user, socketRef) {
       // needs every task at once (column counts, client-side filters, drag
       // targets) and rendering is already virtualized; pagination exists for
       // agents/MCP, where tool-result budgets are the constraint.
-      const [tasksRes, projectsRes, archivedRes] = await Promise.all([
+      const [tasksRes, projectsRes, archivedRes, workspacesRes] = await Promise.all([
         apiFetch(`${API_URL}/tasks`),
         apiFetch(`${API_URL}/projects?include=active`),
-        apiFetch(`${API_URL}/projects?include=archived`)
+        apiFetch(`${API_URL}/projects?include=archived`),
+        apiFetch(`${API_URL}/workspaces`)
       ])
 
       if (tasksRes.ok && projectsRes.ok) {
         const tasksData = await tasksRes.json()
         const projectsData = await projectsRes.json()
         const archivedData = archivedRes.ok ? await archivedRes.json() : []
+        const workspacesData = workspacesRes.ok ? await workspacesRes.json() : null
         setTasks(tasksData)
         setProjects(projectsData)
         setArchivedProjects(archivedData)
+        if (Array.isArray(workspacesData) && workspacesData.length > 0) {
+          setWorkspaces(workspacesData)
+          // A persisted workspace that was deleted mid-session falls back to
+          // the default rather than stranding the UI on an empty world.
+          setActiveWorkspace(prev => workspacesData.some(w => w.id === prev) ? prev : 'personal')
+        }
 
         // Validate active project — only override if the saved project has
-        // been archived mid-session. Don't silently switch to 'folders[0]'
-        // on a transient-looking mismatch, that was stomping persisted
+        // been archived mid-session, or if it demonstrably belongs to a
+        // different workspace than the active one (a persisted cross-
+        // workspace pairing would render an empty board with a misleading
+        // anchor label). Don't silently switch to 'folders[0]' on a
+        // transient-looking mismatch, that was stomping persisted
         // selections when the API shape drifted or the project loaded late.
         setActiveProject(prev => {
+          if (prev === 'All') return prev
           const archivedFolders = archivedData.map(p => p.folder || p)
-          if (prev !== 'All' && archivedFolders.includes(prev)) return 'All'
+          if (archivedFolders.includes(prev)) return 'All'
+          const proj = projectsData.find(p => (p.folder || p) === prev)
+          if (proj && (proj.workspace || 'personal') !== activeWorkspaceRef.current) return 'All'
           return prev
         })
 
@@ -185,11 +213,10 @@ export default function useTasks(user, socketRef) {
       setSelectedTask(prev => prev && prev.id === data.id ? null : prev)
     }
 
+    // Full refetch, not just /api/projects: workspace mutations emit this
+    // event too, and the old narrow refetch also left archivedProjects stale.
     const onProjectChanged = () => {
-      apiFetch(`${API_BASE}/api/projects`)
-        .then(res => res.json())
-        .then(data => setProjects(data))
-        .catch(console.error)
+      fetchData()
     }
 
     socket.on('task_created', onTaskCreated)
@@ -298,11 +325,15 @@ export default function useTasks(user, socketRef) {
       const res = await apiFetch(`${API_URL}/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
+        // New projects land in the workspace you're standing in.
+        body: JSON.stringify({ name, workspace: activeWorkspace })
       })
       if (res.ok) {
         const data = await res.json()
-        setActiveProject(data.project)
+        // activeProject stores the FOLDER; data.project is the short id and
+        // matched no picker row (pre-workspaces bug, fixed with the backend's
+        // new `folder` response field).
+        setActiveProject(data.folder || data.project)
         fetchData()
       } else {
         const errorData = await res.json()
@@ -312,7 +343,7 @@ export default function useTasks(user, socketRef) {
       console.error('Failed to create project', error)
       alert('Failed to create project')
     }
-  }, [fetchData])
+  }, [fetchData, activeWorkspace])
 
   const handleDeleteProject = useCallback(async () => {
     if (activeProject === 'Root') return
@@ -395,12 +426,131 @@ export default function useTasks(user, socketRef) {
     [tasks]
   )
 
+  // The isolation lens: every consumer below gets ONLY the active workspace's
+  // projects. Root carries workspace 'personal' from the backend, so outside
+  // the default workspace the "No project" row (and its tasks) simply do not
+  // exist — the requestor pinned Root tasks to the default workspace.
+  const workspaceProjects = useMemo(
+    () => projects.filter(p => (p.workspace || 'personal') === activeWorkspace),
+    [projects, activeWorkspace]
+  )
+  // Folder → workspace lookup for task filtering. A task whose folder is not
+  // in the registry at all resolves to 'personal' — a task must NEVER vanish
+  // from every workspace because the registry hasn't caught up with disk.
+  const workspaceByFolder = useMemo(() => {
+    const m = new Map()
+    for (const p of projects) m.set(p.folder || p, p.workspace || 'personal')
+    return m
+  }, [projects])
+  // The active workspace's tasks, before any board filters — feeds both
+  // filteredTasks and count surfaces (ProjectAnchor's "All projects" total).
+  const workspaceTasks = useMemo(
+    () => tasks.filter(t => (workspaceByFolder.get(t.project || 'Root') ?? 'personal') === activeWorkspace),
+    [tasks, workspaceByFolder, activeWorkspace]
+  )
+  const workspaceArchivedProjects = useMemo(
+    () => archivedProjects.filter(p => (p.workspace || 'personal') === activeWorkspace),
+    [archivedProjects, activeWorkspace]
+  )
+
+  // Switching workspaces switches the whole visible world; a project selection
+  // from the old workspace would strand the board on an empty filter, so it
+  // resets to 'All' (= all projects of the NEW workspace) unless it carries over.
+  const switchWorkspace = useCallback((wsId) => {
+    setActiveWorkspace(wsId)
+    setActiveProject(prev => {
+      if (prev === 'All') return prev
+      const proj = projects.find(p => (p.folder || p) === prev)
+      return proj && (proj.workspace || 'personal') === wsId ? prev : 'All'
+    })
+  }, [projects])
+
+  const createWorkspace = useCallback(async (name) => {
+    try {
+      const res = await apiFetch(`${API_URL}/workspaces`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        return { ok: false, error: err.error || 'Create failed' }
+      }
+      const data = await res.json()
+      await fetchData()
+      return { ok: true, workspace: data.workspace }
+    } catch (error) {
+      return { ok: false, error: error.message }
+    }
+  }, [fetchData])
+
+  const renameWorkspace = useCallback(async (id, name) => {
+    try {
+      const res = await apiFetch(`${API_URL}/workspaces/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        return { ok: false, error: err.error || 'Rename failed' }
+      }
+      await fetchData()
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: error.message }
+    }
+  }, [fetchData])
+
+  const deleteWorkspace = useCallback(async (id) => {
+    try {
+      const res = await apiFetch(`${API_URL}/workspaces/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        return { ok: false, error: err.error || 'Delete failed' }
+      }
+      setActiveWorkspace(prev => prev === id ? 'personal' : prev)
+      await fetchData()
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: error.message }
+    }
+  }, [fetchData])
+
+  const assignProjectWorkspace = useCallback(async (idOrFolder, wsId) => {
+    try {
+      const res = await apiFetch(`${API_URL}/projects/${encodeURIComponent(idOrFolder)}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace: wsId })
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        return { ok: false, error: err.error || 'Move failed' }
+      }
+      // Moving the ACTIVE project out from under the current workspace would
+      // leave the board filtered on something invisible — same stale rule as
+      // a workspace switch.
+      if (wsId !== activeWorkspace) {
+        const moved = projects.find(p => (p.folder || p) === idOrFolder || p.id === idOrFolder)
+        const movedFolder = moved ? (moved.folder || moved) : idOrFolder
+        setActiveProject(prev => prev === movedFolder ? 'All' : prev)
+      }
+      await fetchData()
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: error.message }
+    }
+  }, [fetchData, activeWorkspace, projects])
+
   const STALE_THRESHOLDS = { in_progress: 3, review: 7 }
 
   const filteredTasks = useMemo(() => {
     const todayStart = filterToday ? new Date().setHours(0, 0, 0, 0) : 0
 
-    return tasks.filter(t => {
+    // workspaceTasks is already isolation-filtered — the workspace lens
+    // trumps everything below, including the uncategorized-status passthrough.
+    return workspaceTasks.filter(t => {
       const standardStatusIds = ['draft', 'todo', 'in_progress', 'waiting_input', 'review', 'done']
       const isUncategorized = !standardStatusIds.includes(t.status)
 
@@ -431,7 +581,7 @@ export default function useTasks(user, socketRef) {
 
       return projectMatch && typeMatch && priorityMatch && assigneeMatch && searchMatch && todayMatch && staleMatch
     })
-  }, [tasks, activeProject, filterType, filterPriority, filterAssignee, filterToday, filterStale, searchQuery, user?.username])
+  }, [workspaceTasks, activeProject, filterType, filterPriority, filterAssignee, filterToday, filterStale, searchQuery, user?.username])
 
   // Cleanup flash timers on unmount
   useEffect(() => {
@@ -442,7 +592,19 @@ export default function useTasks(user, socketRef) {
 
   return {
     tasks,
-    projects,
+    workspaceTasks,
+    // The workspace-scoped list ships under the historical name so every
+    // consumer (pickers, board, anchor, graph, loops) isolates for free;
+    // allProjects is the unscoped registry for management surfaces only.
+    projects: workspaceProjects,
+    allProjects: projects,
+    workspaces,
+    activeWorkspace,
+    setActiveWorkspace: switchWorkspace,
+    createWorkspace,
+    renameWorkspace,
+    deleteWorkspace,
+    assignProjectWorkspace,
     loading,
     selectedTask,
     activeProject,
@@ -471,7 +633,7 @@ export default function useTasks(user, socketRef) {
     handleCreateTask,
     handleCreateProject,
     handleDeleteProject,
-    archivedProjects,
+    archivedProjects: workspaceArchivedProjects,
     archiveProject,
     unarchiveProject,
     githubLinks,

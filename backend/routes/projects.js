@@ -6,6 +6,7 @@ const { getIO } = require('../lib/io');
 const { sanitizeFilename, safePath } = require('../lib/sanitize');
 const { logger } = require('../lib/logger');
 const registry = require('../lib/projectRegistry');
+const workspaces = require('../lib/workspaceRegistry');
 
 const router = express.Router();
 
@@ -51,6 +52,7 @@ router.get('/', (req, res) => {
       id,
       name: proj.name,
       folder: proj.folder,
+      workspace: proj.workspace || workspaces.DEFAULT_WORKSPACE_ID,
       archived: proj.archived === true,
       ...(proj.archived_at ? { archived_at: proj.archived_at } : {}),
     }));
@@ -96,9 +98,18 @@ router.get('/', (req, res) => {
  */
 router.post('/', (req, res) => {
   try {
-    const { name, id: customId } = req.body;
+    const { name, id: customId, workspace } = req.body;
     if (!name || name === 'Root') {
       return res.status(400).json({ error: 'Invalid project name' });
+    }
+
+    // Optional target workspace — new projects land where the client is
+    // standing. Unknown ids are a 400, not a silent fall-through to the
+    // default: a typo'd workspace would make the project invisible.
+    if (workspace !== undefined) {
+      if (typeof workspace !== 'string' || !workspaces.getById(workspace)) {
+        return res.status(400).json({ error: `Unknown workspace "${workspace}"` });
+      }
     }
 
     // Validate custom ID format if provided
@@ -119,7 +130,7 @@ router.post('/', (req, res) => {
       fs.mkdirSync(targetDir, { recursive: true });
     }
 
-    const project = registry.register(folderName, customId);
+    const project = registry.register(folderName, customId, workspace);
     if (!project) {
       return res.status(409).json({ error: 'Project ID already taken' });
     }
@@ -129,7 +140,9 @@ router.post('/', (req, res) => {
       registry.setName(project.id, sanitizedName);
     }
 
-    res.status(201).json({ success: true, project: project.id, name: folderName, id: project.id });
+    // `folder` is what the client's activeProject stores — `project` (the
+    // short id) predates that and matches no picker row.
+    res.status(201).json({ success: true, project: project.id, name: folderName, folder: folderName, id: project.id, workspace: project.workspace });
     const io = getIO();
     if (io) io.emit('project_changed');
   } catch (error) {
@@ -418,6 +431,66 @@ router.put('/:idOrName/directory', (req, res) => {
       return res.status(400).json({ error: 'Could not update project' });
     }
     res.json({ success: true, id: project.id, directory: directory ? directory.trim() : null });
+  } catch (error) {
+    logger.error({ err: error }, 'Request failed');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/projects/{idOrName}/workspace:
+ *   put:
+ *     summary: Move a project to another workspace
+ *     tags: [Projects]
+ *     parameters:
+ *       - in: path
+ *         name: idOrName
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [workspace]
+ *             properties:
+ *               workspace:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Project reassigned
+ *       400:
+ *         description: Unknown workspace
+ *       403:
+ *         description: Root is pinned to the default workspace
+ *       404:
+ *         description: Project not found
+ */
+router.put('/:idOrName/workspace', (req, res) => {
+  try {
+    const { workspace } = req.body || {};
+    if (typeof workspace !== 'string' || !workspace.trim()) {
+      return res.status(400).json({ error: 'workspace is required' });
+    }
+    const project = registry.resolve(req.params.idOrName);
+    if (!project || !project.id) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    if (project.id === 'root') {
+      return res.status(403).json({ error: 'Root is pinned to the default workspace' });
+    }
+    if (!workspaces.getById(workspace)) {
+      return res.status(400).json({ error: `Unknown workspace "${workspace}"` });
+    }
+    if (!registry.setWorkspace(project.id, workspace)) {
+      return res.status(400).json({ error: 'Could not update project' });
+    }
+    res.json({ success: true, id: project.id, workspace });
+    const io = getIO();
+    if (io) io.emit('project_changed');
   } catch (error) {
     logger.error({ err: error }, 'Request failed');
     res.status(500).json({ error: 'Internal server error' });

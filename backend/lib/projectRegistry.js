@@ -1,14 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 const { PROJECTS_FILE, TASKS_DIR, ARCHIVED_DIR } = require('./constants');
+const { DEFAULT_WORKSPACE_ID } = require('./workspaceRegistry');
 
 /**
  * Project Registry
  *
  * Manages a projects.json file that maps short IDs to project folder names.
- * Format: { "atrium": { "name": "Atrium", "folder": "Atrium" }, ... }
+ * Format: { "atrium": { "name": "Atrium", "folder": "Atrium", "workspace": "personal" }, ... }
  *
- * The "Root" project always has id "root" and cannot be modified.
+ * The "Root" project always has id "root" and cannot be modified. Root is
+ * synthesized (never stored), so its workspace is pinned to the default —
+ * Root/Unassigned tasks live in the default workspace only.
  */
 
 function load() {
@@ -55,14 +58,44 @@ function getAll({ include = 'active' } = {}) {
   const result = {};
   // Root is never archivable; always include it when active/all requested
   if (include === 'active' || include === 'all') {
-    result.root = { name: 'Root', folder: 'Root' };
+    result.root = { name: 'Root', folder: 'Root', workspace: DEFAULT_WORKSPACE_ID };
   }
   for (const [id, proj] of Object.entries(registry)) {
     if (include === 'active' && isArchived(proj)) continue;
     if (include === 'archived' && !isArchived(proj)) continue;
-    result[id] = proj;
+    // Defensive default: entries are backfilled at boot, but a hand-edited
+    // file must not make a project vanish from every workspace.
+    result[id] = proj.workspace ? proj : { ...proj, workspace: DEFAULT_WORKSPACE_ID };
   }
   return result;
+}
+
+// One-time, idempotent: stamp pre-workspaces entries into the default
+// workspace. Runs at boot (server.js) after workspaceRegistry.ensureDefault.
+function migrateWorkspaces() {
+  const registry = load();
+  let changed = false;
+  for (const proj of Object.values(registry)) {
+    if (!proj.workspace) {
+      proj.workspace = DEFAULT_WORKSPACE_ID;
+      changed = true;
+    }
+  }
+  if (changed) save(registry);
+  return changed;
+}
+
+// Reassign a project to another workspace. Root is synthesized and pinned to
+// the default workspace, so it can never move. Workspace existence is the
+// route's job (it has the registry loaded anyway for the 400 message).
+function setWorkspace(id, workspaceId) {
+  if (id === 'root') return false;
+  if (typeof workspaceId !== 'string' || !workspaceId.trim()) return false;
+  const registry = load();
+  if (!registry[id]) return false;
+  registry[id].workspace = workspaceId;
+  save(registry);
+  return true;
 }
 
 function getById(id) {
@@ -98,8 +131,8 @@ function resolve(idOrName) {
   return null;
 }
 
-function register(folder, customId) {
-  if (folder === 'Root') return { id: 'root', name: 'Root', folder: 'Root' };
+function register(folder, customId, workspaceId) {
+  if (folder === 'Root') return { id: 'root', name: 'Root', folder: 'Root', workspace: DEFAULT_WORKSPACE_ID };
   const registry = load();
 
   // Check if already registered
@@ -113,7 +146,7 @@ function register(folder, customId) {
     return null; // ID already taken
   }
 
-  const entry = { name: folder, folder };
+  const entry = { name: folder, folder, workspace: workspaceId || DEFAULT_WORKSPACE_ID };
   registry[id] = entry;
   save(registry);
   return { id, ...entry };
@@ -185,12 +218,13 @@ function syncWithDisk(tasksDirs) {
     changed = true;
   }
 
-  // Register new folders (active side only)
+  // Register new folders (active side only). Auto-discovered folders land in
+  // the default workspace — same rule as the boot backfill.
   const registeredFolders = new Set(Object.values(registry).map(p => p.folder));
   for (const folder of tasksDirs) {
     if (folder !== 'Root' && !registeredFolders.has(folder)) {
       const id = generateId(folder);
-      registry[id] = { name: folder, folder };
+      registry[id] = { name: folder, folder, workspace: DEFAULT_WORKSPACE_ID };
       changed = true;
     }
   }
@@ -248,5 +282,5 @@ function getArchived() {
 module.exports = {
   getAll, getById, getByFolder, getByName, resolve,
   register, updateId, setName, setDirectory, remove, syncWithDisk, generateId,
-  archive, unarchive, getArchived
+  archive, unarchive, getArchived, migrateWorkspaces, setWorkspace
 };

@@ -93,7 +93,9 @@ export default function AppShell() {
   // as App.jsx's AppContent — split the destructure across the two slices so
   // the facelift shell only re-renders when the slice it actually reads changes.
   const {
-    filteredTasks, tasks, projects, activeProject, setActiveProject,
+    filteredTasks, tasks, workspaceTasks, projects, allProjects,
+    workspaces, activeWorkspace,
+    activeProject, setActiveProject,
     loading, selectedTask,
     archivedProjects,
     searchQuery, setSearchQuery,
@@ -110,6 +112,8 @@ export default function AppShell() {
   const {
     selectTask, handleDeleteTask, handleCreateProject, handleCreateTask,
     archiveProject, unarchiveProject,
+    setActiveWorkspace, createWorkspace, renameWorkspace,
+    deleteWorkspace, assignProjectWorkspace,
     resetAllFilters,
     handleStartAgent, handleStopAgent,
     undoRedo, setBulkSelectMode,
@@ -390,6 +394,33 @@ export default function AppShell() {
     }
   }, [archiveProject, unarchiveProject, undoRedo, setErrorToast])
 
+  // Workspace mutations (feat-workspaces-impl-001) — surface failures as
+  // toasts; the guards (default undeletable, in-use blocked with a count)
+  // come back as readable backend errors.
+  const handleCreateWorkspace = useCallback(async (name) => {
+    const result = await createWorkspace(name)
+    if (!result.ok) setErrorToast(result.error || 'Could not create workspace')
+    return result
+  }, [createWorkspace, setErrorToast])
+
+  const handleRenameWorkspace = useCallback(async (id, name) => {
+    const result = await renameWorkspace(id, name)
+    if (!result.ok) setErrorToast(result.error || 'Could not rename workspace')
+    return result
+  }, [renameWorkspace, setErrorToast])
+
+  const handleDeleteWorkspace = useCallback(async (id) => {
+    const result = await deleteWorkspace(id)
+    if (!result.ok) setErrorToast(result.error || 'Could not delete workspace')
+    return result
+  }, [deleteWorkspace, setErrorToast])
+
+  const handleAssignProjectWorkspace = useCallback(async (idOrFolder, wsId, displayName) => {
+    const result = await assignProjectWorkspace(idOrFolder, wsId)
+    if (!result.ok) setErrorToast(result.error || `Could not move "${displayName || idOrFolder}"`)
+    return result
+  }, [assignProjectWorkspace, setErrorToast])
+
   // Restore with undo — parity with the legacy shell's handler (the modal
   // previously called unarchiveProject bare, so restores weren't undoable).
   const handleUnarchiveProject = useCallback(async (idOrName, displayName) => {
@@ -429,13 +460,21 @@ export default function AppShell() {
         activeView={activeView}
         onChangeView={handleChangeView}
         projects={projects}
-        tasks={tasks}
+        tasks={workspaceTasks}
         activeProject={activeProject}
         onSetActiveProject={setActiveProject}
         onCreateProject={() => setShowCreateProject(true)}
         onOpenArchived={() => setShowArchived(true)}
         onArchiveProject={handleArchiveProject}
         archivedCount={archivedProjects?.length || 0}
+        workspaces={workspaces}
+        activeWorkspace={activeWorkspace}
+        allProjects={allProjects}
+        onSetActiveWorkspace={setActiveWorkspace}
+        onCreateWorkspace={handleCreateWorkspace}
+        onRenameWorkspace={handleRenameWorkspace}
+        onDeleteWorkspace={handleDeleteWorkspace}
+        onAssignProjectWorkspace={handleAssignProjectWorkspace}
         onOpenSettings={() => setShowSettings(true)}
         onOpenHelp={() => setShowHelp(true)}
         onCreateTask={() => setShowCreateTask(true)}
@@ -652,6 +691,9 @@ export default function AppShell() {
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
         projects={projects}
+        workspaces={workspaces}
+        activeWorkspace={activeWorkspace}
+        onSetActiveWorkspace={setActiveWorkspace}
         onSetActiveProject={setActiveProject}
         onChangeView={handleChangeView}
         onSetFilterType={setFilterType}

@@ -26,7 +26,16 @@ export default function CreateTaskModal({ projects, activeProject, onClose, onCr
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState('feat')
   const [idOverride, setIdOverride] = useState('')
-  const [project, setProject] = useState(activeProject === 'All' ? 'Root' : activeProject)
+  // Outside the default workspace the Root/"No project" row does not exist
+  // (Root tasks are pinned to the default workspace) — defaulting to 'Root'
+  // there would create a task that instantly vanishes from view. Fall back
+  // to the first visible project instead.
+  const [project, setProject] = useState(() => {
+    if (activeProject && activeProject !== 'All') return activeProject
+    if (projects.some(p => (p.folder || p) === 'Root')) return 'Root'
+    const first = projects[0]
+    return first ? (first.folder || first) : 'Root'
+  })
   const [type, setType] = useState('fullstack')
   const [priority, setPriority] = useState('medium')
   const [description, setDescription] = useState('### Description\nNew task description.\n\n### Comments\n')

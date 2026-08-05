@@ -68,6 +68,7 @@ function buildDataPaths(root, env = process.env) {
     SETTINGS_FILE: path.join(root, 'settings.json'),
     SERVICES_FILE: path.join(root, 'services.json'),
     PROJECTS_FILE: path.join(root, 'projects.json'),
+    WORKSPACES_FILE: path.join(root, 'workspaces.json'),
 
     // These three predate ATRIUM_DATA_DIR — the loop test scripts point them
     // at throwaway files so a test run never clobbers real loops. The narrower
