@@ -44,3 +44,13 @@ services:
       # Project registry. Single-file mount — viable only because this file is
       # written in place (see above).
       - "${ATRIUM_SHARED_PROJECTS:?set ATRIUM_SHARED_PROJECTS to the host backend/projects.json}:/data/projects.json"
+
+      # Workspace registry (feat-workspace-folders-impl-001). Same in-place
+      # write contract as projects.json, same single-file viability. Without
+      # this mount the two instances shared project→workspace assignments but
+      # kept separate workspace definitions — under the nested
+      # tasks/<Workspace>/<Project> layout that would mean two different
+      # opinions about directory names, so it is now required.
+      # NOTE: the host file must exist before `up` (start the native backend
+      # once — its boot creates it), or Docker creates a DIRECTORY here.
+      - "${ATRIUM_SHARED_WORKSPACES:?set ATRIUM_SHARED_WORKSPACES to the host backend/workspaces.json}:/data/workspaces.json"

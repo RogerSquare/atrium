@@ -1096,11 +1096,10 @@ router.post('/', (req, res) => {
       });
     }
     const safeProject = project === 'Root' ? 'Root' : sanitizeFilename(project);
-    const targetDir = safeProject === 'Root' ? TASKS_DIR : safePath(TASKS_DIR, safeProject);
-
-    if (!targetDir) {
+    if (!safeProject) {
       return res.status(400).json({ error: 'Invalid project name' });
     }
+    const targetDir = projectTaskDir(safeProject);
 
     // Agent contract: tasks cannot be created in archived projects
     if (safeProject !== 'Root') {

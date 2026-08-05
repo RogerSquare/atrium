@@ -454,10 +454,14 @@ io.on('connection', (socket) => {
 // --- Start Server ---
 // Workspace bootstrap (feat-workspaces-impl-001): guarantee the default
 // "Personal" workspace exists and stamp any pre-workspaces project entries
-// into it. Both idempotent — safe on every boot.
+// into it. Then the one-time flat → nested tasks-layout migration
+// (feat-workspace-folders-impl-001) — order matters: the migration resolves
+// destinations through the registry the bootstrap just backfilled. All
+// idempotent — safe on every boot.
 try {
   require('./lib/workspaceRegistry').ensureDefault();
   require('./lib/projectRegistry').migrateWorkspaces();
+  require('./lib/layoutMigration').migrateTasksLayout();
 } catch (err) {
   logger.error({ err }, 'Workspace bootstrap failed');
 }

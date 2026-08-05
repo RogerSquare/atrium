@@ -47,7 +47,7 @@ Layer these onto the base file with `-f`:
 | Override | Purpose |
 |---|---|
 | `docker-compose.fresh.yml` | Throwaway empty-state sandbox on its own volume/project — try Atrium without touching your data. Set `ATRIUM_PORT` on the CLI. |
-| `docker-compose.shared-tasks.yml` | Point the container at a **native** install's live `backend/tasks` + `projects.json` instead of its own volume. Read the file's header first — the risk is lost updates if both instances edit the same task at once. |
+| `docker-compose.shared-tasks.yml` | Point the container at a **native** install's live `backend/tasks` + `projects.json` + `workspaces.json` instead of its own volume. Read the file's header first — the risk is lost updates if both instances edit the same task at once. Both instances MUST run the same code version: the nested `tasks/<Workspace>/<Project>` layout (marker file `tasks/.layout-v2`) is misread by pre-workspace-folders code. |
 | `docker-compose.docker-services.yml` | Add the socket allow-list proxy so `type: container` services can be started/stopped from the board. Restrict names with `ATRIUM_ALLOWED_CONTAINERS`. Optionally enable ephemeral test-job containers with `ATRIUM_RUNNER_IMAGES` (see below). |
 
 Example: `docker compose -f docker-compose.yml -f docker-compose.docker-services.yml up -d`.

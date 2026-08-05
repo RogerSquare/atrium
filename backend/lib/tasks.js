@@ -149,7 +149,15 @@ const getAllTasks = (dirPath = TASKS_DIR) => {
 // O(1) lookup for a task's file path
 const findTaskFilePath = (id) => {
   ensureIndex();
-  return taskIndex.get(id) || null;
+  const indexed = taskIndex.get(id);
+  if (indexed && fs.existsSync(indexed)) return indexed;
+  // Self-heal: a folder move (workspace reassign/rename, archive round-trip,
+  // or the other shared-mount instance moving files) leaves indexed paths
+  // stale until the next full scan. Rebuild once and retry rather than
+  // 404-ing a task that merely changed directories.
+  buildIndex();
+  const rebuilt = taskIndex.get(id);
+  return (rebuilt && fs.existsSync(rebuilt)) ? rebuilt : null;
 };
 
 // Atomic write: write to .tmp file then rename to final path
