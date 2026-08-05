@@ -38,6 +38,11 @@ export async function mockCoreApi(page) {
   await page.route('**/api/**', (route) => route.fulfill({ json: {} }));
   await page.route('**/api/tasks**', (route) => route.fulfill({ json: [] }));
   await page.route('**/api/projects**', (route) => route.fulfill({ json: [] }));
+  // Workspaces (feat-workspaces-impl-001): the client fetches this on every
+  // load; the default-only response reproduces the pre-workspaces world.
+  await page.route('**/api/workspaces**', (route) => route.fulfill({
+    json: [{ id: 'personal', name: 'Personal', order: 0 }],
+  }));
   await page.route('**/api/services', (route) => route.fulfill({ json: [] }));
   await page.route('**/api/loops**', (route) => route.fulfill({ json: [] }));
   await page.route('**/api/agents/active', (route) => route.fulfill({ json: [] }));
