@@ -81,8 +81,20 @@ RUN apt-get update \
 
 # Claude Code CLI. backend/lib/claudeBin.js resolves it via PATH (`which
 # claude`) after checking ~/.local/bin, so a global npm install is found.
-RUN npm install -g @anthropic-ai/claude-code \
+# The ARG is a deliberate cache-buster: Docker caches this layer, so with the
+# self-updater disabled below the CLI would otherwise drift stale forever.
+# Refresh with:  docker compose build --build-arg CLAUDE_CODE_VERSION=<ver|latest>
+ARG CLAUDE_CODE_VERSION=latest
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
  && npm cache clean --force
+
+# The install above runs as root but the container runs as `node` (uid 1000),
+# so the CLI's self-updater can never write /usr/local/lib/node_modules — it
+# fails with EACCES and every web-shell session shows "Auto-update failed".
+# Containers update via image rebuild (the install line always fetches
+# latest), so disable self-update outright. Web-shell PTYs inherit this via
+# `...process.env` (backend/sockets/web-shell.js).
+ENV DISABLE_AUTOUPDATER=1
 
 WORKDIR /app
 
