@@ -84,8 +84,7 @@ const scanAllTasks = (dirPath = TASKS_DIR, tasksArray = []) => {
       const fileContent = fs.readFileSync(filePath, 'utf-8');
       const { data, content } = matter(fileContent);
 
-      const relativePath = path.relative(TASKS_DIR, dirPath);
-      const project = relativePath || 'Root';
+      const project = require('./taskPaths').deriveProject(filePath);
       const id = data.id || file.replace('.md', '');
 
       // Keep the index in sync during full scans
@@ -254,8 +253,7 @@ const updateTaskField = async (taskId, field, value, actor = 'Agent', actionMess
     invalidateCache();
     indexSet(taskId, filePath);
 
-    const relativePath = path.relative(TASKS_DIR, path.dirname(filePath));
-    const project = relativePath || 'Root';
+    const project = require('./taskPaths').deriveProject(filePath);
     const taskObj = {
       ...data,
       id: taskId,
@@ -314,8 +312,7 @@ const appendComment = async (taskId, comment, actor = 'Agent') => {
     invalidateCache();
     indexSet(taskId, filePath);
 
-    const relativePath = path.relative(TASKS_DIR, path.dirname(filePath));
-    const project = relativePath || 'Root';
+    const project = require('./taskPaths').deriveProject(filePath);
     const taskObj = { ...data, id: taskId, project, content: body.trim() };
     try {
       const io = getIO();
@@ -347,8 +344,11 @@ const createTask = (fields = {}) => {
   if (!taskId || taskId !== id) { const e = new Error('id is not filename-safe'); e.status = 400; throw e; }
 
   const safeProject = project === 'Root' ? 'Root' : sanitizeFilename(project);
-  const targetDir = safeProject === 'Root' ? TASKS_DIR : safePath(TASKS_DIR, safeProject);
-  if (!targetDir) { const e = new Error('Invalid project name'); e.status = 400; throw e; }
+  if (!safeProject) { const e = new Error('Invalid project name'); e.status = 400; throw e; }
+  // Nested layout: the project's directory lives under its workspace's
+  // directory. Safe by construction — folder is sanitized, workspace dir
+  // comes from the registry via taskPaths.
+  const targetDir = require('./taskPaths').projectTaskDir(safeProject);
   if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
   const filePath = safePath(targetDir, `${taskId}.md`);

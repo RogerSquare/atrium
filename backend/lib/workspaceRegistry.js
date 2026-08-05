@@ -83,6 +83,17 @@ function getById(id) {
   return registry[id] ? { id, ...registry[id] } : null;
 }
 
+// Two workspaces may not sanitize to the same on-disk directory name — the
+// nested tasks layout (taskPaths.js) keys workspace dirs by sanitized name,
+// and a collision would silently merge their project trees.
+function dirCollides(registry, name, excludeId) {
+  const { sanitizeWorkspaceDirName } = require('./taskPaths');
+  const candidate = sanitizeWorkspaceDirName(name, '');
+  return Object.entries(registry).some(([wid, ws]) =>
+    wid !== excludeId && sanitizeWorkspaceDirName(ws.name, wid) === candidate
+  );
+}
+
 // Returns the created workspace, or null when the name is empty/taken.
 function create(name) {
   const trimmed = String(name || '').trim();
@@ -91,7 +102,7 @@ function create(name) {
   const taken = Object.values(registry).some(
     ws => ws.name.toLowerCase() === trimmed.toLowerCase()
   );
-  if (taken) return null;
+  if (taken || dirCollides(registry, trimmed, null)) return null;
   const id = generateId(trimmed);
   const maxOrder = Math.max(0, ...Object.values(registry).map(ws => ws.order ?? 0));
   registry[id] = { name: trimmed, order: maxOrder + 1 };
@@ -107,7 +118,7 @@ function rename(id, name) {
   const taken = Object.entries(registry).some(
     ([wid, ws]) => wid !== id && ws.name.toLowerCase() === trimmed.toLowerCase()
   );
-  if (taken) return false;
+  if (taken || dirCollides(registry, trimmed, id)) return false;
   registry[id].name = trimmed;
   save(registry);
   return true;

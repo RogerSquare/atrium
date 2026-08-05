@@ -32,8 +32,7 @@ function optedOut(data) {
 }
 
 function relativeProject(filePath) {
-  const rel = path.relative(TASKS_DIR, path.dirname(filePath));
-  return rel || 'Root';
+  return require('../lib/taskPaths').deriveProject(filePath);
 }
 
 const files = walk(TASKS_DIR);
