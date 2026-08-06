@@ -11,22 +11,13 @@ const persistAndEmit = async (io, msg) => {
 };
 
 const registerChatHandlers = (io, socket) => {
+  // No join/leave system messages (ui-chat-system-noise-001): reconnect churn
+  // produced runs of "X joined/left" lines, and the online-users row already
+  // shows presence. Only the chat_users broadcast carries join/leave now.
   socket.on('chat_join', async (data) => {
     const username = data?.username || 'Anonymous';
-    const alreadyOnline = Array.from(onlineUsers.values()).some(u => u.username === username);
-
     onlineUsers.set(socket.id, { username, joinedAt: new Date().toISOString() });
     io.emit('chat_users', getUniqueOnlineUsers());
-
-    if (!alreadyOnline) {
-      const systemMsg = {
-        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        type: 'system',
-        content: `${username} joined the chat`,
-        timestamp: new Date().toISOString()
-      };
-      await persistAndEmit(io, systemMsg);
-    }
   });
 
   socket.on('chat_send', async (data) => {
@@ -103,18 +94,7 @@ const handleChatDisconnect = async (io, socket) => {
   const user = onlineUsers.get(socket.id);
   if (user) {
     onlineUsers.delete(socket.id);
-    const stillOnline = Array.from(onlineUsers.values()).some(u => u.username === user.username);
     io.emit('chat_users', getUniqueOnlineUsers());
-
-    if (!stillOnline) {
-      const systemMsg = {
-        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        type: 'system',
-        content: `${user.username} left the chat`,
-        timestamp: new Date().toISOString()
-      };
-      await persistAndEmit(io, systemMsg);
-    }
   }
 };
 

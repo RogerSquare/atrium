@@ -85,9 +85,13 @@ export default function useChat(user, socketRef) {
     // Load message history. Shape-guarded: onMessage spreads prev, so a
     // non-array response here (error object, proxy page) would crash the
     // whole shell at the NEXT incoming message rather than at fetch time.
+    // System join/leave messages are no longer generated
+    // (ui-chat-system-noise-001), but years of them live in the history file
+    // and another instance on the shared chat file may still emit them —
+    // filter here so they never render.
     apiFetch(`${API_BASE}/api/chat/messages`)
       .then(res => res.json())
-      .then(data => setChatMessages(Array.isArray(data) ? data : []))
+      .then(data => setChatMessages(Array.isArray(data) ? data.filter(m => m?.type !== 'system') : []))
       .catch(console.error)
 
     if (!chatJoinedRef.current) {
@@ -96,6 +100,7 @@ export default function useChat(user, socketRef) {
     }
 
     const onMessage = (msg) => {
+      if (msg?.type === 'system') return
       setChatMessages(prev => [...prev, msg])
       const isFromOther = msg.type === 'user' && msg.username !== user.username
       if (isFromOther) {
