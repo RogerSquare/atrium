@@ -55,6 +55,7 @@ const { router: autoEnterHookRoutes } = require('./routes/autoenterHook');
 
 // --- Socket Handlers ---
 const { registerChatHandlers, handleChatDisconnect } = require('./sockets/chat');
+const { registerAiChatHandlers } = require('./sockets/aiChat');
 const { registerWebShellHandlers } = require('./sockets/web-shell');
 const { registerPresenceHandlers, handlePresenceDisconnect, getAllTaskViewers } = require('./sockets/presence');
 const { registerPreviewHandlers, handlePreviewDisconnect } = require('./sockets/preview');
@@ -438,6 +439,7 @@ io.on('connection', (socket) => {
   logger.debug({ socketId: socket.id }, 'Socket connected');
 
   registerChatHandlers(io, socket);
+  registerAiChatHandlers(io, socket);
   registerPresenceHandlers(io, socket);
   registerPreviewHandlers(io, socket);
   const cleanupWebShell = registerWebShellHandlers(socket);
