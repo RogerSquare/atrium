@@ -1,25 +1,109 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Trash2, Loader2, Sparkles, Wrench, X, Lock } from 'lucide-react'
+import { Send, Trash2, Loader2, Sparkles, Wrench, X, Lock, Square } from 'lucide-react'
 import AIChatMessage from './AIChatMessage'
 import { API_BASE, apiFetch } from '../config'
 import { IconButton } from './ui'
+import { useAuth } from '../contexts/AuthContext'
 
+// Streaming (feat-ai-chat-stream-001): POST /api/ai/chat returns 202 and the
+// response arrives as ai_chat_chunk / ai_chat_done / ai_chat_error events on
+// the thread's socket room. The in-flight text lives in `streamText`, separate
+// from `messages`, so completed AIChatMessage rows (memoized) keep stable
+// props and skip re-rendering on every chunk. The ai_chat_join ack returns a
+// server-side snapshot of any generation already running, which is what makes
+// a refresh re-attach instead of losing the response.
 export default function AIChatPanel({ user, task, compact, onClose, noHeader, aiChatEnabled = true }) {
+  const { socketRef } = useAuth()
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [streamText, setStreamText] = useState(null)
   const [toolActivity, setToolActivity] = useState(null)
   const messagesEndRef = useRef(null)
 
-  const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }
+  const threadKey = task ? `task:${task.id}` : `user:${user?.username}`
+  const joinPayload = task ? { taskId: task.id } : { username: user?.username }
+
+  const scrollToBottom = (behavior = 'smooth') => { messagesEndRef.current?.scrollIntoView({ behavior }) }
 
   useEffect(() => {
+    let disposed = false
+    const socket = socketRef?.current
+
+    const attachSnapshot = (session) => {
+      if (!session || session.status !== 'running') return
+      // The pending user message isn't in history until the stream finishes —
+      // surface it so the re-attached view reads as a normal exchange.
+      if (session.userMessage) {
+        setMessages(prev => {
+          const last = prev[prev.length - 1]
+          if (last?.role === 'user' && last.content === session.userMessage) return prev
+          return [...prev, { role: 'user', content: session.userMessage }]
+        })
+      }
+      setStreamText(session.buffer || '')
+      setLoading(true)
+      setTimeout(() => scrollToBottom('auto'), 50)
+    }
+
+    const join = () => {
+      socket?.emit('ai_chat_join', joinPayload, (ack) => {
+        if (!disposed && ack?.session) attachSnapshot(ack.session)
+      })
+    }
+
+    const onChunk = (payload) => {
+      if (payload?.key !== threadKey) return
+      setStreamText(prev => (payload.replace !== undefined ? payload.replace : (prev || '') + payload.text))
+      setLoading(true)
+    }
+    const onDone = (payload) => {
+      if (payload?.key !== threadKey) return
+      setMessages(prev => [...prev, { role: 'assistant', content: payload.response, ...(payload.cancelled ? { cancelled: true } : {}) }])
+      setStreamText(null)
+      setLoading(false)
+      setTimeout(() => scrollToBottom(), 50)
+    }
+    const onError = (payload) => {
+      if (payload?.key !== threadKey) return
+      setMessages(prev => [...prev, { role: 'assistant', content: `**Error:** ${payload.error || 'AI generation failed.'}` }])
+      setStreamText(null)
+      setLoading(false)
+    }
+
+    socket?.on('ai_chat_chunk', onChunk)
+    socket?.on('ai_chat_done', onDone)
+    socket?.on('ai_chat_error', onError)
+    // Rooms don't survive a reconnect — re-join (and re-sync) when it happens.
+    socket?.on('connect', join)
+
+    // Load history first, then join: the join ack may append the pending user
+    // message, which a later history overwrite would drop.
     const params = task ? `type=task&taskId=${task.id}` : `type=user&username=${user?.username}`
     apiFetch(`${API_BASE}/api/ai/history?${params}`)
       .then(res => res.json())
-      .then(data => { if (Array.isArray(data)) setMessages(data); setTimeout(scrollToBottom, 100) })
-      .catch(console.error)
+      .then(data => {
+        if (disposed) return
+        if (Array.isArray(data)) setMessages(data)
+        setTimeout(() => scrollToBottom('auto'), 100)
+        join()
+      })
+      .catch((err) => { console.error(err); join() })
+
+    return () => {
+      disposed = true
+      socket?.emit('ai_chat_leave', joinPayload)
+      socket?.off('ai_chat_chunk', onChunk)
+      socket?.off('ai_chat_done', onDone)
+      socket?.off('ai_chat_error', onError)
+      socket?.off('connect', join)
+    }
   }, [task?.id, user?.username])
+
+  // Keep the streaming message in view as chunks land.
+  useEffect(() => {
+    if (streamText !== null) scrollToBottom('auto')
+  }, [streamText])
 
   const handleSend = async () => {
     const trimmed = input.trim()
@@ -28,24 +112,44 @@ export default function AIChatPanel({ user, task, compact, onClose, noHeader, ai
     setInput('')
     setLoading(true)
     setToolActivity(null)
-    setTimeout(scrollToBottom, 50)
+    setTimeout(() => scrollToBottom(), 50)
     try {
       const body = { message: trimmed, username: user?.username, role: user?.role }
       if (task) { body.taskId = task.id; body.taskContext = task }
       const res = await apiFetch(`${API_BASE}/api/ai/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const data = await res.json()
-      if (res.ok) {
+      if (res.status === 409 && data.session) {
+        // A generation is already running for this thread — attach to it.
+        setStreamText(data.session.buffer || '')
+      } else if (res.ok && data.streaming) {
+        // 202 accepted — chunks arrive via the socket room.
+      } else if (res.ok && data.response) {
+        // Non-streaming fallback shape.
         if (data.toolResults?.length > 0) setToolActivity(data.toolResults)
         setMessages(prev => [...prev, { role: 'assistant', content: data.response }])
+        setLoading(false)
       } else {
         setMessages(prev => [...prev, { role: 'assistant', content: `**Error:** ${data.error}` }])
+        setLoading(false)
       }
     } catch (err) {
       setMessages(prev => [...prev, { role: 'assistant', content: '**Error:** Failed to connect to AI service.' }])
-    } finally {
+      setStreamText(null)
       setLoading(false)
-      setTimeout(scrollToBottom, 50)
+    } finally {
+      setTimeout(() => scrollToBottom(), 50)
     }
+  }
+
+  const handleStop = async () => {
+    try {
+      await apiFetch(`${API_BASE}/api/ai/chat/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(joinPayload),
+      })
+      // ai_chat_done (cancelled) finalizes the UI state.
+    } catch (err) { console.error(err) }
   }
 
   const handleClear = async () => {
@@ -125,7 +229,10 @@ export default function AIChatPanel({ user, task, compact, onClose, noHeader, ai
         {messages.map((msg, i) => (
           <AIChatMessage key={i} message={msg} currentUser={user?.username} />
         ))}
-        {loading && (
+        {streamText !== null && streamText !== '' && (
+          <AIChatMessage message={{ role: 'assistant', content: streamText }} currentUser={user?.username} />
+        )}
+        {loading && !streamText && (
           <div className="flex items-start" style={{ marginBottom: 'var(--space-2)' }}>
             <div className="flex items-center gap-2" style={{ background: 'var(--fill-secondary)', padding: 'var(--space-2) var(--space-3)', borderRadius: '18px', borderBottomLeftRadius: '6px' }}>
               <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--accent-app)' }} />
@@ -160,11 +267,20 @@ export default function AIChatPanel({ user, task, compact, onClose, noHeader, ai
             className="flex-1 bg-transparent focus:outline-none disabled:opacity-50"
             style={{ fontSize: 'var(--text-subhead)', color: 'var(--text-app)', padding: 'var(--space-2) 0' }}
           />
-          {input.trim() && (
+          {loading && (
+            <IconButton
+              onClick={handleStop}
+              style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--fill-secondary)' }}
+              color="var(--apple-red, #ff453a)"
+              title="Stop generating"
+              aria-label="Stop generating"
+            >
+              <Square className="w-4 h-4" fill="currentColor" />
+            </IconButton>
+          )}
+          {!loading && input.trim() && (
             <IconButton
               onClick={handleSend}
-              disabled={loading}
-              loading={loading}
               className="text-white"
               style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--accent-app)', color: 'white' }}
               title="Send"
@@ -173,7 +289,7 @@ export default function AIChatPanel({ user, task, compact, onClose, noHeader, ai
               <Send className="w-[18px] h-[18px]" />
             </IconButton>
           )}
-          {!input.trim() && messages.length > 0 && (
+          {!loading && !input.trim() && messages.length > 0 && (
             <IconButton
               onClick={() => { if (window.confirm('Clear AI chat history?')) handleClear() }}
               style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--fill-secondary)' }}

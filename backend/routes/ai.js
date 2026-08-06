@@ -105,17 +105,172 @@ const saveHistory = (type, id, messages) => {
   fs.writeFileSync(getHistoryPath(type, id), JSON.stringify(messages.slice(-MAX_HISTORY), null, 2));
 };
 
-// Track active AI chat sessions to prevent double-spawns
-const activeSessions = new Map();
+const aiSessions = require('../lib/aiChatSessions');
+
+// Idle timeout: kill a generation only when claude has produced nothing for
+// this long. The old flat 2-minute cap killed legitimately long agentic runs;
+// idle-based keeps the same protection against a hung process.
+const IDLE_TIMEOUT_MS = 120000;
+
+// proc was spawned with shell:true, so proc.pid is the shell — on Windows
+// killing it orphans the actual claude process. taskkill /T takes the tree.
+const killTree = (proc) => {
+  if (!proc || proc.killed) return;
+  if (process.platform === 'win32') {
+    try { spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F']); } catch { /* already gone */ }
+  } else {
+    try { proc.kill('SIGTERM'); } catch { /* already gone */ }
+  }
+};
 
 // --- Routes ---
+
+// Run one claude generation for a session, streaming parsed text into the
+// session buffer and the thread's socket room. Split out of the route so the
+// no-partial-flag retry can re-enter it cleanly.
+const runGeneration = ({ sessionKey, prompt, workDir, historyType, historyId, message, allowPartialFlag }) => {
+  const session = aiSessions.get(sessionKey);
+  if (!session) return;
+
+  const room = aiSessions.roomForKey(sessionKey);
+  const emit = (event, payload) => {
+    const io = getIO();
+    if (io) io.to(room).emit(event, { key: sessionKey, ...payload });
+  };
+
+  const args = ['--print', '--verbose', '--output-format', 'stream-json'];
+  if (allowPartialFlag) args.push('--include-partial-messages');
+  args.push('--dangerously-skip-permissions');
+
+  const claude = spawn('claude', args, {
+    cwd: workDir,
+    shell: true,
+    stdio: ['pipe', 'pipe', 'pipe']
+  });
+  session.proc = claude;
+
+  claude.stdin.write(prompt);
+  claude.stdin.end();
+
+  let rawStdout = '';
+  let errorOutput = '';
+
+  const parser = aiSessions.createStreamParser({
+    currentBuffer: () => aiSessions.get(sessionKey)?.buffer || '',
+    onDelta: (text) => {
+      aiSessions.appendText(sessionKey, text);
+      emit('ai_chat_chunk', { text });
+    },
+    onMessage: (text) => {
+      const sep = (aiSessions.get(sessionKey)?.buffer || '') ? '\n\n' : '';
+      aiSessions.appendText(sessionKey, sep + text);
+      emit('ai_chat_chunk', { text: sep + text });
+    },
+    onResult: (text) => {
+      // The result event is the canonical final answer (intermediate turn
+      // text is progress narration) — replace, matching what history saves.
+      aiSessions.replaceText(sessionKey, text);
+      emit('ai_chat_chunk', { replace: text });
+    },
+  });
+
+  // Idle-based watchdog: any output resets the clock.
+  let idleTimer = null;
+  const resetIdle = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      logger.warn({ sessionKey }, 'AI chat generation idle timeout — killing');
+      killTree(claude);
+    }, IDLE_TIMEOUT_MS);
+  };
+  resetIdle();
+
+  claude.stdout.on('data', (data) => {
+    const text = data.toString();
+    rawStdout += text;
+    parser.write(text);
+    resetIdle();
+  });
+  claude.stderr.on('data', (data) => { errorOutput += data.toString(); resetIdle(); });
+
+  claude.on('close', (code) => {
+    clearTimeout(idleTimer);
+    parser.flush();
+    const current = aiSessions.get(sessionKey);
+    if (!current) return; // stop endpoint already finalized
+
+    // Older CLI without --include-partial-messages: bail before any output
+    // and retry once without the flag.
+    if (
+      code !== 0 && allowPartialFlag && !current.buffer && !parser.parsedAnyEvent()
+      && /include-partial-messages|unknown option|unexpected argument/i.test(errorOutput)
+    ) {
+      logger.warn({ sessionKey }, 'claude CLI rejected --include-partial-messages — retrying without it');
+      runGeneration({ sessionKey, prompt, workDir, historyType, historyId, message, allowPartialFlag: false });
+      return;
+    }
+
+    // Plain-text fallback: process wrote output but nothing parsed as
+    // stream-json (e.g. an old CLI ignoring --output-format).
+    if (!current.buffer && !parser.parsedAnyEvent() && rawStdout.trim()) {
+      aiSessions.replaceText(sessionKey, rawStdout.trim());
+    }
+
+    const finished = aiSessions.get(sessionKey);
+    const response = (finished.buffer || '').trim();
+
+    if (finished.cancelled) {
+      aiSessions.finish(sessionKey, { status: 'cancelled' });
+      if (response) {
+        const history = loadHistory(historyType, historyId);
+        history.push({ role: 'user', content: message });
+        history.push({ role: 'assistant', content: response, cancelled: true });
+        saveHistory(historyType, historyId, history);
+      }
+      emit('ai_chat_done', { response, cancelled: true });
+      return;
+    }
+
+    if (code !== 0 && !response) {
+      aiSessions.finish(sessionKey, { status: 'error', error: errorOutput });
+      emit('ai_chat_error', { error: errorOutput.trim() || `Claude exited with code ${code}` });
+      return;
+    }
+
+    if (!response) {
+      aiSessions.finish(sessionKey, { status: 'error', error: 'Empty response' });
+      emit('ai_chat_error', { error: 'Claude returned an empty response.' });
+      return;
+    }
+
+    aiSessions.finish(sessionKey, { status: 'done' });
+    const history = loadHistory(historyType, historyId);
+    history.push({ role: 'user', content: message });
+    history.push({ role: 'assistant', content: response });
+    saveHistory(historyType, historyId, history);
+    emit('ai_chat_done', { response, cancelled: false });
+  });
+
+  claude.on('error', (err) => {
+    clearTimeout(idleTimer);
+    if (!aiSessions.get(sessionKey)) return;
+    aiSessions.finish(sessionKey, { status: 'error', error: err.message });
+    emit('ai_chat_error', { error: `Failed to start Claude CLI: ${err.message}` });
+  });
+};
 
 /**
  * @swagger
  * /api/ai/chat:
  *   post:
- *     summary: Send a message to the AI assistant
- *     description: Spawns Claude CLI with Atrium context. Prevents concurrent sessions. 2-minute timeout.
+ *     summary: Send a message to the AI assistant (streamed)
+ *     description: >
+ *       Spawns Claude CLI with Atrium context and returns 202 immediately.
+ *       The response streams over Socket.IO to the thread's room
+ *       (join via the `ai_chat_join` event) as `ai_chat_chunk` /
+ *       `ai_chat_done` / `ai_chat_error` events. One generation per thread
+ *       at a time; 409 while one is in flight (attach instead via
+ *       GET /api/ai/stream or the socket join ack).
  *     tags: [AI]
  *     requestBody:
  *       required: true
@@ -139,15 +294,19 @@ const activeSessions = new Map();
  *                 type: object
  *                 description: Task data to include in prompt
  *     responses:
- *       200:
- *         description: AI response
+ *       202:
+ *         description: Generation started; stream over Socket.IO
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 response:
+ *                 streaming:
+ *                   type: boolean
+ *                 key:
  *                   type: string
+ *       409:
+ *         description: A generation is already in flight for this thread
  */
 router.post('/chat', async (req, res) => {
   try {
@@ -175,8 +334,15 @@ router.post('/chat', async (req, res) => {
     }
 
     const sessionKey = taskId ? `task:${taskId}` : `user:${username}`;
-    if (activeSessions.has(sessionKey)) {
-      return res.status(409).json({ error: 'AI is still processing the previous message. Please wait.' });
+    if (aiSessions.isRunning(sessionKey)) {
+      // Not an error state for the UI anymore — the client should attach to
+      // the in-flight stream (socket join ack / GET /stream) instead of
+      // re-sending. 409 still guards the actual double-send.
+      return res.status(409).json({
+        error: 'AI is still processing the previous message.',
+        streaming: true,
+        session: aiSessions.snapshot(sessionKey),
+      });
     }
 
     const historyType = taskId ? 'task' : 'user';
@@ -192,59 +358,76 @@ router.post('/chat', async (req, res) => {
       workDir = settings.workingDirectory || process.cwd();
     } catch (e) { workDir = process.cwd(); }
 
-    // Spawn claude CLI
-    activeSessions.set(sessionKey, true);
+    aiSessions.createSession(sessionKey, { userMessage: message });
+    runGeneration({ sessionKey, prompt, workDir, historyType, historyId, message, allowPartialFlag: true });
 
-    const claude = spawn('claude', ['--print', '--dangerously-skip-permissions'], {
-      cwd: workDir,
-      shell: true,
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    claude.stdin.write(prompt);
-    claude.stdin.end();
-
-    let output = '';
-    let errorOutput = '';
-
-    claude.stdout.on('data', (data) => { output += data.toString(); });
-    claude.stderr.on('data', (data) => { errorOutput += data.toString(); });
-
-    claude.on('close', (code) => {
-      activeSessions.delete(sessionKey);
-
-      if (code !== 0 && !output) {
-        return res.status(500).json({ error: errorOutput || `Claude exited with code ${code}` });
-      }
-
-      const response = output.trim();
-
-      // Save to history
-      history.push({ role: 'user', content: message });
-      history.push({ role: 'assistant', content: response });
-      saveHistory(historyType, historyId, history);
-
-      res.json({ response });
-    });
-
-    claude.on('error', (err) => {
-      activeSessions.delete(sessionKey);
-      res.status(500).json({ error: `Failed to start Claude CLI: ${err.message}` });
-    });
-
-    // Timeout after 2 minutes
-    setTimeout(() => {
-      if (activeSessions.has(sessionKey)) {
-        claude.kill();
-        activeSessions.delete(sessionKey);
-      }
-    }, 120000);
-
+    res.status(202).json({ streaming: true, key: sessionKey });
   } catch (error) {
     logger.error({ err: error }, 'AI chat error');
-    logger.error({ err: error }, 'Request failed');
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+/**
+ * @swagger
+ * /api/ai/stream:
+ *   get:
+ *     summary: Snapshot of the in-flight AI generation for a thread
+ *     description: Returns the accumulated buffer of a running generation, or session=null when idle. Used to re-attach after a refresh.
+ *     tags: [AI]
+ *     parameters:
+ *       - in: query
+ *         name: taskId
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: username
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Current session snapshot or null
+ */
+router.get('/stream', (req, res) => {
+  const { taskId, username } = req.query;
+  if (!taskId && !username) return res.status(400).json({ error: 'taskId or username required' });
+  const sessionKey = taskId ? `task:${taskId}` : `user:${username}`;
+  res.json({ session: aiSessions.snapshot(sessionKey) });
+});
+
+/**
+ * @swagger
+ * /api/ai/chat/stop:
+ *   post:
+ *     summary: Cancel the in-flight AI generation for a thread
+ *     description: Kills the spawned Claude process. The partial response is persisted to history with a cancelled marker and broadcast via ai_chat_done.
+ *     tags: [AI]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               taskId:
+ *                 type: string
+ *               username:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Cancellation requested (idempotent — ok even if nothing was running)
+ */
+router.post('/chat/stop', (req, res) => {
+  const { taskId, username } = req.body || {};
+  if (!taskId && !username) return res.status(400).json({ error: 'taskId or username required' });
+  const sessionKey = taskId ? `task:${taskId}` : `user:${username}`;
+  const session = aiSessions.get(sessionKey);
+  if (!session || session.status !== 'running') {
+    return res.json({ stopped: false });
+  }
+  aiSessions.markCancelled(sessionKey);
+  killTree(session.proc);
+  res.json({ stopped: true });
 });
 
 /**

@@ -1,7 +1,12 @@
+import { memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-export default function AIChatMessage({ message, currentUser }) {
+// memo matters here: during a streamed response the panel re-renders on every
+// chunk, and this keeps the finished messages (stable object identities in
+// the messages array) from re-running ReactMarkdown each time
+// (feat-ai-chat-stream-001).
+function AIChatMessage({ message, currentUser }) {
   const isUser = message.role === 'user'
 
   return (
@@ -39,6 +44,13 @@ export default function AIChatMessage({ message, currentUser }) {
           </div>
         )}
       </div>
+      {message.cancelled && (
+        <span style={{ fontSize: 'var(--text-caption2)', color: 'var(--text-tertiary)', marginLeft: '4px', marginTop: '2px' }}>
+          generation stopped
+        </span>
+      )}
     </div>
   )
 }
+
+export default memo(AIChatMessage)
