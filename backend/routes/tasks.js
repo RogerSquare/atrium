@@ -12,6 +12,7 @@ const { validateReviewLinkage } = require('../lib/branchValidator');
 const { validateE2eStatus } = require('../lib/e2eValidator');
 const { filterTasks, paginateTasks } = require('../lib/taskQuery');
 const { sanitizeFilename, safePath } = require('../lib/sanitize');
+const { projectTaskDir, deriveProject } = require('../lib/taskPaths');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
@@ -92,9 +93,8 @@ router.post('/from-template/:templateId', (req, res) => {
     const rawId = id || `task-${Date.now()}`;
     const taskId = sanitizeFilename(rawId) || `task-${Date.now()}`;
     const safeProject = project === 'Root' ? 'Root' : sanitizeFilename(project);
-    const targetDir = safeProject === 'Root' ? TASKS_DIR : safePath(TASKS_DIR, safeProject);
-
-    if (!targetDir) return res.status(400).json({ error: 'Invalid project name' });
+    if (!safeProject) return res.status(400).json({ error: 'Invalid project name' });
+    const targetDir = projectTaskDir(safeProject);
     if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
     const filePath = safePath(targetDir, `${taskId}.md`);
@@ -385,8 +385,7 @@ router.put('/batch', async (req, res) => {
           atomicWriteFileSync(filePath, newFileContent);
           indexSet(id, filePath);
 
-          const relativePath = path.relative(TASKS_DIR, path.dirname(filePath));
-          const updatedTask = { ...newData, content: currentContent.trim(), project: relativePath || 'Root' };
+          const updatedTask = { ...newData, content: currentContent.trim(), project: deriveProject(filePath) };
           if (io) io.emit('task_updated', withSummary(updatedTask));
           taskWaiters.notify(updatedTask);
           updated++;
@@ -466,7 +465,7 @@ router.delete('/batch', async (req, res) => {
               const fileContent = fs.readFileSync(filePath, 'utf-8');
               const parsed = matter(fileContent);
               parsed.data.deleted_at = new Date().toISOString();
-              parsed.data.deleted_from = path.relative(TASKS_DIR, path.dirname(filePath)) || 'Root';
+              parsed.data.deleted_from = deriveProject(filePath);
               const trashPath = path.join(TRASH_DIR, `${id}.md`);
               fs.writeFileSync(trashPath, matter.stringify(parsed.content, parsed.data));
               fs.unlinkSync(filePath);
@@ -629,8 +628,7 @@ async function claimTaskForWait(id, assignee) {
     trimActivityLog(id, parsed.data);
     const updatedContent = matter.stringify(parsed.content, parsed.data);
     atomicWriteFileSync(filePath, updatedContent);
-    const relativePath = path.relative(TASKS_DIR, path.dirname(filePath));
-    const updatedTask = { ...parsed.data, content: parsed.content, project: relativePath || 'Root' };
+    const updatedTask = { ...parsed.data, content: parsed.content, project: deriveProject(filePath) };
     const io = getIO();
     if (io) io.emit('task_updated', withSummary(updatedTask));
     taskWaiters.notify(updatedTask);
@@ -647,8 +645,7 @@ router.get('/:id', (req, res) => {
     }
     const fileContent = fs.readFileSync(filePath, 'utf-8');
     const { data, content } = matter(fileContent);
-    const relativePath = path.relative(TASKS_DIR, path.dirname(filePath));
-    const project = relativePath || 'Root';
+    const project = deriveProject(filePath);
     const task = {
       id: data.id || id,
       title: data.title || 'Untitled',
@@ -763,8 +760,7 @@ router.put('/:id', async (req, res) => {
     let originalProject = '';
 
     if (filePath) {
-      const relativePath = path.relative(TASKS_DIR, path.dirname(filePath));
-      originalProject = relativePath || 'Root';
+      originalProject = deriveProject(filePath);
     }
 
     if (!filePath) {
@@ -981,7 +977,13 @@ router.put('/:id', async (req, res) => {
 
     // Handle project move
     if (project !== undefined && project !== originalProject) {
-      const targetDir = project === 'Root' ? TASKS_DIR : path.join(TASKS_DIR, project);
+      // Was a raw path.join on the unsanitized body value — projectTaskDir
+      // also closes that gap (folder must be Root or sanitize-clean).
+      const safeMoveTarget = project === 'Root' ? 'Root' : sanitizeFilename(project);
+      if (!safeMoveTarget || safeMoveTarget !== project) {
+        return res.status(400).json({ error: 'Invalid project name' });
+      }
+      const targetDir = projectTaskDir(safeMoveTarget);
 
       if (!fs.existsSync(targetDir)) {
         fs.mkdirSync(targetDir, { recursive: true });
@@ -1094,11 +1096,10 @@ router.post('/', (req, res) => {
       });
     }
     const safeProject = project === 'Root' ? 'Root' : sanitizeFilename(project);
-    const targetDir = safeProject === 'Root' ? TASKS_DIR : safePath(TASKS_DIR, safeProject);
-
-    if (!targetDir) {
+    if (!safeProject) {
       return res.status(400).json({ error: 'Invalid project name' });
     }
+    const targetDir = projectTaskDir(safeProject);
 
     // Agent contract: tasks cannot be created in archived projects
     if (safeProject !== 'Root') {
@@ -1191,8 +1192,7 @@ router.post('/:id/rename', async (req, res) => {
 
     // Check archived project
     const sourceDir = path.dirname(sourcePath);
-    const relativePath = path.relative(TASKS_DIR, sourceDir);
-    const project = relativePath || 'Root';
+    const project = deriveProject(sourcePath);
     if (project !== 'Root') {
       const projectRegistry = require('../lib/projectRegistry');
       const proj = projectRegistry.resolve(project);
@@ -1388,12 +1388,12 @@ router.post('/batch', (req, res) => {
 
         const taskId = sanitizeFilename(id) || `task-${Date.now()}`;
         const safeProject = project === 'Root' ? 'Root' : sanitizeFilename(project);
-        const targetDir = safeProject === 'Root' ? TASKS_DIR : safePath(TASKS_DIR, safeProject);
 
-        if (!targetDir) {
+        if (!safeProject) {
           results.push({ id: taskId, success: false, error: 'Invalid project name' });
           continue;
         }
+        const targetDir = projectTaskDir(safeProject);
 
         if (!fs.existsSync(targetDir)) {
           fs.mkdirSync(targetDir, { recursive: true });
@@ -1664,7 +1664,7 @@ router.post('/:id/history/:filename/restore', async (req, res) => {
       const finalContent = matter.stringify(parsed.content, data);
       atomicWriteFileSync(currentPath, finalContent);
 
-      const restoredTask = { ...data, content: parsed.content, project: path.relative(TASKS_DIR, path.dirname(currentPath)) || 'Root' };
+      const restoredTask = { ...data, content: parsed.content, project: deriveProject(currentPath) };
       res.json({ success: true, task: restoredTask });
       const io = getIO();
       if (io) io.emit('task_updated', withSummary(restoredTask));
@@ -1694,7 +1694,13 @@ router.post('/:id/restore-from-trash', async (req, res) => {
     parsed.data.activity_log = parsed.data.activity_log || [];
     parsed.data.activity_log.push({ timestamp: now, action: 'Task restored from trash' });
 
-    const targetDir = project === 'Root' ? TASKS_DIR : path.join(TASKS_DIR, project);
+    // Resolve at RESTORE time via the registry — the project may have moved
+    // workspaces since deletion; the stamped name is a label, not a path.
+    // Legacy `deleted_from` values are already bare names (the flat layout
+    // only ever produced single segments). Unknown/gone projects land at Root.
+    const registry = require('../lib/projectRegistry');
+    const restoreProject = (project !== 'Root' && registry.getByFolder(project)) ? project : 'Root';
+    const targetDir = projectTaskDir(restoreProject);
     if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
     const restorePath = path.join(targetDir, `${id}.md`);
@@ -1702,7 +1708,7 @@ router.post('/:id/restore-from-trash', async (req, res) => {
     fs.unlinkSync(trashPath);
     indexSet(id, restorePath);
 
-    const restoredTask = { ...parsed.data, content: parsed.content.trim(), project };
+    const restoredTask = { ...parsed.data, content: parsed.content.trim(), project: restoreProject };
     res.json({ success: true, task: restoredTask });
     const io = getIO();
     if (io) io.emit('task_created', withSummary(restoredTask));
@@ -1753,7 +1759,7 @@ router.delete('/:id', async (req, res) => {
           const fileContent = fs.readFileSync(filePath, 'utf-8');
           const parsed = matter(fileContent);
           parsed.data.deleted_at = new Date().toISOString();
-          parsed.data.deleted_from = path.relative(TASKS_DIR, path.dirname(filePath)) || 'Root';
+          parsed.data.deleted_from = deriveProject(filePath);
           const trashPath = path.join(TRASH_DIR, `${id}.md`);
           fs.writeFileSync(trashPath, matter.stringify(parsed.content, parsed.data));
           fs.unlinkSync(filePath);

@@ -116,8 +116,7 @@ for (const filePath of files) {
   // the directory. A missing `project` field is fine — scanAllTasks derives it
   // from the directory path at runtime.
   if (data.project !== undefined && data.project !== null && data.project !== '') {
-    const parentDir = path.dirname(filePath);
-    const expectedProject = parentDir === TASKS_DIR ? 'Root' : path.basename(parentDir);
+    const expectedProject = require('../lib/taskPaths').deriveProject(filePath);
     if (data.project !== expectedProject) {
       record('project_directory_mismatch', filePath, `declared=${JSON.stringify(data.project)} directory implies=${JSON.stringify(expectedProject)}`);
     }

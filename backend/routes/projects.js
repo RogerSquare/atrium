@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { TASKS_DIR } = require('../lib/constants');
 const { getIO } = require('../lib/io');
-const { sanitizeFilename, safePath } = require('../lib/sanitize');
+const { sanitizeFilename } = require('../lib/sanitize');
 const { logger } = require('../lib/logger');
 const registry = require('../lib/projectRegistry');
 const workspaces = require('../lib/workspaceRegistry');
@@ -39,10 +39,30 @@ router.get('/', (req, res) => {
       .filter(dirent => dirent.isDirectory() && !dirent.name.startsWith('.'))
       .map(dirent => dirent.name);
 
-    const folders = getDirs(TASKS_DIR);
+    // Two-level walk (feat-workspace-folders-impl-001): top-level dirs that
+    // match a workspace's directory name hold that workspace's project
+    // folders; anything else at the top level is a legacy flat project
+    // (pre-migration compat) and defaults to the personal workspace.
+    // Workspace-dir match wins on a name clash — the migration owns moving
+    // legacy folders out of the way.
+    const { sanitizeWorkspaceDirName } = require('../lib/taskPaths');
+    const wsByDirName = new Map(
+      workspaces.getAll().map(ws => [sanitizeWorkspaceDirName(ws.name, ws.id), ws.id])
+    );
+    const entries = [];
+    for (const top of getDirs(TASKS_DIR)) {
+      const wsId = wsByDirName.get(top);
+      if (wsId) {
+        for (const folder of getDirs(path.join(TASKS_DIR, top))) {
+          entries.push({ folder, workspace: wsId });
+        }
+      } else {
+        entries.push({ folder: top, workspace: 'personal' });
+      }
+    }
 
     // Sync registry with disk (active side only; archived folders live under .archived/)
-    registry.syncWithDisk(folders);
+    registry.syncWithDisk(entries);
 
     const includeRaw = typeof req.query.include === 'string' ? req.query.include.toLowerCase() : 'active';
     const include = ['active', 'archived', 'all'].includes(includeRaw) ? includeRaw : 'active';
@@ -124,15 +144,17 @@ router.post('/', (req, res) => {
 
     const sanitizedName = name.replace(/[^a-zA-Z0-9-_ ]/g, '-');
     const folderName = sanitizedName.replace(/\s+/g, '-');
-    const targetDir = path.join(TASKS_DIR, folderName);
 
-    if (!fs.existsSync(targetDir)) {
-      fs.mkdirSync(targetDir, { recursive: true });
-    }
-
+    // Register FIRST so projectTaskDir can resolve the folder's workspace,
+    // then create the nested directory. A 409 therefore creates no dir.
     const project = registry.register(folderName, customId, workspace);
     if (!project) {
       return res.status(409).json({ error: 'Project ID already taken' });
+    }
+
+    const targetDir = require('../lib/taskPaths').projectTaskDir(folderName);
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
     }
 
     // Store the display name if different from folder name (persists to projects.json)
@@ -179,11 +201,12 @@ router.delete('/:idOrName', (req, res) => {
     const folder = project ? project.folder : idOrName;
 
     const safeName = sanitizeFilename(folder);
-    const targetDir = safeName ? safePath(TASKS_DIR, safeName) : null;
-
-    if (!targetDir) {
+    if (!safeName || safeName !== folder) {
       return res.status(403).json({ error: 'Invalid directory path' });
     }
+    // Resolve the nested location BEFORE deregistering — projectTaskDir
+    // needs the registry entry to find the workspace directory.
+    const targetDir = require('../lib/taskPaths').projectTaskDir(safeName);
 
     if (fs.existsSync(targetDir)) {
       fs.rmSync(targetDir, { recursive: true, force: true });
@@ -193,6 +216,9 @@ router.delete('/:idOrName', (req, res) => {
     if (project && project.id !== 'root') {
       registry.remove(project.id);
     }
+    // The scanner's 5s cache would otherwise keep serving the deleted
+    // project's tasks (pre-existing gap, now closed).
+    require('../lib/tasks').invalidateCache();
 
     res.json({ success: true });
     const io = getIO();
@@ -370,8 +396,9 @@ router.get('/:idOrName/description', (req, res) => {
     const project = registry.resolve(idOrName);
     const folder = project ? project.folder : idOrName;
 
-    const projectDir = folder === 'Root' ? TASKS_DIR : safePath(TASKS_DIR, sanitizeFilename(folder));
-    if (!projectDir) return res.status(400).json({ error: 'Invalid project name' });
+    const safeFolder = folder === 'Root' ? 'Root' : sanitizeFilename(folder);
+    if (!safeFolder) return res.status(400).json({ error: 'Invalid project name' });
+    const projectDir = require('../lib/taskPaths').projectTaskDir(safeFolder);
     const readmePath = path.join(projectDir, 'README.md');
 
     if (fs.existsSync(readmePath)) {
@@ -505,8 +532,9 @@ router.put('/:idOrName/description', (req, res) => {
     const project = registry.resolve(idOrName);
     const folder = project ? project.folder : idOrName;
 
-    const projectDir = folder === 'Root' ? TASKS_DIR : safePath(TASKS_DIR, sanitizeFilename(folder));
-    if (!projectDir) return res.status(400).json({ error: 'Invalid project name' });
+    const safeFolder = folder === 'Root' ? 'Root' : sanitizeFilename(folder);
+    if (!safeFolder) return res.status(400).json({ error: 'Invalid project name' });
+    const projectDir = require('../lib/taskPaths').projectTaskDir(safeFolder);
     const readmePath = path.join(projectDir, 'README.md');
 
     if (!fs.existsSync(projectDir)) {

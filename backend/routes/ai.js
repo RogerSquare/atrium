@@ -23,8 +23,10 @@ const buildPrompt = (userMessage, username, role, taskContext, history) => {
   tasks.forEach(t => { if (statusCounts[t.status] !== undefined) statusCounts[t.status]++; });
 
   const highPriority = tasks.filter(t => t.priority === 'high' && t.status !== 'done').slice(0, 8);
-  const projects = fs.readdirSync(TASKS_DIR, { withFileTypes: true })
-    .filter(d => d.isDirectory() && !d.name.startsWith('.')).map(d => d.name);
+  // Registry, not a readdir: under the nested layout the top-level dirs are
+  // WORKSPACES, not projects.
+  const projects = Object.values(require('../lib/projectRegistry').getAll({ include: 'active' }))
+    .map(p => p.folder).filter(f => f !== 'Root');
 
   let workDir;
   try {

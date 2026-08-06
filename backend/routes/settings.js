@@ -128,7 +128,10 @@ router.get('/status', (req, res) => {
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf-8'));
     const userCount = fs.readdirSync(USERS_DIR).filter(f => f.endsWith('.json')).length;
     const taskCount = countFiles(TASKS_DIR, '.md');
-    const projectDirs = fs.readdirSync(TASKS_DIR, { withFileTypes: true }).filter(d => d.isDirectory() && !d.name.startsWith('.')).length;
+    // Registry count — under the nested layout the top-level dirs are
+    // workspaces, so a readdir would count those instead of projects.
+    const projectDirs = Object.keys(require('../lib/projectRegistry').getAll({ include: 'active' }))
+      .filter(id => id !== 'root').length;
     const historyCount = fs.existsSync(HISTORY_DIR) ? fs.readdirSync(HISTORY_DIR).filter(f => f.endsWith('.md')).length : 0;
 
     const uptimeMs = Date.now() - serverStartTime;

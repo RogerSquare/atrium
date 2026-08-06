@@ -183,17 +183,23 @@ protocol is in [CLAUDE.md](CLAUDE.md).
 
 ### File-Based Task Storage
 
-Every task is a `.md` file in `backend/tasks/`, organized into subdirectories by project. Each file uses YAML frontmatter for structured metadata (status, priority, assignee, tags) and standard Markdown for the description body. This means tasks are version-controllable, grep-able, and readable without any special tooling.
+Every task is a `.md` file in `backend/tasks/`, organized into subdirectories by workspace, then project. Each file uses YAML frontmatter for structured metadata (status, priority, assignee, tags) and standard Markdown for the description body. This means tasks are version-controllable, grep-able, and readable without any special tooling.
 
 ```
 backend/tasks/
-  MyProject/
-    feat-auth-001.md
-    ui-dashboard-002.md
-  AnotherProject/
-    bug-crash-003.md
+  Personal/              # Workspace directory (named after the workspace)
+    MyProject/
+      feat-auth-001.md
+      ui-dashboard-002.md
+  Work/
+    AnotherProject/
+      bug-crash-003.md
+  feat-inbox-004.md      # Loose files at the top level are "Root" (no project)
   .history/              # Timestamped revision snapshots
+  .layout-v2             # Layout marker written by the one-time migration
 ```
+
+A task's `project` field is always the bare project folder name — the workspace directory is purely organizational, and moving a project to another workspace physically relocates its folder.
 
 ### Real-Time Sync
 
