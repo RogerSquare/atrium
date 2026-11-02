@@ -63,11 +63,12 @@ export default function DetailChanges({ task }) {
     )
   }
 
-  if (!data || !data.pr_number) {
+  const ownCommits = data?.source === 'commits'
+  if (!data || (!data.pr_number && !ownCommits)) {
     return (
       <p style={{ fontStyle: 'italic', color: 'var(--text-tertiary)', fontSize: 'var(--text-footnote)' }}>
-        No pull request linked to this task yet. Push a branch named after the task id
-        and the commits will show up here.
+        No changes linked to this task yet. Push a branch named after the task id, or add a
+        {' '}<code>Task: {task.id}</code> trailer to its commits, and they will show up here.
       </p>
     )
   }
@@ -79,6 +80,15 @@ export default function DetailChanges({ task }) {
     <div className="flex flex-col" style={{ gap: 'var(--space-4)' }}>
       {/* Summary header */}
       <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-2)' }}>
+        {ownCommits && (
+          <span
+            data-testid="changes-own-commits"
+            style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-secondary)' }}
+            title="Only this task's commits: the ones listed on the task and any with its Task: trailer"
+          >
+            This task's commits
+          </span>
+        )}
         {data.pr_url && (
           <a
             href={data.pr_url}
@@ -97,7 +107,7 @@ export default function DetailChanges({ task }) {
             }}
             title={`Open PR #${data.pr_number} on GitHub`}
           >
-            #{data.pr_number} {data.head_branch && `· ${data.head_branch}`}
+            {ownCommits ? 'part of ' : ''}#{data.pr_number} {data.head_branch && `· ${data.head_branch}`}
             <ExternalLink className="w-2.5 h-2.5 opacity-60" />
           </a>
         )}
@@ -125,7 +135,7 @@ export default function DetailChanges({ task }) {
             color: 'var(--text-tertiary)',
             opacity: loading ? 0.6 : 1,
           }}
-          title="Refresh from GitHub"
+          title={ownCommits ? 'Refresh from git' : 'Refresh from GitHub'}
         >
           <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
           Refresh

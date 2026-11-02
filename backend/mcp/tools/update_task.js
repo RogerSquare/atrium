@@ -9,6 +9,8 @@ const ALLOWED_FIELDS = new Set([
   // Changes-view linkage fields — accepted by backend PUT /api/tasks/:id (tasks.js:726)
   // and required by the closing checklist in the Atrium skill + CLAUDE.md.
   'github_branch', 'github_pr_url',
+  // A task's own commits (feat-task-commits-001): shas shown in its Changes tab
+  'github_commits',
   // Playwright e2e gate (feat-e2e-validation-001). Required on review
   // transitions unless the task carries the `no-e2e` tag.
   'e2e_status',

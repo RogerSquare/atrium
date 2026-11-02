@@ -108,6 +108,8 @@ const scanAllTasks = (dirPath = TASKS_DIR, tasksArray = []) => {
         activity_log: data.activity_log || [],
         github_branch: data.github_branch || null,
         github_pr_url: data.github_pr_url || null,
+        // A task's own commits for the Changes view (feat-task-commits-001)
+        github_commits: Array.isArray(data.github_commits) ? data.github_commits : [],
         // Playwright e2e gate (feat-e2e-validation-001) + run summary (feat-e2e-tests-tab-001).
         // Both PRs added the write path in routes/tasks.js but missed extending the read path
         // here, so on-disk values were silently dropped on GET. The Tests tab depends on this.
