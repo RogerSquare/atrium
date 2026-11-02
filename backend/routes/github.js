@@ -10,10 +10,12 @@ const {
   authStatus,
   getLastGhError,
   loadSettings,
+  resolveProjectRepoPath,
 } = require('../lib/github');
 const { looksLikeToken, tokenHint, SETTINGS_KEY } = require('../lib/githubAuth');
 const { logger } = require('../lib/logger');
 const registry = require('../lib/projectRegistry');
+const { getTaskCommitChanges } = require('../lib/taskCommits');
 
 const router = express.Router();
 
@@ -206,6 +208,21 @@ router.get('/changes', async (req, res) => {
       }));
     const links = await getLinks(project, taskProjections, { refresh: false });
     const link = links.by_task_id?.[taskId];
+
+    // The task's own commits first (feat-task-commits-001): when many tasks share one branch,
+    // the PR's whole diff says nothing about any one of them
+    const task = tasks.find(t => t.id === taskId);
+    const own = await getTaskCommitChanges(resolveProjectRepoPath(project), taskId, task?.github_commits,
+                                           { refresh: req.query.refresh === '1' });
+    if (own) {
+      return res.json({
+        ...own,
+        pr_number: link?.pr_number || null,
+        pr_url: link?.pr_url || null,
+        head_branch: link?.branch || null,
+      });
+    }
+
     if (!link || !link.pr_number) {
       return res.json({ pr_number: null, commits: [], files: [], additions: 0, deletions: 0, changed_files: 0 });
     }

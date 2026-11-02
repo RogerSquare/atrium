@@ -670,6 +670,7 @@ router.get('/:id', (req, res) => {
       // (feat-runners-core-001).
       github_branch: data.github_branch || null,
       github_pr_url: data.github_pr_url || null,
+      github_commits: Array.isArray(data.github_commits) ? data.github_commits : [],
       e2e_status: data.e2e_status || null,
       e2e_run: data.e2e_run || null,
       e2e_suite: data.e2e_suite || null,
@@ -754,7 +755,7 @@ router.put('/:id', async (req, res) => {
   const { id } = req.params;
   try {
     await withLock(`task:${id}`, async () => {
-    const { title, status, priority, content, project, assignee, type, component, tags, files_affected, parent_task, depends_on, due_date, updated_by, github_branch, github_pr_url, claude_session_id, e2e_status, e2e_run, e2e_suite } = req.body;
+    const { title, status, priority, content, project, assignee, type, component, tags, files_affected, parent_task, depends_on, due_date, updated_by, github_branch, github_pr_url, github_commits, claude_session_id, e2e_status, e2e_run, e2e_suite } = req.body;
 
     let filePath = findTaskFilePath(id);
     let originalProject = '';
@@ -809,6 +810,10 @@ router.put('/:id', async (req, res) => {
       // Optional Changes-view overrides — see CLAUDE.md "Branch & PR Linkage → Explicit override"
       github_branch: github_branch !== undefined ? github_branch : (currentData.github_branch || null),
       github_pr_url: github_pr_url !== undefined ? github_pr_url : (currentData.github_pr_url || null),
+      // A task's own commits (feat-task-commits-001): a list of shas; anything else is dropped
+      github_commits: github_commits !== undefined
+        ? (Array.isArray(github_commits) ? github_commits.map(String).filter(s => /^[0-9a-f]{7,40}$/i.test(s)) : [])
+        : (currentData.github_commits || []),
       // Playwright e2e gate — see feat-e2e-validation-001. Validator runs on
       // review transitions; `no-e2e` tag opts out (mirrors `no-code`).
       e2e_status: e2e_status !== undefined ? e2e_status : (currentData.e2e_status || null),
