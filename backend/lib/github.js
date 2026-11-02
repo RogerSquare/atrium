@@ -6,6 +6,7 @@ const { SETTINGS_FILE } = require('./constants');
 const { logger } = require('./logger');
 const registry = require('./projectRegistry');
 const { resolveGithubToken, buildGhEnv } = require('./githubAuth');
+const { getTaskCommitSummaries } = require('./taskCommits');
 
 const execFileP = promisify(execFile);
 
@@ -277,10 +278,11 @@ function buildEntryFromOverride(task, branchesByName, prsByBranch, prsByNumber, 
 }
 
 async function buildLinks(repoPath, tasks) {
-  const [remote, branches, prs] = await Promise.all([
+  const [remote, branches, prs, commitSummaries] = await Promise.all([
     getRemote(repoPath),
     getBranches(repoPath),
     getPullRequests(repoPath),
+    getTaskCommitSummaries(repoPath, tasks).catch(() => ({})),
   ]);
 
   const branchesByName = new Map(branches.map(b => [b.name, b]));
@@ -346,9 +348,17 @@ async function buildLinks(repoPath, tasks) {
     }
   }
 
+  // Each task's own commits, for the commit badge beside the PR badge (feat-task-commit-badge-001).
+  // A task with commits but no branch or PR still gets an entry, carrying just `commits`.
+  const repoUrl = remote ? `https://github.com/${remote.owner}/${remote.repo}` : null;
+  for (const [taskId, s] of Object.entries(commitSummaries || {})) {
+    const commits = { ...s, latest_url: repoUrl ? `${repoUrl}/commit/${s.latest_sha}` : null };
+    byTaskId[taskId] = byTaskId[taskId] ? { ...byTaskId[taskId], commits } : { commits };
+  }
+
   return {
     repo: remote,
-    repo_url: remote ? `https://github.com/${remote.owner}/${remote.repo}` : null,
+    repo_url: repoUrl,
     by_task_id: byTaskId,
     detached,
     fetched_at: new Date().toISOString(),

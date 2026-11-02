@@ -70,3 +70,41 @@ test('numstat parsing and per-file totals', () => {
   assert.deepEqual(aggregate(commits), [{ path: 'src/x.js', additions: 5, deletions: 1 }, { path: 'img.png', additions: 0, deletions: 0 }]);
   assert.deepEqual(cleanShas(['abc1234', 'ABC1234', 'xyz', 42, null]), ['abc1234', 'ABC1234']);
 });
+
+// ---- Commit badges (feat-task-commit-badge-001) ----
+
+const { getTaskCommitSummaries, parseLog } = require('./taskCommits');
+
+test('summaries: each task gets its commit count and newest commit', async () => {
+  const r = makeRepo();
+  const s = await getTaskCommitSummaries(r.dir, [{ id: 'feat-a-001' }, { id: 'feat-b-001' }, { id: 'feat-none-001' }]);
+  assert.equal(s['feat-a-001'].count, 2);
+  assert.ok([r.a1, r.a2].includes(s['feat-a-001'].latest_sha));
+  assert.equal(s['feat-b-001'].count, 1);
+  assert.equal(s['feat-b-001'].latest_sha, r.b1);
+  assert.equal(s['feat-b-001'].latest_subject, 'feat(b): other work');
+  assert.equal(s['feat-none-001'], undefined, 'no commits, no summary');
+});
+
+test('summaries: listed shas count too, short or full; unknown ones are skipped', async () => {
+  const r = makeRepo();
+  const s = await getTaskCommitSummaries(r.dir, [
+    { id: 'feat-b-001', github_commits: [r.plain.slice(0, 7), 'deadbeefdeadbeef', r.b1] },
+    { id: 'feat-c-001', github_commits: [r.plain] },
+  ]);
+  assert.equal(s['feat-b-001'].count, 2, 'trailer commit + listed plain commit, b1 not doubled');
+  assert.equal(s['feat-c-001'].count, 1);
+  assert.equal(s['feat-c-001'].latest_sha, r.plain);
+});
+
+test('summaries: no repo or no tasks gives nothing', async () => {
+  assert.deepEqual(await getTaskCommitSummaries(null, [{ id: 'x' }]), {});
+  assert.deepEqual(await getTaskCommitSummaries(makeRepo().dir, []), {});
+});
+
+test('parseLog reads every Task: trailer line in a body', () => {
+  const out = '<COMMIT>abc\x1f2026-11-02T00:00:00Z\x1fsubj\x1fsubj\n\nTask: feat-a-001\nTask: FEAT-B-002\nCo-Authored-By: x\n\x1e\n';
+  const [c] = parseLog(out);
+  assert.equal(c.oid, 'abc');
+  assert.deepEqual(c.taskIds, ['feat-a-001', 'feat-b-002']);
+});
