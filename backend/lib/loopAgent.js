@@ -178,7 +178,7 @@ async function resolvePrForTask(loop, taskId) {
   if (!proj) return { prNumber: null, link: null };
   const tasks = getAllTasks(TASKS_DIR)
     .filter((t) => (t.project || 'Root') === proj.folder && t.id)
-    .map((t) => ({ id: t.id, github_branch: t.github_branch || null, github_pr_url: t.github_pr_url || null }));
+    .map((t) => ({ id: t.id, github_branch: t.github_branch || null, github_pr_url: t.github_pr_url || null, github_commits: t.github_commits || [] }));
   const links = await github.getLinks(loop.project, tasks, { refresh: false });
   const link = links.by_task_id ? links.by_task_id[taskId] : null;
   return { prNumber: link && link.pr_number, link };

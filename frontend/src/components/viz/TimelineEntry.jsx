@@ -8,7 +8,7 @@
 // visibility transitions — this primitive only renders the data body
 // of a single timeline row.
 
-import { Circle, Loader2, Eye, CheckCircle2, GitBranch, GitPullRequest, GitPullRequestDraft, AlertCircle, AlertTriangle, XCircle, Clock, Check } from 'lucide-react'
+import { Circle, Loader2, Eye, CheckCircle2, GitBranch, GitPullRequest, GitPullRequestDraft, GitCommitHorizontal, AlertCircle, AlertTriangle, XCircle, Clock, Check } from 'lucide-react'
 import { STATUS_COLOR } from '../../constants'
 
 const STATUS_ICON = {
@@ -184,6 +184,38 @@ export default function TimelineEntry({ task, link, categoryStyle }) {
               #{link.pr_number}
             </a>
           </>
+        )
+      })()}
+      {link?.commits?.latest_sha && (() => {
+        // The task's own commits (Task: trailer or github_commits): newest short sha, "+N" for the rest
+        const c = link.commits
+        const short = c.latest_sha.slice(0, 7)
+        const more = c.count > 1 ? c.count - 1 : 0
+        const when = c.latest_date ? new Date(c.latest_date).toLocaleString() : null
+        const tooltip = `${c.count} commit${c.count === 1 ? '' : 's'} for this task · latest ${short}: ${c.latest_subject || ''}${when ? ` (${when})` : ''}`
+        const Tag = c.latest_url ? 'a' : 'span'
+        return (
+          <Tag
+            {...(c.latest_url ? { href: c.latest_url, target: '_blank', rel: 'noreferrer' } : {})}
+            onClick={(e) => e.stopPropagation()}
+            className="shrink-0 flex items-center gap-1"
+            style={{
+              padding: '2px 6px',
+              borderRadius: '4px',
+              background: 'var(--fill-secondary)',
+              border: '1px solid color-mix(in srgb, var(--text-tertiary) 30%, transparent)',
+              color: 'var(--text-muted)',
+              fontSize: '10px',
+              fontWeight: 600,
+              fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+            }}
+            title={tooltip}
+            data-testid="commit-badge"
+          >
+            <GitCommitHorizontal className="w-2.5 h-2.5" />
+            {short}
+            {more > 0 && <span style={{ color: 'var(--text-tertiary)', fontWeight: 500 }}>+{more}</span>}
+          </Tag>
         )
       })()}
     </>

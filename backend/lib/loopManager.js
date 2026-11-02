@@ -218,6 +218,8 @@ async function runTick(loop) {
     id: t.id,
     github_branch: t.github_branch || null,
     github_pr_url: t.github_pr_url || null,
+    // Same projection as /api/github/links: the links cache is shared per repo
+    github_commits: t.github_commits || [],
   }));
 
   // refresh:true so a short interval isn't blinded by the 5-min links cache;

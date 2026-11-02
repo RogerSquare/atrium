@@ -83,7 +83,7 @@ export default function DetailChanges({ task }) {
         {ownCommits && (
           <span
             data-testid="changes-own-commits"
-            style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-secondary)' }}
+            style={{ fontSize: 'var(--text-caption2)', fontWeight: 'var(--font-semibold)', color: 'var(--text-muted)' }}
             title="Only this task's commits: the ones listed on the task and any with its Task: trailer"
           >
             This task's commits

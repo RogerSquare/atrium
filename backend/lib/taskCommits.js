@@ -129,8 +129,73 @@ async function getTaskCommitChanges(repoPath, taskId, listedShas, { refresh = fa
   return data;
 }
 
+// ---- Commit badges on task rows (feat-task-commit-badge-001) ------------------------------------
+
+const TRAILER_LINE = /^Task:[ \t]*([A-Za-z0-9._-]+)[ \t]*$/gim;
+
+/**
+ * Parses `git log --format=<COMMIT>%H%x1f%aI%x1f%s%x1f%B%x1e` output.
+ * Returns [{ oid, date, subject, taskIds: [lowercased ids from Task: trailer lines] }].
+ */
+function parseLog(out) {
+  const commits = [];
+  for (const chunk of (out || '').split('\x1e')) {
+    const at = chunk.indexOf('<COMMIT>');
+    if (at < 0) continue;
+    const [oid, date, subject, body = ''] = chunk.slice(at + '<COMMIT>'.length).split('\x1f');
+    if (!oid) continue;
+    const taskIds = [...new Set([...body.matchAll(TRAILER_LINE)].map(m => m[1].toLowerCase()))];
+    commits.push({ oid: oid.trim(), date: date || null, subject: (subject || '').trim(), taskIds });
+  }
+  return commits;
+}
+
+const LOG_FORMAT = '--format=<COMMIT>%H%x1f%aI%x1f%s%x1f%B%x1e';
+
+/**
+ * Every task's own commits in one go, for the rows' commit badges: commits with a `Task: <id>`
+ * trailer on any branch, plus the shas each task lists in `github_commits`.
+ * `tasks` is [{ id, github_commits? }]. Returns { [taskId]: { count, latest_sha, latest_subject, latest_date } }
+ * for the tasks that have any; `latest` is the newest by author date.
+ */
+async function getTaskCommitSummaries(repoPath, tasks) {
+  if (!repoPath || !Array.isArray(tasks) || tasks.length === 0) return {};
+  const trailerOut = await git(repoPath, ['log', '--all', '-E', '-i',
+    '--grep=^Task:[[:space:]]*[A-Za-z0-9._-]+[[:space:]]*$', LOG_FORMAT]);
+  const byTask = new Map();   // lowercased id -> Map(oid -> commit)
+  const add = (id, c) => {
+    if (!byTask.has(id)) byTask.set(id, new Map());
+    byTask.get(id).set(c.oid, c);
+  };
+  for (const c of parseLog(trailerOut)) for (const id of c.taskIds) add(id, c);
+
+  // Listed shas, all resolved in one call; unknown ones are skipped
+  const listedByTask = tasks.map(t => [String(t.id).toLowerCase(), cleanShas(t.github_commits)]).filter(([, l]) => l.length);
+  const allListed = [...new Set(listedByTask.flatMap(([, l]) => l))];
+  if (allListed.length) {
+    const out = await git(repoPath, ['log', '--no-walk=unsorted', '--ignore-missing', LOG_FORMAT, ...allListed]);
+    const known = parseLog(out);
+    for (const [id, list] of listedByTask) {
+      for (const sha of list) {
+        const c = known.find(k => k.oid.toLowerCase().startsWith(sha.toLowerCase()));
+        if (c) add(id, c);
+      }
+    }
+  }
+
+  const result = {};
+  for (const t of tasks) {
+    const own = byTask.get(String(t.id).toLowerCase());
+    if (!own || own.size === 0) continue;
+    const list = [...own.values()];
+    const latest = list.reduce((a, b) => (String(b.date) > String(a.date) ? b : a));
+    result[t.id] = { count: list.length, latest_sha: latest.oid, latest_subject: latest.subject, latest_date: latest.date };
+  }
+  return result;
+}
+
 function clearTaskCommitsCache() {
   cache.clear();
 }
 
-module.exports = { getTaskCommitChanges, clearTaskCommitsCache, parseShow, aggregate, cleanShas, grepLiteral };
+module.exports = { getTaskCommitChanges, getTaskCommitSummaries, clearTaskCommitsCache, parseShow, parseLog, aggregate, cleanShas, grepLiteral };

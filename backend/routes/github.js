@@ -55,6 +55,7 @@ router.get('/links', async (req, res) => {
         // Optional frontmatter overrides — see CLAUDE.md "Branch & PR Linkage"
         github_branch: t.github_branch || null,
         github_pr_url: t.github_pr_url || null,
+        github_commits: t.github_commits || [],
       }));
 
     const data = await getLinks(project, taskProjections, { refresh: req.query.refresh === '1' });
@@ -205,6 +206,7 @@ router.get('/changes', async (req, res) => {
         id: t.id,
         github_branch: t.github_branch || null,
         github_pr_url: t.github_pr_url || null,
+        github_commits: t.github_commits || [],
       }));
     const links = await getLinks(project, taskProjections, { refresh: false });
     const link = links.by_task_id?.[taskId];
