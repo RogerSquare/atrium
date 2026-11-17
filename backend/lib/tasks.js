@@ -9,46 +9,256 @@ const { generateSummary } = require('./taskSummary');
 const taskIndex = new Map();
 let indexBuilt = false;
 
-// --- Task cache: avoids full filesystem scan on every GET request ---
-let tasksCache = null;
+// --- Task cache (opt-task-scan-nonblocking-001) ---
+// Per-file cache of parsed tasks so a refresh only re-reads what changed.
+//
+// Why: in the container, TASKS_DIR is often a Windows bind mount where every
+// file op costs ~2 ms. The old scan did readdir + stat + read per file
+// synchronously — ~5 s for ~1,150 tasks — and blocked the event loop every
+// time the 5 s TTL lapsed, stalling every endpoint.
+//
+// How it stays correct:
+//  - In-process writes all go through atomicWriteFileSync, which marks that
+//    file dirty; the next getAllTasks() re-reads just those files.
+//  - Creates/moves/deletes call invalidateCache() (directly or via
+//    indexSet/indexDelete), which marks the tree dirty; the next read
+//    re-walks the directories (readdir only, no per-file stat) and reads any
+//    new paths.
+//  - Edits from outside this process (the native instance on the shared
+//    mount, hand edits) are picked up by a background refresh once the TTL
+//    lapses. Callers get the last good result meanwhile (stale-while-
+//    revalidate); only a cold cache is filled synchronously.
+const CACHE_TTL_MS = Number(process.env.ATRIUM_TASK_CACHE_TTL_MS) || 5000; // 5 seconds
+const REFRESH_CONCURRENCY = 32;
+
+const fileCache = new Map(); // filePath -> { raw, task, error }
+let tasksCache = null; // array in walk order, or null when cold
+let cachePaths = []; // file paths of the last publish, in walk order
+let tasksCacheError = null; // first parse error in the tree (old scan threw it)
 let tasksCacheTime = 0;
-const CACHE_TTL_MS = 5000; // 5 seconds
+let treeDirty = false;
+let treeVersion = 0;
+const dirtyFiles = new Set();
+const writeSeq = new Map(); // filePath -> seq of its last in-process write
+let seq = 0;
+let refreshPromise = null;
 
 const invalidateCache = () => {
-  tasksCache = null;
-  tasksCacheTime = 0;
+  treeDirty = true;
+  treeVersion++;
 };
 
-// Build the index by scanning the tasks directory once
-const buildIndex = () => {
+const isTaskFile = (name) => name.endsWith('.md') && name.toLowerCase() !== 'readme.md';
+
+const isUnderTasksDir = (filePath) => {
+  const rel = path.relative(TASKS_DIR, path.resolve(filePath));
+  return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+};
+
+const markFileWritten = (filePath) => {
+  if (!isUnderTasksDir(filePath)) return;
+  const p = path.resolve(filePath);
+  writeSeq.set(p, ++seq);
+  dirtyFiles.add(p);
+  if (!fileCache.has(p)) invalidateCache(); // a new path: the tree changed
+};
+
+// Dirent type comes free with readdir, so no per-file stat. Symlinks (and
+// filesystems that report an unknown type) fall back to one stat.
+const direntKind = (dirPath, entry) => {
+  if (entry.isDirectory()) return 'dir';
+  if (entry.isFile()) return 'file';
+  try {
+    const st = fs.statSync(path.join(dirPath, entry.name));
+    return st.isDirectory() ? 'dir' : (st.isFile() ? 'file' : null);
+  } catch { return null; }
+};
+
+// Skipping dot-prefixed dirs is what keeps archived projects out of the task
+// index (.archived/) alongside .history/.trash. Do NOT loosen this rule
+// without updating the archive route contract.
+const walkTaskFiles = (dirPath, out = []) => {
+  for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+    const kind = direntKind(dirPath, entry);
+    const p = path.join(dirPath, entry.name);
+    if (kind === 'dir') {
+      if (!entry.name.startsWith('.')) walkTaskFiles(p, out);
+    } else if (kind === 'file' && isTaskFile(entry.name)) {
+      out.push(p);
+    }
+  }
+  return out;
+};
+
+const walkTaskFilesAsync = async (dirPath, out = []) => {
+  const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+  for (const entry of entries) {
+    const kind = direntKind(dirPath, entry);
+    const p = path.join(dirPath, entry.name);
+    if (kind === 'dir') {
+      if (!entry.name.startsWith('.')) await walkTaskFilesAsync(p, out);
+    } else if (kind === 'file' && isTaskFile(entry.name)) {
+      out.push(p);
+    }
+  }
+  return out;
+};
+
+const buildTask = (filePath, fileContent) => {
+  const { data, content } = matter(fileContent);
+  const project = require('./taskPaths').deriveProject(filePath);
+  const id = data.id || path.basename(filePath).replace('.md', '');
+
+  const taskObj = {
+    id,
+    title: data.title || 'Untitled',
+    status: data.status || 'todo',
+    priority: data.priority || 'medium',
+    assignee: data.assignee || null,
+    type: data.type || 'fullstack',
+    component: data.component || null,
+    tags: data.tags || [],
+    files_affected: data.files_affected || [],
+    parent_task: data.parent_task || null,
+    created_at: data.created_at || null,
+    started_at: data.started_at || null,
+    reviewed_at: data.reviewed_at || null,
+    done_at: data.done_at || null,
+    activity_log: data.activity_log || [],
+    github_branch: data.github_branch || null,
+    github_pr_url: data.github_pr_url || null,
+    // A task's own commits for the Changes view (feat-task-commits-001)
+    github_commits: Array.isArray(data.github_commits) ? data.github_commits : [],
+    // Playwright e2e gate (feat-e2e-validation-001) + run summary (feat-e2e-tests-tab-001).
+    // Both PRs added the write path in routes/tasks.js but missed extending the read path
+    // here, so on-disk values were silently dropped on GET. The Tests tab depends on this.
+    e2e_status: data.e2e_status || null,
+    e2e_run: data.e2e_run || null,
+    // Which atrium.tests.json suite produced e2e_status (feat-runners-core-001).
+    e2e_suite: data.e2e_suite || null,
+    // Per-task claude session UUID — bound on first Shell-tab spawn so
+    // resume targets THIS task's conversation, not the cwd's most-recent.
+    // Source of truth lives in YAML so the binding survives across
+    // browsers / machines (localStorage was the original storage in
+    // feat-shell-task-resume-001 and is now demoted to a cache).
+    claude_session_id: data.claude_session_id || null,
+    project: project,
+    content: content.trim(),
+    filePath: filePath
+  };
+  taskObj.summary = generateSummary(taskObj);
+  return taskObj;
+};
+
+// Parse only when the bytes changed, so an unchanged tree costs no CPU.
+const applyFile = (filePath, raw) => {
+  const prev = fileCache.get(filePath);
+  if (prev && prev.raw === raw) return;
+  try {
+    fileCache.set(filePath, { raw, task: buildTask(filePath, raw), error: null });
+  } catch (error) {
+    logger.warn({ err: error, filePath }, 'Failed to parse task file');
+    fileCache.set(filePath, { raw, task: null, error });
+  }
+};
+
+// Publish a walk: drop vanished files, rebuild the array and the id index
+// (last path wins on duplicate ids, as the old full scan did).
+const publish = (paths) => {
+  const present = new Set(paths);
+  for (const p of fileCache.keys()) if (!present.has(p)) fileCache.delete(p);
+
+  const tasks = [];
+  let firstError = null;
   taskIndex.clear();
-  scanDirectory(TASKS_DIR);
+  for (const p of paths) {
+    const entry = fileCache.get(p);
+    if (!entry) continue;
+    if (entry.error) { firstError = firstError || entry.error; continue; }
+    tasks.push(entry.task);
+    taskIndex.set(entry.task.id, p);
+  }
+  cachePaths = paths;
+  tasksCache = tasks;
+  tasksCacheError = firstError;
+  tasksCacheTime = Date.now();
   indexBuilt = true;
 };
 
-const scanDirectory = (dirPath) => {
-  const files = fs.readdirSync(dirPath);
-  files.forEach((file) => {
-    const filePath = path.join(dirPath, file);
-    const stats = fs.statSync(filePath);
-    if (stats.isDirectory()) {
-      // Skipping dot-prefixed dirs is what keeps archived projects out of the
-      // task index (.archived/) alongside .history/.trash. Do NOT loosen this
-      // rule without updating the archive route contract.
-      if (!file.startsWith('.')) {
-        scanDirectory(filePath);
-      }
-    } else if (file.endsWith('.md') && file.toLowerCase() !== 'readme.md') {
-      try {
-        const fileContent = fs.readFileSync(filePath, 'utf-8');
-        const { data } = matter(fileContent);
-        const id = data.id || file.replace('.md', '');
-        taskIndex.set(id, filePath);
-      } catch (err) {
-        logger.warn({ err, filePath }, 'Failed to index task file');
-      }
+const readIfPresent = (p) => {
+  try { return fs.readFileSync(p, 'utf-8'); } catch (err) {
+    if (err.code === 'ENOENT') return null; // deleted between walk and read
+    throw err;
+  }
+};
+
+// Synchronous refresh. Cold: reads everything. Warm: one directory walk plus
+// only the new or dirty files.
+const refreshSync = () => {
+  const version = treeVersion;
+  const cold = !tasksCache;
+  const paths = (cold || treeDirty) ? walkTaskFiles(TASKS_DIR) : cachePaths;
+  const kept = [];
+  for (const p of paths) {
+    if (cold || !fileCache.has(p) || dirtyFiles.has(p)) {
+      const raw = readIfPresent(p);
+      if (raw === null) continue;
+      applyFile(p, raw);
     }
+    kept.push(p);
+  }
+  dirtyFiles.clear();
+  if (treeVersion === version) treeDirty = false;
+  publish(kept);
+};
+
+// Background refresh: async reads with bounded concurrency so the event loop
+// stays free. Catches edits made outside this process.
+const refreshTasksAsync = () => {
+  if (refreshPromise) return refreshPromise;
+  const startSeq = seq;
+  const version = treeVersion;
+  refreshPromise = (async () => {
+    const paths = await walkTaskFilesAsync(TASKS_DIR);
+    const raws = new Array(paths.length);
+    for (let i = 0; i < paths.length; i += REFRESH_CONCURRENCY) {
+      await Promise.all(paths.slice(i, i + REFRESH_CONCURRENCY).map(async (p, j) => {
+        try { raws[i + j] = await fs.promises.readFile(p, 'utf-8'); } catch (err) {
+          if (err.code !== 'ENOENT') throw err;
+          raws[i + j] = null;
+        }
+      }));
+    }
+    const kept = [];
+    paths.forEach((p, i) => {
+      // Written by this process after the refresh started: what we read may
+      // predate the write. Keep it dirty; the next read picks it up.
+      if ((writeSeq.get(p) || 0) > startSeq) { dirtyFiles.add(p); kept.push(p); return; }
+      if (raws[i] === null) return;
+      applyFile(p, raws[i]);
+      kept.push(p);
+    });
+    // The tree changed mid-walk: publish anyway but leave it dirty so the next
+    // read re-walks.
+    if (treeVersion === version) treeDirty = false;
+    publish(kept);
+  })().catch((err) => {
+    logger.warn({ err }, 'Background task refresh failed');
+  }).finally(() => {
+    refreshPromise = null;
   });
+  return refreshPromise;
+};
+
+// Build the index (a refresh fills it as a side effect)
+const buildIndex = () => {
+  invalidateCache();
+  refreshSync();
+};
+
+// Ensure index is built (lazy init)
+const ensureIndex = () => {
+  if (!indexBuilt) buildIndex();
 };
 
 // Task count without touching the filesystem — for health checks. Returns the
@@ -61,15 +271,11 @@ const getCachedTaskCount = () => {
   return null;
 };
 
-// Ensure index is built (lazy init)
-const ensureIndex = () => {
-  if (!indexBuilt) buildIndex();
-};
-
-// Update the index for a single task
+// Update the index for a single task. The write itself already marked the
+// file dirty; only a new or moved path changes the tree.
 const indexSet = (id, filePath) => {
+  if (taskIndex.get(id) !== filePath) invalidateCache();
   taskIndex.set(id, filePath);
-  invalidateCache();
 };
 
 // Remove a task from the index
@@ -78,84 +284,21 @@ const indexDelete = (id) => {
   invalidateCache();
 };
 
-// Recursively find all markdown files in the tasks directory
-const scanAllTasks = (dirPath = TASKS_DIR, tasksArray = []) => {
-  const files = fs.readdirSync(dirPath);
-
-  files.forEach((file) => {
-    const filePath = path.join(dirPath, file);
-    const stats = fs.statSync(filePath);
-
-    if (stats.isDirectory()) {
-      if (!file.startsWith('.')) {
-        scanAllTasks(filePath, tasksArray);
-      }
-    } else if (file.endsWith('.md') && file.toLowerCase() !== 'readme.md') {
-      const fileContent = fs.readFileSync(filePath, 'utf-8');
-      const { data, content } = matter(fileContent);
-
-      const project = require('./taskPaths').deriveProject(filePath);
-      const id = data.id || file.replace('.md', '');
-
-      // Keep the index in sync during full scans
-      taskIndex.set(id, filePath);
-
-      const taskObj = {
-        id,
-        title: data.title || 'Untitled',
-        status: data.status || 'todo',
-        priority: data.priority || 'medium',
-        assignee: data.assignee || null,
-        type: data.type || 'fullstack',
-        component: data.component || null,
-        tags: data.tags || [],
-        files_affected: data.files_affected || [],
-        parent_task: data.parent_task || null,
-        created_at: data.created_at || null,
-        started_at: data.started_at || null,
-        reviewed_at: data.reviewed_at || null,
-        done_at: data.done_at || null,
-        activity_log: data.activity_log || [],
-        github_branch: data.github_branch || null,
-        github_pr_url: data.github_pr_url || null,
-        // A task's own commits for the Changes view (feat-task-commits-001)
-        github_commits: Array.isArray(data.github_commits) ? data.github_commits : [],
-        // Playwright e2e gate (feat-e2e-validation-001) + run summary (feat-e2e-tests-tab-001).
-        // Both PRs added the write path in routes/tasks.js but missed extending the read path
-        // here, so on-disk values were silently dropped on GET. The Tests tab depends on this.
-        e2e_status: data.e2e_status || null,
-        e2e_run: data.e2e_run || null,
-        // Which atrium.tests.json suite produced e2e_status (feat-runners-core-001).
-        e2e_suite: data.e2e_suite || null,
-        // Per-task claude session UUID — bound on first Shell-tab spawn so
-        // resume targets THIS task's conversation, not the cwd's most-recent.
-        // Source of truth lives in YAML so the binding survives across
-        // browsers / machines (localStorage was the original storage in
-        // feat-shell-task-resume-001 and is now demoted to a cache).
-        claude_session_id: data.claude_session_id || null,
-        project: project,
-        content: content.trim(),
-        filePath: filePath
-      };
-      taskObj.summary = generateSummary(taskObj);
-      tasksArray.push(taskObj);
-    }
-  });
-
-  indexBuilt = true;
-  return tasksArray;
-};
-
-// Cached wrapper — returns cached result if fresh, otherwise rescans
+// Cached task list. Fresh → cached. Stale → cached now, refreshed in the
+// background. Cold, or dirtied by a write in this process → refreshed
+// synchronously (cheaply, unless cold) so a writer reads its own write.
 const getAllTasks = (dirPath = TASKS_DIR) => {
-  const now = Date.now();
-  if (tasksCache && (now - tasksCacheTime) < CACHE_TTL_MS) {
-    return tasksCache;
+  if (path.resolve(dirPath) !== path.resolve(TASKS_DIR)) {
+    // Not the live tree: plain uncached scan, no shared state touched.
+    return walkTaskFiles(dirPath).map((p) => buildTask(p, fs.readFileSync(p, 'utf-8')));
   }
-  const tasks = scanAllTasks(dirPath);
-  tasksCache = tasks;
-  tasksCacheTime = now;
-  return tasks;
+  if (!tasksCache || treeDirty || dirtyFiles.size) {
+    refreshSync();
+  } else if (Date.now() - tasksCacheTime >= CACHE_TTL_MS) {
+    refreshTasksAsync();
+  }
+  if (tasksCacheError) throw tasksCacheError;
+  return tasksCache;
 };
 
 // O(1) lookup for a task's file path
@@ -178,19 +321,21 @@ const atomicWriteFileSync = (filePath, content) => {
   const tmpPath = filePath + '.tmp';
   fs.writeFileSync(tmpPath, content);
   fs.renameSync(tmpPath, filePath);
+  markFileWritten(filePath);
 };
 
 // Cleanup stale .tmp files from a crashed write (call on startup)
 const cleanupTempFiles = (dirPath = TASKS_DIR) => {
   let cleaned = 0;
   const scan = (dir) => {
-    const files = fs.readdirSync(dir);
-    for (const file of files) {
+    // Dirent types instead of a stat per file (opt-task-scan-nonblocking-001).
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = entry.name;
       const fullPath = path.join(dir, file);
-      const stats = fs.statSync(fullPath);
-      if (stats.isDirectory() && !file.startsWith('.')) {
+      const kind = direntKind(dir, entry);
+      if (kind === 'dir' && !file.startsWith('.')) {
         scan(fullPath);
-      } else if (file.endsWith('.tmp')) {
+      } else if (kind === 'file' && file.endsWith('.tmp')) {
         try { fs.unlinkSync(fullPath); cleaned++; } catch (e) {}
       }
     }
@@ -438,4 +583,4 @@ const claimNextTodo = async (project, assignee) => {
   return null;
 };
 
-module.exports = { getAllTasks, getCachedTaskCount, findTaskFilePath, buildIndex, indexSet, indexDelete, invalidateCache, atomicWriteFileSync, cleanupTempFiles, trimActivityLog, getFullActivityLog, generateSummary, updateTaskField, appendComment, createTask, claimNextTodo, isEligibleForWorker };
+module.exports = { getAllTasks, getCachedTaskCount, refreshTasksAsync, findTaskFilePath, buildIndex, indexSet, indexDelete, invalidateCache, atomicWriteFileSync, cleanupTempFiles, trimActivityLog, getFullActivityLog, generateSummary, updateTaskField, appendComment, createTask, claimNextTodo, isEligibleForWorker };
