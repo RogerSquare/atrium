@@ -158,8 +158,11 @@ if (!fs.existsSync(SERVICES_FILE)) fs.writeFileSync(SERVICES_FILE, JSON.stringif
 if (!fs.existsSync(CHAT_FILE)) fs.writeFileSync(CHAT_FILE, JSON.stringify([]));
 
 // --- Cleanup stale temp files from previous crash ---
-const { cleanupTempFiles } = require('./lib/tasks');
+const { cleanupTempFiles, refreshTasksAsync } = require('./lib/tasks');
 cleanupTempFiles();
+// Warm the task cache off the event loop so the first request is not a cold
+// synchronous scan (seconds on a bind-mounted tasks dir; opt-task-scan-nonblocking-001).
+refreshTasksAsync();
 
 // --- Share IO instance globally ---
 setIO(io);
