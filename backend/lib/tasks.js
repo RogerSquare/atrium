@@ -51,6 +51,16 @@ const scanDirectory = (dirPath) => {
   });
 };
 
+// Task count without touching the filesystem — for health checks. Returns the
+// last scan's size, or the id index size, or null when neither exists yet.
+// Never triggers a scan: on a bind-mounted tasks dir a full scan takes
+// seconds, longer than the container HEALTHCHECK timeout (bug-health-ready-timeout-001).
+const getCachedTaskCount = () => {
+  if (tasksCache) return tasksCache.length;
+  if (indexBuilt) return taskIndex.size;
+  return null;
+};
+
 // Ensure index is built (lazy init)
 const ensureIndex = () => {
   if (!indexBuilt) buildIndex();
@@ -428,4 +438,4 @@ const claimNextTodo = async (project, assignee) => {
   return null;
 };
 
-module.exports = { getAllTasks, findTaskFilePath, buildIndex, indexSet, indexDelete, invalidateCache, atomicWriteFileSync, cleanupTempFiles, trimActivityLog, getFullActivityLog, generateSummary, updateTaskField, appendComment, createTask, claimNextTodo, isEligibleForWorker };
+module.exports = { getAllTasks, getCachedTaskCount, findTaskFilePath, buildIndex, indexSet, indexDelete, invalidateCache, atomicWriteFileSync, cleanupTempFiles, trimActivityLog, getFullActivityLog, generateSummary, updateTaskField, appendComment, createTask, claimNextTodo, isEligibleForWorker };
