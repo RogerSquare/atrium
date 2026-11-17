@@ -239,11 +239,14 @@ app.get('/api/health/ready', (req, res) => {
   const rssMB = Math.round(mem.rss / 1024 / 1024);
   checks.memory = { status: heapUsedMB < 512 ? 'ok' : 'warn', heapUsedMB, heapTotalMB, rssMB };
 
-  // 3. Task count (verifies index/scan works)
+  // 3. Task count from the last scan — never a fresh scan. A full scan of a
+  // bind-mounted tasks dir takes ~5 s, which blew the HEALTHCHECK timeout and
+  // left the container "unhealthy" while it was serving fine
+  // (bug-health-ready-timeout-001). The readdir confirms the dir is listable.
   try {
-    const { getAllTasks } = require('./lib/tasks');
-    const count = getAllTasks(TASKS_DIR).length;
-    checks.tasks = { status: 'ok', count };
+    const { getCachedTaskCount } = require('./lib/tasks');
+    fs.readdirSync(TASKS_DIR);
+    checks.tasks = { status: 'ok', count: getCachedTaskCount() };
   } catch (err) {
     checks.tasks = { status: 'fail', error: 'Cannot load tasks' };
     healthy = false;
